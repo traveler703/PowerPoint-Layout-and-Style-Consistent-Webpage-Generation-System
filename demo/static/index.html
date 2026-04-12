@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>演示 · 网页生成</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="top">
+    <h1>PowerPoint 风格网页生成 · 演示</h1>
+    <p class="muted">上传/输入区域为占位；调用后端桩接口预览 HTML。</p>
+  </header>
+  <main class="grid">
+    <section class="panel">
+      <label for="notes">内容输入</label>
+      <textarea id="notes" rows="10" placeholder="在此粘贴大纲或讲稿片段…"></textarea>
+      <div class="actions">
+        <button type="button" id="btn-generate">生成预览</button>
+        <span id="status" class="muted"></span>
+      </div>
+      <pre id="report" class="report" hidden></pre>
+    </section>
+    <section class="panel preview-wrap">
+      <h2>预览</h2>
+      <iframe id="preview" title="preview" sandbox="allow-same-origin"></iframe>
+    </section>
+  </main>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
