@@ -16,7 +16,7 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-3. **DeepSeek API**：将根目录下的 `.env.example` 复制为 `.env`，填写 `DEEPSEEK_API_KEY`（必要时修改 `DEEPSEEK_API_BASE`）。`.env` 已在 `.gitignore` 中，请勿把真实密钥提交到 Git。  
+3. **DeepSeek API**：在根目录中创建`.env`文件，填写 `DEEPSEEK_API_KEY`（必要时修改 `DEEPSEEK_API_BASE`）。`.env` 已在 `.gitignore` 中，请勿把真实密钥提交到 Git。  
    命令行与 `demo` 服务启动时会通过 `python-dotenv` 自动加载根目录的 `.env`。
 
 ## 如何运行
