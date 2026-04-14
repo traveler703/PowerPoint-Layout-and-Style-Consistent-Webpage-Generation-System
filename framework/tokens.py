@@ -39,7 +39,24 @@ class StyleTokens(BaseModel):
 def load_style_tokens(path: str | Path) -> StyleTokens:
     """Load tokens from JSON. Team: replace or extend schema as design system grows."""
     data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if isinstance(data, dict) and "themes" in data and "colors" not in data:
+        raise ValueError("Use load_theme_catalog + get_theme for themes.json")
     return StyleTokens.model_validate(data)
+
+
+def load_theme_catalog(path: str | Path) -> dict[str, StyleTokens]:
+    """Load ``themes.json`` → theme_id → StyleTokens."""
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    themes = raw.get("themes", raw)
+    return {k: StyleTokens.model_validate(v) for k, v in themes.items()}
+
+
+def get_theme(catalog: dict[str, StyleTokens], theme_id: str, *, fallback: str = "business_blue") -> StyleTokens:
+    if theme_id in catalog:
+        return catalog[theme_id]
+    if fallback in catalog:
+        return catalog[fallback]
+    return next(iter(catalog.values()))
 
 
 def default_tokens() -> StyleTokens:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -44,7 +46,35 @@ class LayoutRegistry:
         return list(self._atoms.values())
 
     @classmethod
+    def from_json_file(cls, path: str | Path) -> LayoutRegistry:
+        """Load atoms from ``layouts.json`` (see ``framework/data/layouts.json``)."""
+        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+        layouts = raw.get("layouts", raw) if isinstance(raw, dict) else raw
+        atoms: list[LayoutAtom] = []
+        for item in layouts:
+            slots = [
+                LayoutSlot(
+                    id=s["id"],
+                    role=s["role"],
+                    grid_area=s.get("grid_area"),
+                    constraints=s.get("constraints") or {},
+                )
+                for s in item.get("slots", [])
+            ]
+            atoms.append(
+                LayoutAtom(
+                    id=item["id"],
+                    name=item.get("name", item["id"]),
+                    description=item.get("description", ""),
+                    slots=slots,
+                    metadata=item.get("metadata") or {},
+                )
+            )
+        return cls(atoms)
+
+    @classmethod
     def with_minimal_defaults(cls) -> LayoutRegistry:
+        """Fallback when JSON 缺失：与 ``hero-title-body`` / ``two-column`` 兼容。"""
         reg = cls()
         reg.register(
             LayoutAtom(
@@ -68,3 +98,15 @@ class LayoutRegistry:
             )
         )
         return reg
+
+    @classmethod
+    def default_from_package_data(cls, base: Path | None = None) -> LayoutRegistry:
+        """优先加载 ``framework/data/layouts.json``，失败则 ``with_minimal_defaults``。"""
+        root = base or Path(__file__).resolve().parent
+        path = root / "data" / "layouts.json"
+        if path.is_file():
+            try:
+                return cls.from_json_file(path)
+            except OSError:
+                pass
+        return cls.with_minimal_defaults()

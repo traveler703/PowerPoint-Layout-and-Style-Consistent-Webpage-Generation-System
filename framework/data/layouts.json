@@ -1,0 +1,109 @@
+{
+  "layouts": [
+    {
+      "id": "hero-title-body",
+      "name": "标题 + 正文",
+      "description": "居中主标题与单栏正文，适合封面或短页。",
+      "slots": [
+        { "id": "title", "role": "title", "grid_area": "header" },
+        { "id": "body", "role": "body", "grid_area": "main" }
+      ],
+      "metadata": {
+        "applicable_scene": ["封面", "过渡页", "内容页"],
+        "max_bullets": 2,
+        "requires_image": false,
+        "requires_chart": false,
+        "requires_table": false
+      }
+    },
+    {
+      "id": "two-column",
+      "name": "双栏要点",
+      "description": "两列并列，适合 2 个要点对比。",
+      "slots": [
+        { "id": "title", "role": "title", "grid_area": "header" },
+        { "id": "left", "role": "body", "grid_area": "left" },
+        { "id": "right", "role": "body", "grid_area": "right" }
+      ],
+      "metadata": {
+        "applicable_scene": ["内容页"],
+        "min_bullets": 2,
+        "max_bullets": 2,
+        "requires_image": false
+      }
+    },
+    {
+      "id": "three-column",
+      "name": "三栏要点",
+      "description": "三列网格，适合三个并列要点。",
+      "slots": [
+        { "id": "title", "role": "title", "grid_area": "header" },
+        { "id": "col1", "role": "body", "grid_area": "c1" },
+        { "id": "col2", "role": "body", "grid_area": "c2" },
+        { "id": "col3", "role": "body", "grid_area": "c3" }
+      ],
+      "metadata": {
+        "applicable_scene": ["内容页"],
+        "min_bullets": 3,
+        "requires_image": false
+      }
+    },
+    {
+      "id": "image-text-left",
+      "name": "左图右文",
+      "description": "左侧媒体区、右侧正文，适合图文并置。",
+      "slots": [
+        { "id": "title", "role": "title", "grid_area": "header" },
+        { "id": "media", "role": "media", "grid_area": "aside" },
+        { "id": "body", "role": "body", "grid_area": "main" }
+      ],
+      "metadata": {
+        "applicable_scene": ["内容页"],
+        "requires_image": true
+      }
+    },
+    {
+      "id": "image-text-top",
+      "name": "上图下文",
+      "description": "上方大图、下方说明文字。",
+      "slots": [
+        { "id": "title", "role": "title", "grid_area": "header" },
+        { "id": "media", "role": "media", "grid_area": "hero" },
+        { "id": "body", "role": "body", "grid_area": "main" }
+      ],
+      "metadata": {
+        "applicable_scene": ["内容页"],
+        "requires_image": true,
+        "prefer_long_text": true
+      }
+    },
+    {
+      "id": "chart-focus",
+      "name": "图表强调",
+      "description": "预留图表区域与说明文字。",
+      "slots": [
+        { "id": "title", "role": "title", "grid_area": "header" },
+        { "id": "chart", "role": "chart", "grid_area": "chart" },
+        { "id": "body", "role": "body", "grid_area": "caption" }
+      ],
+      "metadata": {
+        "applicable_scene": ["数据页"],
+        "requires_chart": true
+      }
+    },
+    {
+      "id": "table-focus",
+      "name": "表格版式",
+      "description": "标题 + 表格区域 + 脚注。",
+      "slots": [
+        { "id": "title", "role": "title", "grid_area": "header" },
+        { "id": "table", "role": "table", "grid_area": "table" },
+        { "id": "body", "role": "body", "grid_area": "footer" }
+      ],
+      "metadata": {
+        "applicable_scene": ["数据页"],
+        "requires_table": true
+      }
+    }
+  ]
+}
