@@ -48,6 +48,17 @@ class DeepSeekClient:
                 logger.warning(f"请求超时 (尝试 {attempt + 1}/{MAX_RETRIES})")
                 if attempt == MAX_RETRIES - 1:
                     raise
+            except requests.exceptions.HTTPError as e:
+                status_code = e.response.status_code if e.response is not None else "unknown"
+                response_text = ""
+                if e.response is not None:
+                    response_text = e.response.text[:1000]
+                logger.error(f"HTTP请求失败: status={status_code}, body={response_text}")
+                # 4xx 属于请求参数或输入问题，重试无意义
+                if e.response is not None and 400 <= e.response.status_code < 500:
+                    raise
+                if attempt == MAX_RETRIES - 1:
+                    raise
             except requests.exceptions.RequestException as e:
                 logger.error(f"请求失败: {e}")
                 if attempt == MAX_RETRIES - 1:

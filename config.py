@@ -8,7 +8,8 @@ load_dotenv()
 
 # DeepSeek API配置
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
-DEEPSEEK_API_URL = os.getenv("DEEPSEEK_API_URL", "https://api.deepseek.com/v1")
+# 兼容 DEEPSEEK_API_BASE 与 DEEPSEEK_API_URL 两种变量名
+DEEPSEEK_API_URL = os.getenv("DEEPSEEK_API_URL") or os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com/v1")
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
 # 数据库配置

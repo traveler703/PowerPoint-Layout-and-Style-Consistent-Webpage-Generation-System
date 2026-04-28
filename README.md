@@ -1,26 +1,72 @@
 # PowerPoint Layout and Style Consistent Webpage Generation System
 
-本项目是一个前后端分离的 AI PPT 生成系统：
+本项目目标是实现“版式与风格一致”的网页化演示稿自动生成系统，采用“模板约束 + LLM 生成”的混合方案，支持输出 `HTML`/`Markdown`（不输出 `.pptx`）。
 
-- 后端：`Flask`（默认 `127.0.0.1:5000`）
-- 前端：`Vue 3 + Vite`（默认 `localhost:5173`）
-- 数据库：`MySQL`
+当前仓库包含两条并行能力：
+
+- 工程主线：`Flask + Vue3 + MySQL` 的完整可运行产品链路。
+- 研究主线：按需求规约抽象的 `framework/engine/generator/evaluator` 分层能力，用于版式推理、风格令牌注入与量化评估。
 
 ---
 
-## 1. 环境要求
+## 1. 对齐需求规约后的能力映射
 
-- Python 3.10+（推荐 3.11）
-- Node.js 18+（建议配套 npm 9+）
+根据 `reference/Introduction.md` 与 `reference/需求规约.md`，系统核心能力如下：
+
+- 内容输入与结构化：支持标题层级、要点、图片/表格等语义结构。
+- 版式自动选型：根据内容密度、要点数、图文特征进行布局推理。
+- 风格令牌管理：通过主题 token 保证跨页一致性（颜色偏差 <= 5%）。
+- LLM 代码生成：生成语义化且可分发的 `HTML`/`Markdown`。
+- 预览与编辑：支持即时预览与后续编辑迭代。
+- 量化评估：评估元素重叠率（目标 0%）和风格一致性。
+
+---
+
+## 2. 项目结构
+
+```text
+.
+├── app.py                     # Flask 主入口（产品链路）
+├── config.py                  # 环境变量与系统配置
+├── database.py                # MySQL 连接管理
+├── init_db.py                 # 初始化数据库
+├── pipeline.py                # 参考流水线（内容->推理->生成->评估）
+├── core/                      # 现有生成核心能力（设计基因/全局宪法等）
+├── services/                  # 业务服务层（Project/Outline/Slide/PPT）
+├── prompts/                   # 生成相关提示词
+├── frontend/                  # Vue3 + Vite 前端
+├── framework/                 # 结构化可复用表示层（token/layout/component）
+│   └── data/                  # themes/layouts/default_tokens 配置数据
+├── engine/                    # 内容解析与版式推理引擎
+├── generator/                 # LLM 客户端与 HTML/Markdown 生成器
+├── evaluator/                 # 布局与风格一致性评估模块
+└── scripts/                   # 测试脚本
+```
+
+目录与模块对应关系
+
+| 路径 | 功能 |
+|------|------|
+| `framework/` | 结构化表示：样式令牌（`tokens.py`）、布局原子（`layouts.py`）、组件规范（`components.py`）；数据见 `framework/data/themes.json`、`framework/data/layouts.json`（及 `default_tokens.json`）。 |
+| `engine/` | 内容解析（`content.py`）、语义类型（`types.py`）、启发式版式规划（`reasoning.py`）、约束求解占位（`constraints.py`）。 |
+| `generator/` | LLM（`llm_client.py` DeepSeek / 桩）、可选 LangChain（`langchain_chain.py`，需 `pip install -e ".[ai]"`）、Prompt（`prompts.py`）、HTML/Markdown 生成器。 |
+| `evaluator/` | 量化评估：布局指标（`layout_metrics.py`）、风格一致性（`style_metrics.py`）、汇总报告（`report.py`）。 |
+| `pipeline.py` | 将上述模块串成一条占位流水线，便于联调与扩展。 |
+| `scripts/` | 自动化测试，可随功能补充用例。 |
+
+---
+
+## 3. 环境要求
+
+- Python 3.10+（建议 3.11）
+- Node.js 18+（建议 npm 9+）
 - MySQL 8.x（或兼容版本）
 
 ---
 
-## 2. 克隆项目后首次初始化
+## 4. 初始化与安装
 
-输入下面的指令来安装相关的包
-
-在项目根目录执行：
+后端依赖安装：
 
 ```bash
 python3 -m venv .venv
@@ -38,9 +84,9 @@ cd ..
 
 ---
 
-## 3. 配置环境变量（`.env`）
+## 5. 环境变量配置（`.env`）
 
-在项目根目录创建或修改 `.env`（与实际环境一致）：
+在根目录创建或修改 `.env`：
 
 ```env
 # DeepSeek
@@ -56,14 +102,11 @@ DB_USER=root
 DB_PASSWORD=your_password
 ```
 
-说明：
-
-- 建议 `DB_HOST` 使用 `127.0.0.1`，避免 `localhost` 在个别机器上的解析差异。
-- 未配置 `DEEPSEEK_API_KEY` 时，涉及 LLM 生成的功能会失败。
+建议使用 `127.0.0.1` 作为 `DB_HOST`，减少本机 `localhost` 解析差异。
 
 ---
 
-## 4. 初始化数据库
+## 6. 初始化数据库
 
 首先确保电脑上已安装MySQL
 
@@ -74,25 +117,18 @@ source .venv/bin/activate
 python init_db.py
 ```
 
-如果看到类似 `Database initialized!`，表示建库建表成功。
-
-可选：快速检查数据库连接
+可选：连接测试
 
 ```bash
 source .venv/bin/activate
-python - <<'PY'
-from database import test_connection
-print(test_connection())
-PY
+python scripts/test_db.py
 ```
 
 ---
 
-## 5. 启动项目（开发模式）
+## 7. 启动开发环境
 
-需要两个终端窗口。
-
-### 终端 A：启动后端
+终端 A（后端）：
 
 ```bash
 source .venv/bin/activate
@@ -103,7 +139,7 @@ python app.py
 
 - 健康检查：`http://127.0.0.1:5000/health`
 
-### 终端 B：启动前端
+终端 B（前端）：
 
 ```bash
 cd frontend
@@ -112,77 +148,8 @@ npm run dev
 
 浏览器访问：
 
-- `http://localhost:5173`
-
-> 不要直接访问 `http://127.0.0.1:5000/` 作为前端页面。
-> 该地址是后端服务地址，前端请使用 Vite 地址 `5173`。
+- 前端：`http://localhost:5173`
+- 健康检查：`http://127.0.0.1:5000/health`
 
 ---
-
-## 6. 常见问题排查
-
-### 6.1 `Can't connect to MySQL server ... Connection refused`
-
-原因：MySQL 未启动、端口不对或主机不对。  
-处理：
-
-1. 检查 MySQL 是否运行（3306 是否监听）
-2. 确认 `.env` 的 `DB_HOST/DB_PORT/DB_USER/DB_PASSWORD`
-3. 用命令手工验证连接：
-
-```bash
-mysql -h 127.0.0.1 -P 3306 -u root -p
-```
-
----
-
-### 6.2 打开后端首页报错 `TemplateNotFound: index.html`
-
-原因：后端 `/` 路由尝试 `render_template('index.html')`，但默认模板目录里没有该文件。  
-这不影响前后端分离开发流程，正确做法是启动前端并访问：
-
-- `http://localhost:5173`
-
----
-
-### 6.3 前端请求 `/api/projects` 返回 `403 Forbidden`
-
-典型现象：浏览器 Network 显示 `projects 403`，响应头里可能出现 `Server: AirTunes`。  
-原因：机器上的 `localhost:5000` 被其他服务占用，请求没到 Flask。
-
-已在项目中处理：`frontend/vite.config.js` 代理目标改为：
-
-- `http://127.0.0.1:5000`
-
-如果你本地仍异常，请：
-
-1. 重启前端开发服务器（`npm run dev`）
-2. 确认后端运行在 `127.0.0.1:5000`
-3. 再次测试新建项目
-
----
-
-## 7. 项目结构（核心目录）
-
-```text
-.
-├── app.py                 # Flask 主入口
-├── config.py              # 环境变量与系统配置
-├── database.py            # DB 连接与游标管理
-├── init_db.py             # 数据库初始化脚本
-├── services/              # 业务服务层（Project/Outline/Slide/PPT）
-├── requirements.txt       # Python 依赖
-└── frontend/              # Vue + Vite 前端
-```
-
----
-
-## 8. 团队协作建议
-
-- 后端改动前先跑 `python init_db.py` 确认表结构一致
-- 前端改动后确保 API 基地址仍走 Vite 代理（`/api`）
-- 提交前至少验证：
-  - `GET /health` 正常
-  - 前端可以“新建项目”成功
-  - 数据库连接测试通过
 

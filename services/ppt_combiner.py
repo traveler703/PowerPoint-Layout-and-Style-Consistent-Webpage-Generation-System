@@ -1,3 +1,5 @@
+# 此文件已废弃
+
 """
 PPT组合服务 - LandPPT原版
 步骤11: 组合输出 - 合并所有幻灯片为完整HTML
@@ -33,7 +35,7 @@ class PptCombiner:
         slides_html = ""
         for slide in slides:
             slides_html += f'''
-        <div class="slide" id="slide-{slide['page_number']}" data-type="{slide.get('slide_type', 'content')}">
+        <div class="ppt-slide" id="slide-{slide['page_number']}" data-type="{slide.get('slide_type', 'content')}">
             {slide['html']}
         </div>'''
         
@@ -66,7 +68,7 @@ class PptCombiner:
             background: #1a1a2e;
         }}
         
-        .slide {{
+        .ppt-slide {{
             display: none;
             width: 1280px;
             height: 720px;
@@ -76,7 +78,7 @@ class PptCombiner:
             overflow: hidden;
         }}
         
-        .slide.active {{
+        .ppt-slide.active {{
             display: block;
         }}
         
@@ -198,7 +200,7 @@ class PptCombiner:
             currentSlide = n;
             
             // 切换幻灯片显示
-            document.querySelectorAll('.slide').forEach((slide, index) => {{
+            document.querySelectorAll('.ppt-slide').forEach((slide, index) => {{
                 slide.classList.remove('active');
                 if (index + 1 === currentSlide) {{
                     slide.classList.add('active');
@@ -251,7 +253,7 @@ class PptCombiner:
         }});
         
         // 点击导航
-        document.querySelectorAll('.slide').forEach((slide) => {{
+        document.querySelectorAll('.ppt-slide').forEach((slide) => {{
             slide.addEventListener('click', (e) => {{
                 // 如果点击的是按钮，不切换
                 if (e.target.closest('button')) return;

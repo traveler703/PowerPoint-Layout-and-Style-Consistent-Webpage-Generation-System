@@ -998,7 +998,8 @@ export const store = reactive({
                 this.generatedSlides.push({
                   pageNumber: data.page_number,
                   title: data.title,
-                  html: data.html
+                  html: data.html,
+                  evaluation: data.evaluation || null
                 })
                 console.log('[DEBUG] 存入后generatedSlides长度:', this.generatedSlides.length)
 

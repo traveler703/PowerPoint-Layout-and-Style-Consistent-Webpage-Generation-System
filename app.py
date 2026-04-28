@@ -8,13 +8,11 @@ import logging
 from flask import Flask, render_template, request, jsonify, send_file
 from flask_cors import CORS
 from config import APP_HOST, APP_PORT, DEBUG
-from services.outline_generator import OutlineGenerator
-from services.slide_generator import SlideGenerator
-from services.ppt_combiner import PptCombiner
 from services.project_service import (
-    ProjectService, OutlineService, SlideService, GeneratedPptService
+    ProjectService, OutlineService, GeneratedPptService
 )
-from services.text_parser import TextParser
+from engine.content import parse_user_document
+from pipeline import run_pipeline
 
 # 配置日志
 logging.basicConfig(
@@ -28,10 +26,85 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'landppt-demo-secret-key'
 CORS(app)
 
-# 全局客户端
-outline_generator = OutlineGenerator()
-slide_generator = SlideGenerator()
-text_parser = TextParser()
+# /api/parse-text 中发给LLM的最大字符数（不是用户上传上限）
+MAX_LLM_INPUT_CHARS = 20000
+
+
+def _prepare_text_for_llm(text: str, max_chars: int = MAX_LLM_INPUT_CHARS) -> str:
+    """压缩超长文本，避免触发模型上下文长度限制。"""
+    if len(text) <= max_chars:
+        return text
+
+    # 保留头尾关键上下文，并插入明显的省略标记
+    head_chars = int(max_chars * 0.6)
+    tail_chars = max_chars - head_chars
+    clipped_text = (
+        text[:head_chars]
+        + "\n\n[... 中间内容已省略，系统已自动截断超长文本 ...]\n\n"
+        + text[-tail_chars:]
+    )
+    return clipped_text
+
+
+def _semantic_to_parse_result(text: str) -> dict:
+    pages = parse_user_document(text)
+    sections = []
+    for sem in pages:
+        bullets = sem.bullet_points or [b.title for b in sem.bullet_items if b.title]
+        sections.append(
+            {
+                "title": sem.title or f"第{sem.page_index + 1}部分",
+                "content": sem.summary or "",
+                "bullets": bullets,
+            }
+        )
+
+    title = next((p.title for p in pages if p.title), "") or "未命名文档"
+    summary = next((p.summary for p in pages if p.summary), "") or ""
+    return {"title": title, "summary": summary, "sections": sections}
+
+
+def _slide_to_page_markdown(slide: dict) -> str:
+    title = slide.get("title", "").strip() or "未命名页面"
+    points = slide.get("content_points") or slide.get("bullets") or []
+    lines = [f"# {title}"]
+    subtitle = (slide.get("subtitle") or "").strip()
+    if subtitle:
+        lines.append(subtitle)
+    for point in points:
+        point_text = str(point).strip()
+        if point_text:
+            lines.append(f"- {point_text}")
+    return "\n".join(lines)
+
+
+def _outline_to_pipeline_input(outline: dict, fallback_title: str = "演示文稿") -> str:
+    slides = outline.get("slides") or []
+    if not slides:
+        return f"# {fallback_title}"
+    return "\n---\n".join(_slide_to_page_markdown(slide) for slide in slides)
+
+
+def _build_outline_from_parse_result(parse_result: dict) -> dict:
+    title = parse_result.get("title", "未命名文档")
+    slides = [
+        {
+            "page_number": 1,
+            "title": title,
+            "content_points": [],
+            "slide_type": "title",
+        }
+    ]
+    for idx, section in enumerate(parse_result.get("sections", []), start=2):
+        slides.append(
+            {
+                "page_number": idx,
+                "title": section.get("title") or f"第{idx - 1}部分",
+                "content_points": section.get("bullets", []),
+                "slide_type": "content",
+            }
+        )
+    return {"title": title, "slides": slides}
 
 
 @app.route('/')
@@ -42,7 +115,7 @@ def index():
 
 @app.route('/api/parse-text', methods=['POST'])
 def parse_text():
-    """解析文本内容API - 使用LLM生成PPT大纲"""
+    """解析文本内容API - 使用 pipeline 语义解析。"""
     try:
         data = request.get_json()
         
@@ -52,94 +125,24 @@ def parse_text():
         if not text or len(text.strip()) < 10:
             return jsonify({'error': '文本内容太少，至少需要10个字符'}), 400
         
-        logger.info(f"解析文本: 长度={len(text)}字符, project_id={project_id}")
-        
-        # 构建LLM提示词 - 根据用户文本生成PPT大纲
-        prompt = f"""请分析以下文本内容，生成一个结构清晰的PPT大纲。
-
-**用户输入内容**：
-{text}
-
-**输出格式要求**：
-必须返回纯JSON格式，包含以下字段：
-{{
-    "title": "PPT标题（从内容中提取或概括）",
-    "subtitle": "副标题（可选）",
-    "summary": "内容摘要（50字以内）",
-    "slides": [
-        {{
-            "page_number": 1,
-            "title": "页面标题",
-            "content_points": ["要点1", "要点2", "要点3"],
-            "slide_type": "title"
-        }},
-        {{
-            "page_number": 2,
-            "title": "页面标题",
-            "content_points": ["要点1", "要点2"],
-            "slide_type": "content"
-        }}
-    ]
-}}
-
-**幻灯片类型说明**：
-- title: 封面页（必须第1页）
-- agenda: 目录页（可选）
-- content: 内容页（主体）
-- section_header: 章节分隔页（可选）
-- conclusion: 结论总结页（可选）
-- thankyou: 感谢页（最后一页可选）
-
-**生成规则**：
-1. 根据文本内容合理规划页数（建议5-10页）
-2. 第1页必须是封面页 (title)
-3. 内容页要提取文本中的关键信息和要点
-4. 保持逻辑清晰，层次分明
-5. 每页要点控制在2-4个
-
-请直接返回JSON格式，不要包含任何解释文字。"""
-
-        system_prompt = """你是一位专业的PPT大纲策划专家。
-请根据用户提供的文本内容，生成结构清晰、内容专业的PPT大纲。
-必须返回有效的JSON格式，不要包含任何解释文字。"""
-        
-        # 调用LLM生成大纲
-        result = outline_generator.client.chat(system_prompt, prompt, temperature=0.7)
-        
-        # 解析JSON响应
-        import re
-        json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', result, re.IGNORECASE)
-        if json_match:
-            outline = json.loads(json_match.group(1))
-        else:
-            json_match = re.search(r'(\{[\s\S]*\}|\[[\s\S]*\])', result)
-            if json_match:
-                outline = json.loads(json_match.group(1))
-            else:
-                outline = json.loads(result)
-        
-        # 转换为前端需要的格式
-        parse_result = {
-            'title': outline.get('title', '未命名文档'),
-            'summary': outline.get('summary', ''),
-            'sections': []
-        }
-        
-        # 转换slides为sections
-        slides = outline.get('slides', [])
-        for slide in slides:
-            parse_result['sections'].append({
-                'title': slide.get('title', ''),
-                'content': '',
-                'bullets': slide.get('content_points', [])
-            })
+        original_len = len(text)
+        llm_text = _prepare_text_for_llm(text)
+        logger.info(
+            f"解析文本: 原始长度={original_len}字符, 输入长度={len(llm_text)}字符, project_id={project_id}"
+        )
+        parse_result = _semantic_to_parse_result(llm_text)
         
         logger.info(f"解析完成: title={parse_result.get('title', 'N/A')}, sections={len(parse_result.get('sections', []))}")
 
         # 返回解析结果（不自动保存，需要用户点击"开始应用"）
         return jsonify({
             'success': True,
-            'result': parse_result
+            'result': parse_result,
+            'meta': {
+                'original_text_length': original_len,
+                'llm_input_length': len(llm_text),
+                'input_truncated': original_len > len(llm_text)
+            }
         })
 
     except Exception as e:
@@ -227,29 +230,17 @@ def get_parse_result(project_id):
 
 @app.route('/api/generate-outline', methods=['POST'])
 def generate_outline():
-    """生成大纲API"""
+    """生成大纲API（基于 pipeline 语义解析构建）。"""
     try:
         data = request.get_json()
         
         topic = data.get('topic', '')
-        scenario = data.get('scenario', 'general')
-        audience = data.get('audience', '通用受众')
-        page_count = data.get('page_count', 10)
-        
         if not topic:
             return jsonify({'error': '主题不能为空'}), 400
         
-        logger.info(f"生成大纲: topic={topic[:50]}..., page_count={page_count}")
-        
-        # 生成大纲
-        outline = asyncio.run(
-            outline_generator.generate_outline(
-                topic=topic,
-                scenario=scenario,
-                audience=audience,
-                page_count=page_count
-            )
-        )
+        logger.info(f"生成大纲: topic={topic[:50]}...")
+        parse_result = _semantic_to_parse_result(topic)
+        outline = _build_outline_from_parse_result(parse_result)
         
         return jsonify({
             'success': True,
@@ -263,46 +254,29 @@ def generate_outline():
 
 @app.route('/api/generate-ppt-from-outline', methods=['POST'])
 def generate_ppt_from_outline():
-    """使用已有大纲生成PPT"""
+    """使用已有大纲生成PPT（走 pipeline 流程）"""
     try:
         data = request.get_json()
         
         outline = data.get('outline', {})
         topic = data.get('topic', '')
-        scenario = data.get('scenario', 'general')
-        style = data.get('style', 'modern')
-        
         if not outline or 'slides' not in outline:
             return jsonify({'error': '大纲数据无效'}), 400
         
-        slides = outline_generator.extract_slides_for_generation(outline)
-        
+        slides = outline.get('slides', [])
         if not slides:
             return jsonify({'error': '大纲中没有幻灯片'}), 400
         
-        logger.info(f"从大纲生成PPT: topic={topic}, slides={len(slides)}")
-        
-        # 生成所有幻灯片
-        slide_results = asyncio.run(
-            slide_generator.generate_all_slides(
-                slides=slides,
-                topic=topic,
-                scenario=scenario,
-                style=style
-            )
-        )
-        
-        # 组合为完整HTML
-        ppt_html = PptCombiner.combine_slides_to_html(
-            slides=slide_results,
-            title=topic
-        )
+        logger.info(f"从大纲生成PPT(pipeline): topic={topic}, slides={len(slides)}")
+        pipeline_input = _outline_to_pipeline_input(outline, fallback_title=topic or "演示文稿")
+        ppt_html, report = asyncio.run(run_pipeline(pipeline_input, output_format="html"))
         
         return jsonify({
             'success': True,
             'html': ppt_html,
-            'slide_count': len(slide_results),
-            'outline': outline
+            'slide_count': len(slides),
+            'outline': outline,
+            'evaluation': report.model_dump()
         })
         
     except Exception as e:
@@ -312,12 +286,11 @@ def generate_ppt_from_outline():
 
 @app.route('/api/generate-ppt', methods=['POST'])
 def generate_ppt():
-    """生成PPT API"""
+    """生成PPT API（统一走 pipeline 流程）"""
     try:
         data = request.get_json()
         
         mode = data.get('mode', 'auto')  # 'auto' 或 'manual'
-        style = data.get('style', 'modern')
         
         if mode == 'manual':
             # 手动输入模式
@@ -330,59 +303,38 @@ def generate_ppt():
             if not outline_text:
                 return jsonify({'error': '大纲内容不能为空'}), 400
             
-            # 解析手动输入的大纲
-            outline = outline_generator.parse_manual_outline(title, outline_text)
+            parse_result = _semantic_to_parse_result(outline_text)
+            parse_result['title'] = title
+            outline = _build_outline_from_parse_result(parse_result)
             topic = title
             
         else:
             # AI生成模式
             topic = data.get('topic', '')
-            outline = data.get('outline', {})
-            scenario = data.get('scenario', 'general')
             
             if not topic:
                 return jsonify({'error': '主题不能为空'}), 400
             
-            # 生成大纲
-            page_count = data.get('page_count', 10)
-            outline = asyncio.run(
-                outline_generator.generate_outline(
-                    topic=topic,
-                    scenario=scenario,
-                    audience=data.get('audience', '通用受众'),
-                    page_count=page_count
-                )
-            )
+            source_text = data.get('document_text') or topic
+            parse_result = _semantic_to_parse_result(source_text)
+            if not parse_result.get('title'):
+                parse_result['title'] = topic
+            outline = _build_outline_from_parse_result(parse_result)
         
-        # 提取幻灯片
-        slides = outline_generator.extract_slides_for_generation(outline)
-        
+        slides = outline.get('slides', [])
         if not slides:
             return jsonify({'error': '大纲中没有幻灯片'}), 400
         
-        logger.info(f"生成PPT: topic={topic}, slides={len(slides)}")
-        
-        # 生成所有幻灯片
-        slide_results = asyncio.run(
-            slide_generator.generate_all_slides(
-                slides=slides,
-                topic=topic,
-                scenario=data.get('scenario', 'general'),
-                style=style
-            )
-        )
-        
-        # 组合为完整HTML
-        ppt_html = PptCombiner.combine_slides_to_html(
-            slides=slide_results,
-            title=topic
-        )
+        logger.info(f"生成PPT(pipeline): topic={topic}, slides={len(slides)}")
+        pipeline_input = _outline_to_pipeline_input(outline, fallback_title=topic or "演示文稿")
+        ppt_html, report = asyncio.run(run_pipeline(pipeline_input, output_format="html"))
         
         return jsonify({
             'success': True,
             'html': ppt_html,
-            'slide_count': len(slide_results),
-            'outline': outline
+            'slide_count': len(slides),
+            'outline': outline,
+            'evaluation': report.model_dump()
         })
         
     except Exception as e:
@@ -392,7 +344,7 @@ def generate_ppt():
 
 @app.route('/api/generate-ppt-stream', methods=['POST'])
 def generate_ppt_stream():
-    """流式生成PPT - 每生成一页就推送给前端"""
+    """流式生成PPT - 基于 pipeline 按页推送给前端"""
     from flask import Response
     
     try:
@@ -400,14 +352,10 @@ def generate_ppt_stream():
         
         outline = data.get('outline', {})
         topic = data.get('topic', 'PPT演示文稿')
-        scenario = data.get('scenario', 'general')
-        style = data.get('style', 'modern')
-        
         if not outline or 'slides' not in outline:
             return jsonify({'error': '大纲数据无效'}), 400
         
-        slides = outline_generator.extract_slides_for_generation(outline)
-        
+        slides = outline.get('slides', [])
         if not slides:
             return jsonify({'error': '大纲中没有幻灯片'}), 400
         
@@ -415,40 +363,20 @@ def generate_ppt_stream():
         
         def generate():
             try:
-                # 初始化设计基因和全局宪法
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(
-                    slide_generator.initialize(topic, scenario, style, slides)
-                )
-                
                 total_pages = len(slides)
                 
                 for i, slide_data in enumerate(slides):
                     page_number = i + 1
                     
                     try:
-                        # 生成单页
-                        html = loop.run_until_complete(
-                            slide_generator.generate_slide(slide_data, page_number, total_pages)
-                        )
-                        
-                        # 调试：保存HTML到文件
-                        import os
-                        output_dir = os.path.join(os.path.dirname(__file__), 'output')
-                        os.makedirs(output_dir, exist_ok=True)
-                        output_file = os.path.join(output_dir, f'slide_{page_number}.html')
-                        with open(output_file, 'w', encoding='utf-8') as f:
-                            f.write(html)
-                        logger.info(f"已保存第{page_number}页HTML到: {output_file}")
-                        
-                        # 发送数据
-                        import json
+                        page_text = _slide_to_page_markdown(slide_data)
+                        html, report = asyncio.run(run_pipeline(page_text, output_format="html"))
                         slide_info = {
                             'type': 'slide',
                             'page_number': page_number,
                             'title': slide_data.get('title', ''),
-                            'html': html
+                            'html': html,
+                            'evaluation': report.model_dump()
                         }
                         json_str = json.dumps(slide_info, ensure_ascii=False)
                         logger.info(f"[SSE] 准备发送第{page_number}页, html长度={len(html)}")
@@ -467,9 +395,6 @@ def generate_ppt_stream():
                 # 发送完成信号
                 complete_info = {'type': 'complete'}
                 yield f"data: {json.dumps(complete_info, ensure_ascii=False)}\n\n"
-                
-                loop.close()
-                
             except Exception as e:
                 logger.error(f"流式生成失败: {e}")
                 error_info = {'type': 'error', 'message': str(e)}
@@ -492,36 +417,26 @@ def generate_ppt_stream():
 
 @app.route('/api/generate-preview', methods=['POST'])
 def generate_preview():
-    """生成单页预览"""
+    """生成单页预览（走 pipeline 流程）"""
     try:
         data = request.get_json()
         
         slide_data = data.get('slide_data', {})
         page_number = data.get('page_number', 1)
         total_pages = data.get('total_pages', 1)
-        topic = data.get('topic', '')
-        scenario = data.get('scenario', 'general')
-        style = data.get('style', 'modern')
-        
         if not slide_data:
             return jsonify({'error': '幻灯片数据不能为空'}), 400
         
         logger.info(f"生成预览: page={page_number}/{total_pages}")
-        
-        # 初始化设计基因和宪法
-        slides = [slide_data]
-        asyncio.run(
-            slide_generator.initialize(topic, scenario, style, slides)
-        )
-        
-        # 生成单页
-        html = asyncio.run(
-            slide_generator.generate_slide(slide_data, page_number, total_pages)
-        )
+        page_text = _slide_to_page_markdown(slide_data)
+        html, report = asyncio.run(run_pipeline(page_text, output_format="html"))
         
         return jsonify({
             'success': True,
-            'html': html
+            'html': html,
+            'evaluation': report.model_dump(),
+            'page_number': page_number,
+            'total_pages': total_pages
         })
         
     except Exception as e:

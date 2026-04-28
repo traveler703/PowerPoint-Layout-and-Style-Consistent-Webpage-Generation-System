@@ -82,6 +82,26 @@
           </button>
         </div>
       </div>
+      <div v-if="hasGeneratedSlides" class="evaluation-bar">
+        <div class="evaluation-item">
+          <span class="evaluation-label">当前页评估</span>
+          <span class="evaluation-value" :class="{ pass: currentSlideEvaluation?.passed, fail: currentSlideEvaluation && !currentSlideEvaluation.passed }">
+            {{ currentSlideEvaluation ? (currentSlideEvaluation.passed ? '通过' : '警告') : '暂无' }}
+          </span>
+        </div>
+        <div class="evaluation-item">
+          <span class="evaluation-label">重叠率</span>
+          <span class="evaluation-value">{{ currentOverlapText }}</span>
+        </div>
+        <div class="evaluation-item">
+          <span class="evaluation-label">颜色偏差</span>
+          <span class="evaluation-value">{{ currentColorDeviationText }}</span>
+        </div>
+        <div class="evaluation-item">
+          <span class="evaluation-label">全局通过率</span>
+          <span class="evaluation-value">{{ evaluationPassRate }}</span>
+        </div>
+      </div>
       <div class="preview-main-body">
         <!-- 生成进度显示 -->
         <div v-if="store.isGenerating" class="generating-overlay">
@@ -201,6 +221,33 @@ const iframeKey = ref(0)
 
 // 检查是否有任何生成的幻灯片
 const hasGeneratedSlides = computed(() => store.generatedSlides.length > 0)
+
+const currentSlideEvaluation = computed(() => {
+  const currentPage = currentSlidePage.value
+  if (!currentPage) return null
+  const pageNum = currentPage.pageNumber || currentPage.id
+  const slide = store.generatedSlides.find(s => s.pageNumber === pageNum)
+  return slide?.evaluation || null
+})
+
+const currentOverlapText = computed(() => {
+  const overlap = currentSlideEvaluation.value?.layout?.overlap_ratio
+  if (typeof overlap !== 'number') return 'N/A'
+  return `${(overlap * 100).toFixed(2)}%`
+})
+
+const currentColorDeviationText = computed(() => {
+  const deviation = currentSlideEvaluation.value?.style?.global_color_deviation_percent
+  if (typeof deviation !== 'number') return 'N/A'
+  return `${deviation.toFixed(1)}%`
+})
+
+const evaluationPassRate = computed(() => {
+  const slidesWithEval = store.generatedSlides.filter(s => s.evaluation)
+  if (slidesWithEval.length === 0) return 'N/A'
+  const passedCount = slidesWithEval.filter(s => s.evaluation?.passed).length
+  return `${Math.round((passedCount / slidesWithEval.length) * 100)}%`
+})
 
 // 获取页面HTML
 const getSlideHtml = (pageId) => {
@@ -502,5 +549,38 @@ watch(() => store.currentSlide, () => {
 .generated {
   color: #52c41a;
   font-size: 10px;
+}
+
+.evaluation-bar {
+  display: flex;
+  gap: 18px;
+  padding: 10px 16px;
+  border-top: 1px solid #eef1f6;
+  border-bottom: 1px solid #eef1f6;
+  background: #fafbff;
+}
+
+.evaluation-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.evaluation-label {
+  color: #6b7280;
+}
+
+.evaluation-value {
+  color: #111827;
+  font-weight: 600;
+}
+
+.evaluation-value.pass {
+  color: #16a34a;
+}
+
+.evaluation-value.fail {
+  color: #d97706;
 }
 </style>
