@@ -1,0 +1,58 @@
+{
+  "themes": {
+    "business_blue": {
+      "colors": {
+        "primary": "#1E3A5F",
+        "secondary": "#4A90A4",
+        "surface": "#F8FAFC",
+        "card": "#FFFFFF",
+        "text": "#1e293b",
+        "muted": "#64748b",
+        "accent": "#E8A838"
+      },
+      "typography": {
+        "heading": "\"Microsoft YaHei\", \"PingFang SC\", system-ui, sans-serif",
+        "body": "\"Microsoft YaHei\", \"PingFang SC\", system-ui, sans-serif"
+      },
+      "spacing": { "sm": "0.5rem", "md": "1rem", "lg": "1.5rem", "xl": "2rem" },
+      "radii": { "card": "10px" },
+      "extra": {}
+    },
+    "academic_gray": {
+      "colors": {
+        "primary": "#374151",
+        "secondary": "#6B7280",
+        "surface": "#F3F4F6",
+        "card": "#FFFFFF",
+        "text": "#111827",
+        "muted": "#9CA3AF",
+        "accent": "#2563EB"
+      },
+      "typography": {
+        "heading": "Georgia, \"Times New Roman\", serif",
+        "body": "system-ui, -apple-system, sans-serif"
+      },
+      "spacing": { "sm": "0.5rem", "md": "1rem", "lg": "1.5rem", "xl": "2rem" },
+      "radii": { "card": "4px" },
+      "extra": {}
+    },
+    "vibrant_orange": {
+      "colors": {
+        "primary": "#EA580C",
+        "secondary": "#F97316",
+        "surface": "#FFF7ED",
+        "card": "#FFFFFF",
+        "text": "#431407",
+        "muted": "#9A3412",
+        "accent": "#0EA5E9"
+      },
+      "typography": {
+        "heading": "system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "body": "system-ui, -apple-system, sans-serif"
+      },
+      "spacing": { "sm": "0.5rem", "md": "1rem", "lg": "1.5rem", "xl": "2rem" },
+      "radii": { "card": "12px" },
+      "extra": {}
+    }
+  }
+}

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+
+/* 
+ * 防内容溢出CSS - 防止LLM生成的overflow:hidden截断文字
+ * 目标：只解锁"叶子级内容容器"的文字截断
+ */
+
+p, span, li, td, th, label,
+h1, h2, h3, h4, h5, h6, a {
+    text-overflow: unset !important;
+    -webkit-line-clamp: unset !important;
+}
+
+[class*="card"] > *,
+[class*="item"] > p, [class*="item"] > span,
+[class*="tile"] > *, [class*="panel"] > *,
+[class*="desc"], [class*="info"] > p {
+    overflow: visible !important;
+    text-overflow: unset !important;
+    -webkit-line-clamp: unset !important;
+}
+
+.content-layer,
+[data-content-layer],
+.main-content,
+[class*="slide-root"],
+#canvas,
+body > div {
+    /* 保持原有overflow行为 */
+}
+
+        body, html { margin: 0; padding: 0; width: 1280px; height: 720px; overflow: hidden; font-family: "Microsoft YaHei", sans-serif; background: #ffffff; }
+        .header { height: 80px; padding: 20px 60px; background: linear-gradient(90deg, #667eea, #764ba2); color: white; display: flex; align-items: center; }
+        .header h2 { font-size: 28px; font-weight: bold; }
+        .content { padding: 40px 60px; font-size: 20px; line-height: 1.8; color: #333; }
+        .footer { position: absolute; bottom: 0; left: 0; right: 0; height: 60px; padding: 20px 60px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #eee; font-size: 14px; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="header"><h2>功能需求：LLM生成与预览编辑</h2></div>
+    <div class="content">• LLM代码生成：生成符合W3C标准的HTML或Markdown代码，支持增量生成和语法检查<br>• 预览与编辑：多页预览、所见即所得编辑、自然语言编辑指令、撤销重做、导出功能</div>
+    <div class="footer">
+        <span>第 8 / 14 页</span>
+    </div>
+</body>
+</html>

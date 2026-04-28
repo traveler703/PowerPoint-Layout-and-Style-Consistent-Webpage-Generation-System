@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>软件需求规约 | 3/14</title>
+    <style>
+
+/* 
+ * 防内容溢出CSS - 防止LLM生成的overflow:hidden截断文字
+ * 目标：只解锁"叶子级内容容器"的文字截断
+ */
+
+p, span, li, td, th, label,
+h1, h2, h3, h4, h5, h6, a {
+    text-overflow: unset !important;
+    -webkit-line-clamp: unset !important;
+}
+
+[class*="card"] > *,
+[class*="item"] > p, [class*="item"] > span,
+[class*="tile"] > *, [class*="panel"] > *,
+[class*="desc"], [class*="info"] > p {
+    overflow: visible !important;
+    text-overflow: unset !important;
+    -webkit-line-clamp: unset !important;
+}
+
+.content-layer,
+[data-content-layer],
+.main-content,
+[class*="slide-root"],
+#canvas,
+body > div {
+    /* 保持原有overflow行为 */
+}
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #e6e9f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Microsoft YaHei', 'PingFang SC', 'Noto Sans SC', sans-serif;
+        }
+
+        /* 固定画布 1280x720 16:9 */
+        .slide {
+            width: 1280px;
+            height: 720px;
+            background: #ffffff;
+            box-shadow: 0 20px 40px -12px rgba(0,0,0,0.25);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* ===== 三段式结构 ===== */
+        .header {
+            height: 80px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            padding: 0 48px;
+            border-bottom: 2px solid #1e3a5f;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-icon {
+            width: 32px;
+            height: 32px;
+            background: #1e3a5f;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-weight: 700;
+            font-size: 16px;
+            letter-spacing: 0.5px;
+        }
+
+        .brand-text {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1e3a5f;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .header-right {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .header-tag {
+            font-size: 12px;
+            color: #5a6b7c;
+            background: #f0f3f8;
+            padding: 4px 14px;
+            border-radius: 20px;
+            letter-spacing: 0.3px;
+        }
+
+        .header-divider {
+            width: 1px;
+            height: 28px;
+            background: #d0d7e0;
+        }
+
+        .header-meta {
+            font-size: 13px;
+            color: #2c3e50;
+            font-weight: 500;
+        }
+
+        .main {
+            flex: 1;
+            min-height: 580px;
+            padding: 36px 48px 20px 48px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .footer {
+            height: 60px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 48px;
+            border-top: 1px solid #eaeef4;
+            background: #fafcff;
+        }
+
+        /* ===== 内容区域 ===== */
+        .page-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: #0b1c2e;
+            letter-spacing: 1.2px;
+            margin-bottom: 8px;
+            position: relative;
+            display: inline-block;
+        }
+
+        .page-title::after {
+            content: '';
+            position: absolute;
+            bottom: -6px;
+            left: 0;
+            width: 52px;
+            height: 4px;
+            background: #1e3a5f;
+            border-radius: 3px;
+        }
+
+        .title-sub {
+            font-size: 14px;
+            color: #5a6b7c;
+            margin-top: 14px;
+            margin-bottom: 28px;
+            letter-spacing: 0.4px;
+            font-weight: 400;
+        }
+
+        /* 主内容区——非对称双栏 + 视觉层次 */
+        .content-grid {
+            display: flex;
+            gap: 40px;
+            flex: 1;
+            align-items: stretch;
+        }
+
+        /* 左栏：核心要点 (2:1 比例) */
+        .col-left {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            background: #f8faff;
+            border-radius: 12px;
+            padding: 28px 32px;
+            box-shadow: 0 2px 8px rgba(0,20,40,0.04);
+            border-left: 4px solid #1e3a5f;
+        }
+
+        .core-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #1e3a5f;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .core-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        .core-list li {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #1c2b3a;
+            padding: 10px 0 10px 28px;
+            border-bottom: 1px solid rgba(30,58,95,0.08);
+            position: relative;
+            font-weight: 500;
+        }
+
+        .core-list li:last-child {
+            border-bottom: none;
+        }
+
+        .core-list li::before {
+            content: '▹';
+            position: absolute;
+            left: 0;
+            color: #1e3a5f;
+            font-size: 18px;
+            font-weight: 300;
+        }
+
+        .core-list li strong {
+            color: #0b1c2e;
+            font-weight: 700;
+        }
+
+        .core-list li .highlight-box {
+            display: inline-block;
+            background: #eef3fa;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            color: #1e3a5f;
+            margin-left: 6px;
+            font-weight: 600;
+        }
+
+        /* 右栏：系统标识 + 摘要卡片 */
+        .col-right {
+            flex: 1.2;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 20px;
+        }
+
+        .system-card {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 24px 22px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.03), 0 2px 4px rgba(0,20,40,0.04);
+            border: 1px solid #eef2f7;
+        }
+
+        .system-name {
+            font-size: 18px;
+            font-weight: 700;
+            color: #0b1c2e;
+            letter-spacing: -0.2px;
+            line-height: 1.4;
+            margin-bottom: 12px;
+        }
+
+        .system-name span {
+            color: #1e3a5f;
+        }
+
+        .system-desc {
+            font-size: 13px;
+            color: #3d4f63;
+            line-height: 1.6;
+            margin-bottom: 14px;
+        }
+
+        .version-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #eef3fa;
+            padding: 6px 16px 6px 12px;
+            border-radius: 30px;
+            font-size: 13px;
+            color: #1e3a5f;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+
+        .version-tag .dot {
+            width: 8px;
+            height: 8px;
+            background: #1e3a5f;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .meta-card {
+            background: #f0f5fe;
+            border-radius: 16px;
+            padding: 18px 22px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            border: 1px solid #dce6f2;
+        }
+
+        .meta-icon {
+            width: 44px;
+            height: 44px;
+            background: #1e3a5f;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 20px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .meta-content {
+            font-size: 14px;
+            color: #1c2b3a;
+            line-height: 1.5;
+        }
+
+        .meta-content .date {
+            font-weight: 600;
+            color: #0b1c2e;
+        }
+
+        /* 页码区 */
+        .page-number {
+            font-size: 13px;
+            color: #5a6b7c;
+            letter-spacing: 0.6px;
+            font-weight: 500;
+            background: #f2f6fc;
+            padding: 4px 16px;
+            border-radius: 30px;
+        }
+
+        .footer-left {
+            margin-right: auto;
+            font-size: 12px;
+            color: #7c8a9a;
+        }
+
+        .footer-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .footer-line {
+            width: 40px;
+            height: 2px;
+            background: #1e3a5f;
+            border-radius: 2px;
+        }
+
+        /* 背景装饰 (极简几何) */
+        .bg-deco {
+            position: absolute;
+            right: 20px;
+            bottom: 60px;
+            width: 260px;
+            height: 260px;
+            border: 1px solid rgba(30,58,95,0.04);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .bg-deco::before {
+            content: '';
+            position: absolute;
+            top: 30px;
+            left: 30px;
+            width: 200px;
+            height: 200px;
+            border: 1px solid rgba(30,58,95,0.04);
+            border-radius: 50%;
+        }
+
+        .bg-deco::after {
+            content: '';
+            position: absolute;
+            top: 60px;
+            left: 60px;
+            width: 140px;
+            height: 140px;
+            border: 1px solid rgba(30,58,95,0.03);
+            border-radius: 50%;
+        }
+
+        /* 保证内容不溢出 */
+        .main, .header, .footer {
+            position: relative;
+            z-index: 2;
+        }
+
+        /* 响应式微调 (防止极端缩放) */
+        @media (max-width: 1300px) {
+            .slide {
+                transform: scale(0.9);
+                transform-origin: top left;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="slide">
+        <!-- 背景装饰 -->
+        <div class="bg-deco"></div>
+
+        <!-- ===== HEADER ===== -->
+        <header class="header">
+            <div class="header-left">
+                <div class="brand-icon">⧉</div>
+                <span class="brand-text">SRS·SPEC</span>
+            </div>
+            <div class="header-right">
+                <span class="header-tag">需求规约</span>
+                <span class="header-divider"></span>
+                <span class="header-meta">IEEE 830 · 迭代1</span>
+            </div>
+        </header>
+
+        <!-- ===== MAIN ===== -->
+        <main class="main">
+            <!-- 标题区 -->
+            <div>
+                <h1 class="page-title">软件需求规约</h1>
+                <div class="title-sub">Software Requirements Specification · 核心视图</div>
+            </div>
+
+            <!-- 内容栅格：非对称双栏 + 视觉层次 -->
+            <div class="content-grid">
+                <!-- 左栏：要点列表 (F型动线) -->
+                <div class="col-left">
+                    <div class="core-label">◈ 规约核心</div>
+                    <ul class="core-list">
+                        <li><strong>功能边界</strong> 定义系统行为与外部接口 <span class="highlight-box">6 模块</span></li>
+                        <li><strong>数据字典</strong> 实体、属性、关系完整映射 <span class="highlight-box">24 实体</span></li>
+                        <li><strong>非功能性约束</strong> 性能 · 安全 · 可用性 <span class="highlight-box">12 指标</span></li>
+                        <li><strong>验收准则</strong> 测试用例与通过条件 <span class="highlight-box">9 场景</span></li>
+                    </ul>
+                </div>
+
+                <!-- 右栏：系统标识 + 版本信息 (卡片组合) -->
+                <div class="col-right">
+                    <div class="system-card">
+                        <div class="system-name">
+                            <span>PowerPoint</span> Layout-and-Style-<br>Consistent Webpage <br>Generation System
+                        </div>
+                        <div class="system-desc">
+                            基于模板驱动的自动布局引擎，确保每一页输出符合视觉宪法与版式方法库。
+                        </div>
+                        <div class="version-tag">
+                            <span class="dot"></span> 版本 1.0 · 2026-04-12
+                        </div>
+                    </div>
+
+                    <div class="meta-card">
+                        <div class="meta-icon">⛭</div>
+                        <div class="meta-content">
+                            <strong>规约状态</strong> · 草案评审<br>
+                            <span class="date">2026-04-12</span> · 版本 1.0
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- ===== FOOTER ===== -->
+        <footer class="footer">
+            <div class="footer-left">
+                <span>软件需求规约 · 核心视图</span>
+            </div>
+            <div class="footer-right">
+                <span class="footer-line"></span>
+                <span class="page-number">3 / 14</span>
+            </div>
+        </footer>
+    </div>
+</body>
+</html>

@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>功能需求：量化评估与用户流程</title>
+    <style>
+
+/* 
+ * 防内容溢出CSS - 防止LLM生成的overflow:hidden截断文字
+ * 目标：只解锁"叶子级内容容器"的文字截断
+ */
+
+p, span, li, td, th, label,
+h1, h2, h3, h4, h5, h6, a {
+    text-overflow: unset !important;
+    -webkit-line-clamp: unset !important;
+}
+
+[class*="card"] > *,
+[class*="item"] > p, [class*="item"] > span,
+[class*="tile"] > *, [class*="panel"] > *,
+[class*="desc"], [class*="info"] > p {
+    overflow: visible !important;
+    text-overflow: unset !important;
+    -webkit-line-clamp: unset !important;
+}
+
+.content-layer,
+[data-content-layer],
+.main-content,
+[class*="slide-root"],
+#canvas,
+body > div {
+    /* 保持原有overflow行为 */
+}
+
+        /* === 全局重置 & 基础 === */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            background: #f2f4f8;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        /* 固定画布 1280x720 */
+        .slide {
+            width: 1280px;
+            height: 720px;
+            background: #ffffff;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.08);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+            border-radius: 12px; /* 仅用于展示，不影响内部布局 */
+        }
+
+        /* === 三段式结构 === */
+        .header {
+            height: 80px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            padding: 0 64px;
+            border-bottom: 1px solid #e6edf4;
+            background: #ffffff;
+        }
+        .main {
+            flex: 1;
+            min-height: 0; /* 防止flex溢出 */
+            display: flex;
+            padding: 28px 64px 20px 64px;
+            gap: 48px;
+            background: #ffffff;
+        }
+        .footer {
+            height: 60px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 0 64px;
+            border-top: 1px solid #e6edf4;
+            background: #ffffff;
+        }
+
+        /* === 页眉 === */
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .brand-icon {
+            width: 32px;
+            height: 32px;
+            background: #1a73e8;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 16px;
+        }
+        .brand-text {
+            font-size: 15px;
+            font-weight: 500;
+            color: #1f2a3a;
+            letter-spacing: 0.3px;
+        }
+        .header-right {
+            margin-left: auto;
+            font-size: 13px;
+            color: #5f6b7a;
+            background: #f0f3f8;
+            padding: 4px 14px;
+            border-radius: 20px;
+            letter-spacing: 0.3px;
+        }
+
+        /* === 主区域：双栏非对称 (左: 量化评估, 右: 用户流程) === */
+        .main-left {
+            flex: 0 0 46%;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            padding-top: 8px;
+        }
+        .main-right {
+            flex: 0 0 46%;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            padding-top: 8px;
+        }
+
+        /* 左侧卡片 - 量化评估 */
+        .eval-card {
+            background: #f8faff;
+            border-radius: 16px;
+            padding: 24px 28px 28px 28px;
+            border-left: 5px solid #1a73e8;
+            box-shadow: 0 4px 12px rgba(26,115,232,0.06);
+            transition: all 0.1s ease;
+        }
+        .eval-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 18px;
+        }
+        .eval-title .icon-badge {
+            width: 36px;
+            height: 36px;
+            background: #1a73e8;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 18px;
+            font-weight: 500;
+        }
+        .eval-title h2 {
+            font-size: 22px;
+            font-weight: 600;
+            color: #0b1c2e;
+            letter-spacing: 0.5px;
+        }
+        .eval-item {
+            display: flex;
+            align-items: baseline;
+            padding: 12px 0;
+            border-bottom: 1px dashed #e2e9f2;
+        }
+        .eval-item:last-of-type {
+            border-bottom: none;
+        }
+        .eval-metric {
+            font-weight: 600;
+            color: #1f2a3a;
+            font-size: 16px;
+            min-width: 150px;
+        }
+        .eval-value {
+            font-weight: 600;
+            color: #1a73e8;
+            background: #e6edf8;
+            padding: 2px 14px;
+            border-radius: 30px;
+            font-size: 15px;
+            margin: 0 12px 0 6px;
+        }
+        .eval-desc {
+            color: #3c4a5c;
+            font-size: 15px;
+            margin-left: 4px;
+        }
+        .eval-actions {
+            margin-top: 18px;
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .action-btn {
+            background: white;
+            border: 1px solid #d0d9e6;
+            border-radius: 30px;
+            padding: 8px 20px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #1f2a3a;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: 0.15s;
+            cursor: default;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+        }
+        .action-btn .emoji {
+            font-size: 16px;
+        }
+        .action-btn.primary {
+            background: #1a73e8;
+            border-color: #1a73e8;
+            color: white;
+        }
+        .action-btn.primary .emoji {
+            filter: brightness(10);
+        }
+
+        /* 右侧流程 */
+        .flow-card {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 8px 0 0 0;
+        }
+        .flow-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 24px;
+            padding-bottom: 6px;
+            border-bottom: 2px solid #eef3f9;
+        }
+        .flow-title .icon-flow {
+            width: 36px;
+            height: 36px;
+            background: #1a73e8;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 18px;
+            font-weight: 500;
+        }
+        .flow-title h2 {
+            font-size: 22px;
+            font-weight: 600;
+            color: #0b1c2e;
+            letter-spacing: 0.5px;
+        }
+        .flow-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-top: 4px;
+        }
+        .step-row {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 10px 0 10px 8px;
+            border-radius: 12px;
+            transition: background 0.1s;
+        }
+        .step-row:hover {
+            background: #f7faff;
+        }
+        .step-num {
+            width: 32px;
+            height: 32px;
+            background: #eef3f9;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: #1a73e8;
+            font-size: 15px;
+            flex-shrink: 0;
+        }
+        .step-content {
+            flex: 1;
+            font-size: 16px;
+            font-weight: 500;
+            color: #1f2a3a;
+            letter-spacing: 0.2px;
+        }
+        .step-arrow {
+            color: #b0c1d4;
+            font-size: 18px;
+            margin: 0 4px;
+        }
+        .step-desc {
+            font-size: 14px;
+            color: #5f6b7a;
+            font-weight: 400;
+            margin-left: 6px;
+        }
+        .step-highlight {
+            background: #f0f6ff;
+            border-radius: 30px;
+            padding: 2px 14px;
+            font-size: 13px;
+            color: #1a73e8;
+            font-weight: 500;
+        }
+
+        /* 底部页码等 */
+        .footer-left {
+            margin-right: auto;
+            font-size: 13px;
+            color: #7a8799;
+            letter-spacing: 0.3px;
+        }
+        .footer-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        .page-indicator {
+            font-size: 14px;
+            font-weight: 500;
+            color: #1f2a3a;
+            background: #f0f3f8;
+            padding: 4px 18px;
+            border-radius: 30px;
+        }
+        .page-indicator span {
+            color: #1a73e8;
+        }
+
+        /* 辅助装饰 - 极简几何背景 */
+        .bg-deco {
+            position: absolute;
+            right: -40px;
+            bottom: -40px;
+            width: 280px;
+            height: 280px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, rgba(26,115,232,0.02), transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        .bg-deco-2 {
+            position: absolute;
+            left: 180px;
+            top: 300px;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle at 70% 30%, rgba(26,115,232,0.015), transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        .main, .header, .footer {
+            position: relative;
+            z-index: 2;
+        }
+
+        /* 响应式微调 */
+        @media (max-width: 1300px) {
+            .slide {
+                transform: scale(0.8);
+                transform-origin: top left;
+            }
+        }
+        @media (max-width: 1024px) {
+            .slide {
+                transform: scale(0.6);
+                transform-origin: top left;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="slide">
+    <!-- 背景装饰 -->
+    <div class="bg-deco"></div>
+    <div class="bg-deco-2"></div>
+
+    <!-- 页眉 -->
+    <header class="header">
+        <div class="header-left">
+            <div class="brand-icon">⚡</div>
+            <span class="brand-text">布局风格系统 · 量化引擎</span>
+        </div>
+        <div class="header-right">学术报告 · 功能需求</div>
+    </header>
+
+    <!-- 主内容 -->
+    <main class="main">
+        <!-- 左侧：量化评估 -->
+        <div class="main-left">
+            <div class="eval-card">
+                <div class="eval-title">
+                    <div class="icon-badge">📊</div>
+                    <h2>量化评估</h2>
+                </div>
+                <div class="eval-item">
+                    <span class="eval-metric">元素重叠率</span>
+                    <span class="eval-value">0%</span>
+                    <span class="eval-desc">目标值 0%</span>
+                </div>
+                <div class="eval-item">
+                    <span class="eval-metric">全局颜色偏差</span>
+                    <span class="eval-value">≤ 5%</span>
+                    <span class="eval-desc">Delta E 色差</span>
+                </div>
+                <div class="eval-item" style="border-bottom: none; padding-bottom: 4px;">
+                    <span class="eval-metric">修复建议</span>
+                    <span class="eval-desc" style="font-weight: 400; color: #2c3e50;">自动生成优化清单</span>
+                </div>
+                <div class="eval-actions">
+                    <span class="action-btn"><span class="emoji">🔍</span> 运行检查</span>
+                    <span class="action-btn primary"><span class="emoji">📄</span> 导出报告</span>
+                    <span class="action-btn"><span class="emoji">⚙️</span> 批量修复</span>
+                </div>
+                <div style="margin-top: 16px; font-size: 13px; color: #6a7a8e; background: #f2f6fe; padding: 8px 16px; border-radius: 40px; display: inline-block;">
+                    ⏱ 上次评估: 2025-03-21 · 全部通过
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧：用户交互流程 -->
+        <div class="main-right">
+            <div class="flow-card">
+                <div class="flow-title">
+                    <div class="icon-flow">🔄</div>
+                    <h2>用户交互流程</h2>
+                </div>
+                <div class="flow-steps">
+                    <!-- 步骤1 -->
+                    <div class="step-row">
+                        <span class="step-num">1</span>
+                        <span class="step-content">内容结构化 <span class="step-desc">· 解析层级</span></span>
+                        <span class="step-arrow">→</span>
+                    </div>
+                    <!-- 步骤2 -->
+                    <div class="step-row">
+                        <span class="step-num">2</span>
+                        <span class="step-content">版式自动匹配 <span class="step-desc">· 智能栅格</span></span>
+                        <span class="step-arrow">→</span>
+                    </div>
+                    <!-- 步骤3 -->
+                    <div class="step-row">
+                        <span class="step-num">3</span>
+                        <span class="step-content">风格选择 <span class="step-desc">· 学术/现代/极简</span></span>
+                        <span class="step-arrow">→</span>
+                    </div>
+                    <!-- 步骤4 -->
+                    <div class="step-row">
+                        <span class="step-num">4</span>
+                        <span class="step-content">代码生成 <span class="step-desc">· 实时编译</span></span>
+                        <span class="step-arrow">→</span>
+                    </div>
+                    <!-- 步骤5 -->
+                    <div class="step-row">
+                        <span class="step-num">5</span>
+                        <span class="step-content">评估检查 <span class="step-highlight">重叠+色差</span></span>
+                        <span class="step-arrow">→</span>
+                    </div>
+                    <!-- 步骤6 -->
+                    <div class="step-row" style="border-top: 1px dashed #e6edf4; margin-top: 4px; padding-top: 14px;">
+                        <span class="step-num" style="background: #1a73e8; color: white;">6</span>
+                        <span class="step-content" style="font-weight: 600;">预览与编辑 <span class="step-desc">· 最终调整</span></span>
+                        <span style="color: #1a73e8; font-size: 20px;">✓</span>
+                    </div>
+                </div>
+                <!-- 流程状态 -->
+                <div style="margin-top: 20px; display: flex; gap: 12px; align-items: center; background: #f7faff; padding: 10px 18px; border-radius: 60px;">
+                    <span style="display: inline-block; width: 10px; height: 10px; background: #2ecc71; border-radius: 50%;"></span>
+                    <span style="font-size: 14px; color: #1f2a3a;">当前步骤: 评估检查 · 无异常</span>
+                    <span style="margin-left: auto; font-size: 13px; color: #5f6b7a;">迭代 3 轮</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="footer">
+        <div class="footer-left">
+            <span>⚡ 量化一致性 · 自动修复</span>
+        </div>
+        <div class="footer-right">
+            <span class="page-indicator"><span>9</span> / 14</span>
+        </div>
+    </footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>引言：目的与范围</title>
+    <style>
+
+/* 
+ * 防内容溢出CSS - 防止LLM生成的overflow:hidden截断文字
+ * 目标：只解锁"叶子级内容容器"的文字截断
+ */
+
+p, span, li, td, th, label,
+h1, h2, h3, h4, h5, h6, a {
+    text-overflow: unset !important;
+    -webkit-line-clamp: unset !important;
+}
+
+[class*="card"] > *,
+[class*="item"] > p, [class*="item"] > span,
+[class*="tile"] > *, [class*="panel"] > *,
+[class*="desc"], [class*="info"] > p {
+    overflow: visible !important;
+    text-overflow: unset !important;
+    -webkit-line-clamp: unset !important;
+}
+
+.content-layer,
+[data-content-layer],
+.main-content,
+[class*="slide-root"],
+#canvas,
+body > div {
+    /* 保持原有overflow行为 */
+}
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            background: #e6e9f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* 画布：1280x720，16:9，纯白背景，精细阴影 */
+        .slide {
+            width: 1280px;
+            height: 720px;
+            background: #ffffff;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        /* ----- 三段式结构：Header 80px / Main 580px / Footer 60px ----- */
+        .header {
+            height: 80px;
+            padding: 0 48px;
+            display: flex;
+            align-items: center;
+            border-bottom: 2px solid #1e3a5f; /* 主色深蓝，用于页眉线 */
+            flex-shrink: 0;
+        }
+
+        .header-logo {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1e3a5f;
+            letter-spacing: 1px;
+            background: #eef3fa;
+            padding: 4px 14px;
+            border-radius: 20px;
+        }
+
+        .header-title {
+            margin-left: 24px;
+            font-size: 20px;
+            font-weight: 500;
+            color: #2c3e50;
+            border-left: 2px solid #b0c4de;
+            padding-left: 20px;
+            opacity: 0.75;
+        }
+
+        .main {
+            flex: 1;
+            height: 580px; /* 固定高度 */
+            padding: 32px 48px 20px 48px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* 禁止滚动 */
+        }
+
+        .footer {
+            height: 60px;
+            padding: 0 48px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-top: 1px solid #e2e8f0;
+            flex-shrink: 0;
+            background: #f9fafc;
+        }
+
+        .footer-left {
+            font-size: 13px;
+            color: #5b6f88;
+            letter-spacing: 0.3px;
+        }
+
+        .footer-right {
+            font-size: 14px;
+            font-weight: 500;
+            color: #1e3a5f;
+            background: #eef3fa;
+            padding: 4px 16px;
+            border-radius: 30px;
+        }
+
+        /* ---------- 主内容区：引言目的与范围 ---------- */
+        .page-label {
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            color: #6c86a2;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+        }
+
+        .main h1 {
+            font-size: 36px;
+            font-weight: 700;
+            color: #0b1c2e;
+            margin-bottom: 12px;
+            letter-spacing: 1px;
+            line-height: 1.2;
+        }
+
+        .title-underline {
+            width: 72px;
+            height: 4px;
+            background: #1e3a5f;
+            border-radius: 4px;
+            margin-bottom: 28px;
+        }
+
+        /* 三列卡片布局——避免四宫格均质化，采用非对称+视觉动线F型 */
+        .content-grid {
+            display: flex;
+            gap: 28px;
+            flex: 1;
+            min-height: 0;
+            align-items: stretch;
+        }
+
+        .grid-card {
+            background: #f7f9fc;
+            border-radius: 16px;
+            padding: 24px 20px 20px 20px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.02);
+            border: 1px solid #eef2f7;
+            transition: all 0.1s ease;
+        }
+
+        .grid-card:first-child {
+            flex: 1.2; /* 目的卡片略宽，形成非对称平衡 */
+        }
+
+        .card-icon {
+            font-size: 28px;
+            margin-bottom: 12px;
+            display: inline-block;
+            background: #dce6f2;
+            width: 44px;
+            height: 44px;
+            line-height: 44px;
+            text-align: center;
+            border-radius: 14px;
+            color: #1e3a5f;
+        }
+
+        .card-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #0b1c2e;
+            margin-bottom: 12px;
+            letter-spacing: 0.5px;
+        }
+
+        .card-divider {
+            width: 32px;
+            height: 3px;
+            background: #b0c9e0;
+            border-radius: 4px;
+            margin-bottom: 16px;
+        }
+
+        .card-content {
+            font-size: 15px;
+            line-height: 1.6;
+            color: #1f2a3f;
+            flex: 1;
+        }
+
+        .card-content ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .card-content li {
+            padding: 6px 0 6px 28px;
+            position: relative;
+            border-bottom: 1px dashed #e2e9f2;
+            margin-bottom: 6px;
+        }
+
+        .card-content li:last-child {
+            border-bottom: none;
+        }
+
+        .card-content li::before {
+            content: "▹";
+            position: absolute;
+            left: 4px;
+            color: #1e3a5f;
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        .highlight-tag {
+            display: inline-block;
+            background: #1e3a5f;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 2px 12px;
+            border-radius: 30px;
+            margin-right: 6px;
+            letter-spacing: 0.3px;
+        }
+
+        .accent-badge {
+            background: #eef3fa;
+            color: #1e3a5f;
+            border-radius: 30px;
+            padding: 2px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-block;
+            margin-top: 8px;
+            border: 1px solid #cddbe9;
+        }
+
+        .term-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 12px;
+            margin-top: 10px;
+        }
+
+        .term-item {
+            background: white;
+            border-radius: 30px;
+            padding: 4px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #1e3a5f;
+            border: 1px solid #d6e0ed;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+        }
+
+        .term-item strong {
+            font-weight: 700;
+            color: #0b1c2e;
+        }
+
+        /* 第二张卡片内部微排版 */
+        .scope-highlight {
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 12px 14px;
+            margin: 12px 0 8px 0;
+            border-left: 4px solid #1e3a5f;
+            font-size: 14px;
+            color: #1f2a3f;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.02);
+        }
+
+        .scope-highlight code {
+            background: #eef3fa;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 13px;
+            color: #1e3a5f;
+            font-family: 'SF Mono', 'Menlo', monospace;
+        }
+
+        /* 保证无滚动条，内容不溢出 */
+        .main, .grid-card, .card-content {
+            overflow: visible;
+        }
+
+        /* 响应式保护：极窄字体调整 */
+        @media (max-width: 1300px) {
+            .slide {
+                width: 100%;
+                height: auto;
+                min-height: 720px;
+                border-radius: 0;
+            }
+            .main {
+                height: auto;
+                min-height: 580px;
+                padding: 24px 24px 20px 24px;
+            }
+            .content-grid {
+                flex-wrap: wrap;
+            }
+            .grid-card {
+                flex: 1 1 200px;
+            }
+        }
+
+        /* 禁止溢出画布 */
+        img, svg, video {
+            max-width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="slide">
+        <!-- Header 80px -->
+        <header class="header">
+            <span class="header-logo">⚙️ SRS·AI</span>
+            <span class="header-title">软件需求规约 · 智能PPT系统</span>
+        </header>
+
+        <!-- Main 580px -->
+        <main class="main">
+            <div class="page-label">📍 引言 · 01</div>
+            <h1>目的与范围</h1>
+            <div class="title-underline"></div>
+
+            <!-- 三栏非对称卡片：目的 / 范围 / 定义 -->
+            <div class="content-grid">
+                <!-- 卡片1：目的 (略宽) -->
+                <div class="grid-card">
+                    <div class="card-icon">🎯</div>
+                    <div class="card-title">目的</div>
+                    <div class="card-divider"></div>
+                    <div class="card-content">
+                        <p style="margin-bottom: 12px; font-weight: 500;">定义系统需求，作为开发与测试的共识基础，遵循 <span class="highlight-tag">IRACIS</span> 原则：</p>
+                        <ul>
+                            <li><strong>提升营收</strong> – 加速方案产出，提升客户转化</li>
+                            <li><strong>避免成本</strong> – 减少重复劳动与沟通损耗</li>
+                            <li><strong>改进服务</strong> – 标准化输出，保障质量基线</li>
+                        </ul>
+                        <div style="margin-top: 14px; background: #eef3fa; padding: 10px 14px; border-radius: 12px; font-size: 14px; color: #1f2a3f;">
+                            <span style="font-weight: 600;">📌 共识基础</span> — 所有模块、接口、验收标准均以此文档为唯一依据。
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 卡片2：范围 -->
+                <div class="grid-card">
+                    <div class="card-icon">📐</div>
+                    <div class="card-title">范围</div>
+                    <div class="card-divider"></div>
+                    <div class="card-content">
+                        <p style="margin-bottom: 8px;">基于模板约束 + <strong>LLM生成</strong> 的智能PPT系统，输出格式：</p>
+                        <div class="scope-highlight">
+                            <code>HTML</code> 或 <code>Markdown</code> · 严格遵循16:9画布与设计宪法
+                        </div>
+                        <ul style="margin-top: 4px;">
+                            <li>单页自适应布局（1280×720）</li>
+                            <li>三段式结构 + 栅格系统</li>
+                            <li>版式方法库驱动视觉动线</li>
+                        </ul>
+                        <div style="margin-top: 12px;">
+                            <span class="accent-badge">🚀 覆盖 14 页标准模板</span>
+                            <span class="accent-badge" style="margin-left: 6px;">📁 输出即用</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 卡片3：定义 -->
+                <div class="grid-card">
+                    <div class="card-icon">📖</div>
+                    <div class="card-title">关键术语</div>
+                    <div class="card-divider"></div>
+                    <div class="card-content">
+                        <p style="font-size: 14px; margin-bottom: 12px; color: #2c3e50;">统一术语体系，确保沟通无歧义：</p>
+                        <div class="term-list">
+                            <span class="term-item"><strong>版式原子库</strong> 基础组件</span>
+                            <span class="term-item"><strong>组件规格</strong> 尺寸/色彩/间距</span>
+                            <span class="term-item"><strong>风格令牌</strong> 设计语义变量</span>
+                            <span class="term-item"><strong>推理引擎</strong> 布局决策核心</span>
+                            <span class="term-item"><strong>视觉动线</strong> F/Z型路径</span>
+                            <span class="term-item"><strong>IRACIS</strong> 价值原则</span>
+                        </div>
+                        <div style="margin-top: 16px; font-size: 13px; background: #f1f5fb; padding: 8px 12px; border-radius: 12px; color: #1e3a5f;">
+                            ⚡ 术语库随迭代持续更新，所有规范以设计宪法为准。
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer 60px -->
+        <footer class="footer">
+            <span class="footer-left">软件需求规约 · 智能PPT生成系统</span>
+            <span class="footer-right">4 / 14</span>
+        </footer>
+
+        <!-- 极细装饰：左上角几何背景（仅在主背景上增加层次） -->
+        <div style="position: absolute; top: 100px; right: 40px; width: 200px; height: 200px; border: 1px solid rgba(30, 58, 95, 0.04); border-radius: 50%; pointer-events: none; z-index: 0;"></div>
+        <div style="position: absolute; top: 520px; right: 120px; width: 100px; height: 100px; border: 1px solid rgba(30, 58, 95, 0.03); border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%; pointer-events: none; z-index: 0;"></div>
+    </div>
+</body>
+</html>
