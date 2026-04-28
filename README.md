@@ -1,94 +1,49 @@
-# PowerPoint-Layout-and-Style-Consistent-Webpage-Generation-System
+# PowerPoint Layout and Style Consistent Webpage Generation System
 
-同济大学软件工程专业软件工程管理与经济课程项目。
+本项目目标是实现“版式与风格一致”的网页化演示稿自动生成系统，采用“模板约束 + LLM 生成”的混合方案，支持输出 `HTML`/`Markdown`（不输出 `.pptx`）。
 
-详细背景与模块说明见仓库根目录的 [Introduction.md](Introduction.md)。
+当前仓库包含两条并行能力：
 
-## 环境准备（首次克隆后执行一次）
-
-1. **Python 版本**：需要 **Python 3.10 及以上**。
-2. **进入仓库根目录**，创建并激活虚拟环境，安装依赖：
-
-```bash
-cd PowerPoint-Layout-and-Style-Consistent-Webpage-Generation-System   # 按你的实际路径
-
-python3 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-
-pip install -r requirements.txt
-pip install -e .
-```
-
-3. **（可选）LangChain 调用链**：若希望用 LangChain 封装 DeepSeek 调用，再执行：
-
-```bash
-pip install -e ".[ai]"
-```
-
-4. **配置 API（可选）**  
-   - 需要**真实生成**时：在仓库根目录创建 `.env`，写入 `DEEPSEEK_API_KEY`；可选 `DEEPSEEK_API_BASE`（默认 `https://api.deepseek.com`）、`DEEPSEEK_MODEL`（默认 `deepseek-chat`）。  
-   - `.env` 已被 `.gitignore` 忽略，请勿提交密钥。  
-   - **离线演示 / 不想调 API**：设置环境变量 `PPT_USE_STUB=1`，将使用占位 LLM 输出（仍可跑通流水线）。运行测试时默认会启用桩（见 `tests/conftest.py`）。
+- 工程主线：`Flask + Vue3 + MySQL` 的完整可运行产品链路。
+- 研究主线：按需求规约抽象的 `framework/engine/generator/evaluator` 分层能力，用于版式推理、风格令牌注入与量化评估。
 
 ---
 
-## 如何运行
+## 1. 对齐需求规约后的能力映射
 
-以下命令均在**仓库根目录**、且已**激活虚拟环境**的前提下执行。
+根据 `reference/Introduction.md` 与 `reference/需求规约.md`，系统核心能力如下：
 
-### 1. 命令行跑流水线（不启动网页）
+- 内容输入与结构化：支持标题层级、要点、图片/表格等语义结构。
+- 版式自动选型：根据内容密度、要点数、图文特征进行布局推理。
+- 风格令牌管理：通过主题 token 保证跨页一致性（颜色偏差 <= 5%）。
+- LLM 代码生成：生成语义化且可分发的 `HTML`/`Markdown`。
+- 预览与编辑：支持即时预览与后续编辑迭代。
+- 量化评估：评估元素重叠率（目标 0%）和风格一致性。
 
-不启动浏览器，直接执行 `pipeline.py`，在终端打印评估报告并生成一段 HTML：
+---
 
-```bash
-# 使用真实 DeepSeek（需配置 .env 中的 DEEPSEEK_API_KEY，且不要设 PPT_USE_STUB）
-python pipeline.py
+## 2. 项目结构
 
-# 离线占位（不消耗 API）
-PPT_USE_STUB=1 python pipeline.py
+```text
+.
+├── app.py                     # Flask 主入口（产品链路）
+├── config.py                  # 环境变量与系统配置
+├── database.py                # MySQL 连接管理
+├── init_db.py                 # 初始化数据库
+├── pipeline.py                # 参考流水线（内容->推理->生成->评估）
+├── core/                      # 现有生成核心能力（设计基因/全局宪法等）
+├── services/                  # 业务服务层（Project/Outline/Slide/PPT）
+├── prompts/                   # 生成相关提示词
+├── frontend/                  # Vue3 + Vite 前端
+├── framework/                 # 结构化可复用表示层（token/layout/component）
+│   └── data/                  # themes/layouts/default_tokens 配置数据
+├── engine/                    # 内容解析与版式推理引擎
+├── generator/                 # LLM 客户端与 HTML/Markdown 生成器
+├── evaluator/                 # 布局与风格一致性评估模块
+└── scripts/                   # 测试脚本
 ```
 
-### 2. 启动 Web 演示（推荐）
-
-用 Uvicorn 启动 FastAPI，浏览器里输入内容、选主题、预览 HTML 或导出 Markdown：
-
-```bash
-uvicorn demo.app:app --reload --app-dir .
-```
-
-- 浏览器打开：<http://127.0.0.1:8000/>  
-- 页面上可输入多页内容（用单独一行的 `---` 分页）、选择主题与输出格式、勾选是否走 LangChain（需已 `pip install -e ".[ai]"` 且配置 Key）。  
-- 健康检查：<http://127.0.0.1:8000/health>  
-- 主题列表：`GET` <http://127.0.0.1:8000/api/themes>  
-
-**说明**：`--app-dir .` 表示把当前目录加入 Python 路径，以便导入根目录下的 `pipeline`、`framework` 等包。
-
-### 3. 自动化测试
-
-```bash
-pytest
-```
-
-测试默认使用 LLM 桩，无需网络与 API Key。
-
-### 接口说明（供联调或脚本调用）
-
-`POST /api/generate`，JSON 示例：
-
-```json
-{
-  "text": "# 标题\n\n- 要点一\n- 要点二\n\n---\n\n## 第二页\n",
-  "theme_id": "business_blue",
-  "output_format": "html",
-  "prefer_langchain": false
-}
-```
-
-- `theme_id`：`business_blue` | `academic_gray` | `vibrant_orange`（与 `framework/data/themes.json` 一致）。  
-- `output_format`：`html` 或 `markdown`。  
-- 响应字段：`content`（生成正文）、`format`、`report`（含布局与颜色评估）。
-
-## 现有目录与模块对应关系
+目录与模块对应关系
 
 | 路径 | 功能 |
 |------|------|
@@ -96,6 +51,105 @@ pytest
 | `engine/` | 内容解析（`content.py`）、语义类型（`types.py`）、启发式版式规划（`reasoning.py`）、约束求解占位（`constraints.py`）。 |
 | `generator/` | LLM（`llm_client.py` DeepSeek / 桩）、可选 LangChain（`langchain_chain.py`，需 `pip install -e ".[ai]"`）、Prompt（`prompts.py`）、HTML/Markdown 生成器。 |
 | `evaluator/` | 量化评估：布局指标（`layout_metrics.py`）、风格一致性（`style_metrics.py`）、汇总报告（`report.py`）。 |
-| `demo/` | 前端预览与交互：`demo/static/` 为 HTML/CSS/JS；`demo/app.py` 为 FastAPI 入口与 API 桩。 |
 | `pipeline.py` | 将上述模块串成一条占位流水线，便于联调与扩展。 |
-| `tests/` | 自动化测试，可随功能补充用例。 |
+| `scripts/` | 自动化测试，可随功能补充用例。 |
+
+---
+
+## 3. 环境要求
+
+- Python 3.10+（建议 3.11）
+- Node.js 18+（建议 npm 9+）
+- MySQL 8.x（或兼容版本）
+
+---
+
+## 4. 初始化与安装
+
+后端依赖安装：
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+前端依赖安装：
+
+```bash
+cd frontend
+npm install
+cd ..
+```
+
+---
+
+## 5. 环境变量配置（`.env`）
+
+在根目录创建或修改 `.env`：
+
+```env
+# DeepSeek
+DEEPSEEK_API_KEY=your_api_key
+DEEPSEEK_API_URL=https://api.deepseek.com/v1    //也可以选用学院的URLhttps://llmapi.tongji.edu.cn/v1
+DEEPSEEK_MODEL=deepseek-chat
+
+# MySQL
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_NAME=ppt1122
+DB_USER=root
+DB_PASSWORD=your_password
+```
+
+建议使用 `127.0.0.1` 作为 `DB_HOST`，减少本机 `localhost` 解析差异。
+
+---
+
+## 6. 初始化数据库
+
+首先确保电脑上已安装MySQL
+
+确保 MySQL 服务已经启动后，在项目根目录执行：
+
+```bash
+source .venv/bin/activate
+python init_db.py
+```
+
+可选：连接测试
+
+```bash
+source .venv/bin/activate
+python scripts/test_db.py
+```
+
+---
+
+## 7. 启动开发环境
+
+终端 A（后端）：
+
+```bash
+source .venv/bin/activate
+python app.py
+```
+
+启动后可访问：
+
+- 健康检查：`http://127.0.0.1:5000/health`
+
+终端 B（前端）：
+
+```bash
+cd frontend
+npm run dev
+```
+
+浏览器访问：
+
+- 前端：`http://localhost:5173`
+- 健康检查：`http://127.0.0.1:5000/health`
+
+---
+
