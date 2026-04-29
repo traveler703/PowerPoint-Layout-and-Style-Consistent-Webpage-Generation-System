@@ -29,12 +29,27 @@
         </div>
         <!-- File Upload -->
         <div class="file-upload-area" v-show="store.inputMode === 'upload'" @dragover.prevent="handleDragOver" @dragleave="handleDragLeave" @drop.prevent="handleDrop" @click="triggerFileInput">
-          <div class="drop-zone" :class="{ dragover: isDragOver }">
-            <div class="drop-zone-icon">📄</div>
-            <div class="drop-zone-text">将文件拖拽到此处，或<span>点击选择文件</span></div>
-            <div class="drop-zone-formats">支持 .md .docx .pdf .txt 格式</div>
+          <div class="drop-zone" :class="{ dragover: isDragOver, uploading: isUploading }">
+            <div v-if="isUploading" class="upload-progress">
+              <div class="loading-spinner large"></div>
+              <div class="upload-progress-text">正在解析文档...</div>
+              <div class="upload-progress-filename">{{ uploadingFilename }}</div>
+            </div>
+            <div v-else-if="uploadedFile" class="upload-success">
+              <div class="drop-zone-icon">✅</div>
+              <div class="upload-success-text">{{ uploadedFile.name }}</div>
+              <div class="upload-success-meta">
+                {{ uploadedFile.format.toUpperCase() }} · {{ formatFileSize(uploadedFile.size) }} · {{ uploadedFile.pageCount }}页
+              </div>
+              <button class="btn btn-sm btn-outline" @click.stop="clearUpload">重新选择</button>
+            </div>
+            <div v-else>
+              <div class="drop-zone-icon">📄</div>
+              <div class="drop-zone-text">将文件拖拽到此处，或<span>点击选择文件</span></div>
+              <div class="drop-zone-formats">支持 .md .txt .pdf .docx .pptx 格式（最大 20MB）</div>
+            </div>
           </div>
-          <input type="file" ref="fileInputRef" id="fileInput" accept=".md,.docx,.pdf,.txt" style="display: none;" @change="handleFileSelect">
+          <input type="file" ref="fileInputRef" id="fileInput" accept=".md,.docx,.pdf,.pptx,.txt" style="display: none;" @change="handleFileSelect">
         </div>
       </div>
       <div class="input-panel-footer">
@@ -138,12 +153,20 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { store } from '../stores/appStore'
+import { uploadDocument } from '../services/api'
 
 const fileInputRef = ref(null)
 const isDragOver = ref(false)
 const progressText = ref('正在解析文档...')
 const isApplying = ref(false)
 const isApplied = ref(false)
+const isUploading = ref(false)
+const uploadingFilename = ref('')
+const uploadedFile = ref(null)
+
+// 支持的文件格式
+const SUPPORTED_EXTENSIONS = ['.md', '.txt', '.pdf', '.docx', '.pptx']
+const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB
 
 // 监听解析状态更新进度文本
 watch(() => store.progressText, (newVal) => {
@@ -155,7 +178,9 @@ const updateCharCount = () => {
 }
 
 const triggerFileInput = () => {
-  fileInputRef.value?.click()
+  if (!isUploading.value) {
+    fileInputRef.value?.click()
+  }
 }
 
 const handleDragOver = () => {
@@ -179,16 +204,115 @@ const handleFileSelect = (e) => {
   if (file) {
     handleFile(file)
   }
+  // 重置 input 以支持重复选择同一文件
+  e.target.value = ''
 }
 
-const handleFile = (file) => {
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    store.documentText = e.target.result
-    updateCharCount()
-    store.showToastMessage(`已加载：${file.name}`)
+const handleFile = async (file) => {
+  // 检查文件格式
+  const ext = '.' + file.name.split('.').pop().toLowerCase()
+  if (!SUPPORTED_EXTENSIONS.includes(ext)) {
+    store.showToastMessage(`不支持的文件格式: ${ext}，请上传 ${SUPPORTED_EXTENSIONS.join(' ')} 格式`)
+    return
   }
-  reader.readAsText(file)
+
+  // 检查文件大小
+  if (file.size > MAX_FILE_SIZE) {
+    store.showToastMessage('文件大小超过 20MB 限制')
+    return
+  }
+
+  isUploading.value = true
+  uploadingFilename.value = file.name
+
+  try {
+    // 调用后端上传解析 API
+    const response = await uploadDocument(file)
+
+    if (response.success) {
+      const result = response.result
+      const meta = response.meta
+
+      // 记录上传文件信息
+      uploadedFile.value = {
+        name: file.name,
+        format: meta.format,
+        size: meta.file_size,
+        pageCount: meta.page_count,
+      }
+
+      // 将文档解析结果转换为 store 期望的 parseResult 格式
+      const parseResult = convertToParseResult(result)
+      store.parseResult = parseResult
+
+      // 设置字符数
+      store.charCount = meta.total_chars
+      store.documentText = result.pages
+        ? result.pages.map(p => p.raw_text || '').join('\n---\n')
+        : ''
+
+      store.showToastMessage(`文档解析成功：${meta.page_count} 页`)
+    } else {
+      store.showToastMessage(response.error || '文档解析失败')
+    }
+  } catch (err) {
+    console.error('Upload document error:', err)
+    const errorMsg = err.response?.data?.error || err.message || '文档上传失败'
+    store.showToastMessage(errorMsg)
+  } finally {
+    isUploading.value = false
+  }
+}
+
+const clearUpload = () => {
+  uploadedFile.value = null
+  store.parseResult = null
+  store.documentText = ''
+  store.charCount = 0
+}
+
+const formatFileSize = (bytes) => {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+/**
+ * 将后端 DocumentParseResult 转换为前端 store 使用的 parseResult 格式
+ */
+const convertToParseResult = (docResult) => {
+  const pages = docResult.pages || []
+  const metadata = docResult.metadata || {}
+
+  const sections = pages.map((page) => {
+    const bullets = []
+    // 合并 bullets
+    if (page.bullets && page.bullets.length) {
+      page.bullets.forEach(b => {
+        if (b.description) {
+          bullets.push(`${b.title}：${b.description}`)
+        } else {
+          bullets.push(b.title)
+        }
+      })
+    }
+    // 如果有 headings 且无 bullets，将 headings 转为 bullets
+    if (!bullets.length && page.headings && page.headings.length) {
+      page.headings.forEach(h => bullets.push(h.text))
+    }
+
+    return {
+      title: page.title || `第${page.page_index + 1}页`,
+      content: page.paragraphs ? page.paragraphs.join(' ') : '',
+      bullets: bullets,
+    }
+  })
+
+  return {
+    title: metadata.title || '未命名文档',
+    summary: '',
+    sections: sections,
+  }
 }
 
 const handleParse = async () => {
@@ -436,5 +560,77 @@ const getSectionIcon = (title) => {
   color: #10b981;
   font-size: 14px;
   font-weight: 500;
+}
+
+/* 上传相关样式 */
+.loading-spinner.large {
+  width: 32px;
+  height: 32px;
+  border-width: 3px;
+  border-color: rgba(99, 102, 241, 0.2);
+  border-top-color: #6366f1;
+  margin: 0 auto 16px;
+}
+
+.drop-zone.uploading {
+  pointer-events: none;
+  opacity: 0.8;
+}
+
+.upload-progress {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+}
+
+.upload-progress-text {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.upload-progress-filename {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.upload-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px;
+}
+
+.upload-success-text {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.upload-success-meta {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.btn-sm {
+  padding: 6px 16px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--border-color, #e5e7eb);
+  color: var(--text-secondary, #6b7280);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-outline:hover {
+  border-color: var(--accent, #6366f1);
+  color: var(--accent, #6366f1);
 }
 </style>

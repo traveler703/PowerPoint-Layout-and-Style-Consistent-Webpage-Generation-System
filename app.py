@@ -452,6 +452,108 @@ def serve_output(filename):
     return send_file(os.path.join(output_dir, filename))
 
 
+@app.route('/api/upload-document', methods=['POST'])
+def upload_document():
+    """
+    文件上传解析 API。
+    支持 Markdown/TXT、PDF、DOCX、PPTX 四种格式。
+    返回统一的 DocumentParseResult JSON 结构。
+    """
+    import os
+    import tempfile
+    from parsers.base import BaseDocumentParser, SourceFormat
+    from parsers.markdown_parser import MarkdownParser
+    from parsers.pdf_parser import PdfParser
+    from parsers.docx_parser import DocxParser
+    from parsers.pptx_parser import PptxParser
+
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': '请上传文件（字段名: file）'}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': '文件名为空'}), 400
+
+        filename = file.filename
+        fmt = BaseDocumentParser.detect_format(filename)
+        file_bytes = file.read()
+
+        if len(file_bytes) == 0:
+            return jsonify({'error': '文件内容为空'}), 400
+
+        # 文件大小限制: 20MB
+        if len(file_bytes) > 20 * 1024 * 1024:
+            return jsonify({'error': '文件大小超过 20MB 限制'}), 400
+
+        logger.info(f"上传文档: filename={filename}, format={fmt.value}, size={len(file_bytes)} bytes")
+
+        # 根据格式选择解析器
+        parser_map = {
+            SourceFormat.MARKDOWN: MarkdownParser,
+            SourceFormat.TXT: MarkdownParser,
+            SourceFormat.PDF: PdfParser,
+            SourceFormat.DOCX: DocxParser,
+            SourceFormat.PPTX: PptxParser,
+        }
+
+        parser_cls = parser_map.get(fmt)
+        if not parser_cls:
+            return jsonify({'error': f'不支持的文件格式: {filename}'}), 400
+
+        parser = parser_cls()
+
+        # 对 Markdown/TXT 传文本，其他格式传字节
+        if fmt in (SourceFormat.MARKDOWN, SourceFormat.TXT):
+            source = file_bytes.decode('utf-8', errors='replace')
+        else:
+            source = file_bytes
+
+        result = parser.parse(source, filename=filename)
+
+        logger.info(
+            f"文档解析完成: title={result.metadata.title}, "
+            f"pages={result.metadata.page_count}, chars={result.metadata.total_chars}"
+        )
+
+        return jsonify({
+            'success': True,
+            'result': result.model_dump(exclude_none=True),
+            'meta': {
+                'filename': filename,
+                'format': fmt.value,
+                'file_size': len(file_bytes),
+                'page_count': result.metadata.page_count,
+                'total_chars': result.metadata.total_chars,
+            }
+        })
+
+    except ImportError as e:
+        logger.error(f"缺少解析依赖: {e}")
+        return jsonify({'error': f'服务器缺少依赖库: {e}'}), 500
+    except Exception as e:
+        logger.error(f"文档解析失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'文档解析失败: {str(e)}'}), 500
+
+
+@app.route('/api/supported-formats', methods=['GET'])
+def get_supported_formats():
+    """获取支持的文件格式列表"""
+    return jsonify({
+        'success': True,
+        'formats': [
+            {'extension': '.md', 'name': 'Markdown', 'mime': 'text/markdown'},
+            {'extension': '.txt', 'name': '纯文本', 'mime': 'text/plain'},
+            {'extension': '.pdf', 'name': 'PDF', 'mime': 'application/pdf'},
+            {'extension': '.docx', 'name': 'Word', 'mime': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'},
+            {'extension': '.pptx', 'name': 'PowerPoint', 'mime': 'application/vnd.openxmlformats-officedocument.presentationml.presentation'},
+        ],
+        'max_file_size_mb': 20
+    })
+
+
 @app.route('/health')
 def health():
     """健康检查"""

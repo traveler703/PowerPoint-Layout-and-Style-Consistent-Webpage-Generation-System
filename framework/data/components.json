@@ -1,0 +1,148 @@
+{
+  "components": {
+    "title": {
+      "type": "text",
+      "description": "页面主标题",
+      "constraints": {
+        "font_size_range": { "min": 28, "max": 56, "default": 36 },
+        "font_weight": "bold",
+        "max_lines": 2,
+        "min_height_px": 40,
+        "max_height_px": 120,
+        "margin_bottom": "1rem"
+      }
+    },
+    "subtitle": {
+      "type": "text",
+      "description": "副标题或标语",
+      "constraints": {
+        "font_size_range": { "min": 18, "max": 28, "default": 22 },
+        "font_weight": "normal",
+        "max_lines": 2,
+        "min_height_px": 24,
+        "max_height_px": 60,
+        "margin_bottom": "0.75rem"
+      }
+    },
+    "heading": {
+      "type": "text",
+      "description": "节标题（H2-H4）",
+      "constraints": {
+        "font_size_range": { "min": 20, "max": 32, "default": 24 },
+        "font_weight": "600",
+        "max_lines": 2,
+        "min_height_px": 28,
+        "max_height_px": 72,
+        "margin_bottom": "0.5rem"
+      }
+    },
+    "paragraph": {
+      "type": "text",
+      "description": "正文段落",
+      "constraints": {
+        "font_size_range": { "min": 14, "max": 20, "default": 16 },
+        "line_height": 1.8,
+        "max_chars_per_line": 45,
+        "min_height_px": 20,
+        "margin_bottom": "0.75rem"
+      }
+    },
+    "bullet_list": {
+      "type": "bullets",
+      "description": "要点列表",
+      "constraints": {
+        "font_size_range": { "min": 14, "max": 20, "default": 16 },
+        "bullet_title_weight": "600",
+        "line_height": 1.6,
+        "item_spacing": "0.5rem",
+        "max_items": 8,
+        "min_items": 1,
+        "indent": "1.5rem"
+      }
+    },
+    "image": {
+      "type": "image",
+      "description": "图片组件",
+      "constraints": {
+        "min_width_px": 120,
+        "min_height_px": 80,
+        "max_width_percent": 100,
+        "max_height_percent": 70,
+        "border_radius": "var(--radius-card)",
+        "object_fit": "cover"
+      }
+    },
+    "table": {
+      "type": "table",
+      "description": "数据表格",
+      "constraints": {
+        "header_font_weight": "600",
+        "header_bg_color": "var(--color-primary)",
+        "header_text_color": "#ffffff",
+        "cell_padding": "0.5rem 0.75rem",
+        "border_color": "var(--color-muted)",
+        "font_size_range": { "min": 12, "max": 16, "default": 14 },
+        "max_columns": 8,
+        "max_rows": 12
+      }
+    },
+    "chart": {
+      "type": "chart",
+      "description": "图表占位区域",
+      "constraints": {
+        "min_width_px": 300,
+        "min_height_px": 200,
+        "max_width_percent": 100,
+        "max_height_percent": 60,
+        "background": "var(--color-card)"
+      }
+    },
+    "quote": {
+      "type": "text",
+      "description": "引言/金句",
+      "constraints": {
+        "font_size_range": { "min": 20, "max": 36, "default": 28 },
+        "font_style": "italic",
+        "line_height": 1.6,
+        "max_chars": 100,
+        "border_left": "4px solid var(--color-primary)",
+        "padding_left": "1.5rem"
+      }
+    },
+    "statistic": {
+      "type": "text",
+      "description": "统计数字（大号数字 + 标签）",
+      "constraints": {
+        "number_font_size_range": { "min": 36, "max": 64, "default": 48 },
+        "number_font_weight": "bold",
+        "number_color": "var(--color-primary)",
+        "label_font_size_range": { "min": 12, "max": 16, "default": 14 },
+        "label_color": "var(--color-muted)",
+        "text_align": "center"
+      }
+    },
+    "timeline_item": {
+      "type": "custom",
+      "description": "时间线节点",
+      "constraints": {
+        "dot_size": "12px",
+        "dot_color": "var(--color-primary)",
+        "line_color": "var(--color-muted)",
+        "title_font_size": 16,
+        "description_font_size": 14,
+        "spacing": "2rem"
+      }
+    }
+  },
+  "spacing_rules": {
+    "component_min_gap": "0.5rem",
+    "section_gap": "1.5rem",
+    "page_padding": "2rem",
+    "header_margin_bottom": "1.5rem"
+  },
+  "responsive_breakpoints": {
+    "canvas_width": 1280,
+    "canvas_height": 720,
+    "safe_area_margin": 40
+  }
+}

@@ -144,6 +144,23 @@ export async function parseText(data) {
   return response.data
 }
 
+// 上传文档并解析（支持 .md .txt .pdf .docx .pptx）
+export async function uploadDocument(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  const response = await apiClient.post('/upload-document', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000 // 文件上传给 2 分钟超时
+  })
+  return response.data
+}
+
+// 获取支持的文件格式
+export async function getSupportedFormats() {
+  const response = await apiClient.get('/supported-formats')
+  return response.data
+}
+
 // ----------------------------------------
 // 系统API
 // ----------------------------------------

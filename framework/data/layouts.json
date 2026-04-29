@@ -104,6 +104,87 @@
         "applicable_scene": ["数据页"],
         "requires_table": true
       }
+    },
+    {
+      "id": "title-only",
+      "name": "纯标题封面",
+      "description": "仅包含大标题和副标题的居中版式，适合封面或过渡页。",
+      "slots": [
+        { "id": "title", "role": "title", "grid_area": "center" },
+        { "id": "subtitle", "role": "subtitle", "grid_area": "sub" }
+      ],
+      "metadata": {
+        "applicable_scene": ["封面", "过渡页"],
+        "max_bullets": 0,
+        "requires_image": false
+      }
+    },
+    {
+      "id": "quote-highlight",
+      "name": "引言金句",
+      "description": "大号引言文字居中，适合名言或核心观点强调。",
+      "slots": [
+        { "id": "title", "role": "title", "grid_area": "header" },
+        { "id": "quote", "role": "quote", "grid_area": "center" },
+        { "id": "attribution", "role": "body", "grid_area": "footer" }
+      ],
+      "metadata": {
+        "applicable_scene": ["过渡页", "内容页"],
+        "max_bullets": 1,
+        "requires_image": false
+      }
+    },
+    {
+      "id": "timeline",
+      "name": "时间线版式",
+      "description": "横向或纵向时间线，适合展示流程或里程碑。",
+      "slots": [
+        { "id": "title", "role": "title", "grid_area": "header" },
+        { "id": "timeline", "role": "timeline", "grid_area": "main" }
+      ],
+      "metadata": {
+        "applicable_scene": ["内容页"],
+        "min_bullets": 3,
+        "requires_image": false,
+        "prefer_sequential": true
+      }
+    },
+    {
+      "id": "comparison",
+      "name": "对比版式",
+      "description": "左右两栏对比，适合优劣势、方案A/B对比。",
+      "slots": [
+        { "id": "title", "role": "title", "grid_area": "header" },
+        { "id": "left_title", "role": "subtitle", "grid_area": "left-head" },
+        { "id": "left", "role": "body", "grid_area": "left" },
+        { "id": "right_title", "role": "subtitle", "grid_area": "right-head" },
+        { "id": "right", "role": "body", "grid_area": "right" }
+      ],
+      "metadata": {
+        "applicable_scene": ["内容页"],
+        "min_bullets": 2,
+        "max_bullets": 2,
+        "requires_image": false,
+        "prefer_comparison": true
+      }
+    },
+    {
+      "id": "statistics",
+      "name": "数据统计版式",
+      "description": "大数字+标签排列，适合展示KPI或统计数据。",
+      "slots": [
+        { "id": "title", "role": "title", "grid_area": "header" },
+        { "id": "stat1", "role": "statistic", "grid_area": "s1" },
+        { "id": "stat2", "role": "statistic", "grid_area": "s2" },
+        { "id": "stat3", "role": "statistic", "grid_area": "s3" },
+        { "id": "body", "role": "body", "grid_area": "footer" }
+      ],
+      "metadata": {
+        "applicable_scene": ["数据页", "内容页"],
+        "min_bullets": 3,
+        "requires_image": false,
+        "prefer_numeric": true
+      }
     }
   ]
 }
