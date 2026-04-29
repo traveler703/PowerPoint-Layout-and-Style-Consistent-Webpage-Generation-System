@@ -74,11 +74,31 @@
               </svg>
               上一步
             </button>
-            <button class="btn btn-primary" @click="handleNextStep">
+            <button
+              v-if="!isLastStep"
+              class="btn btn-primary"
+              @click="handleNextStep"
+            >
               {{ isLastStep ? '生成PPT' : '下一步' }}
               <svg v-if="!isLastStep" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
               </svg>
+            </button>
+            <button
+              v-if="isLastStep"
+              class="btn btn-primary"
+              :disabled="store.isGenerating"
+              @click="generatePPTWithTemplate"
+            >
+              套用模版生成PPT
+            </button>
+            <button
+              v-if="isLastStep"
+              class="btn btn-primary"
+              :disabled="store.isGenerating"
+              @click="generatePPTPureAI"
+            >
+              纯AI生成PPT
             </button>
           </div>
         </div>
@@ -128,15 +148,15 @@ const currentStepIndex = computed(() => store.workflowSteps.indexOf(store.curren
 const isLastStep = computed(() => currentStepIndex.value === store.workflowSteps.length - 1)
 
 const handleNextStep = () => {
-  if (isLastStep.value) {
-    generatePPT()
-  } else {
-    store.nextStep()
-  }
+  store.nextStep()
 }
 
-const generatePPT = () => {
-  store.generatePPTSteam()
+const generatePPTWithTemplate = () => {
+  store.generatePPTSteam('pipeline')
+}
+
+const generatePPTPureAI = () => {
+  store.generatePPTSteam('legacy')
 }
 
 const handleExport = () => {
