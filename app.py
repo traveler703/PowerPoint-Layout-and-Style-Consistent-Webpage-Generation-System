@@ -47,21 +47,54 @@ def _prepare_text_for_llm(text: str, max_chars: int = MAX_LLM_INPUT_CHARS) -> st
 
 
 def _semantic_to_parse_result(text: str) -> dict:
-    pages = parse_user_document(text)
-    sections = []
-    for sem in pages:
-        bullets = sem.bullet_points or [b.title for b in sem.bullet_items if b.title]
-        sections.append(
-            {
-                "title": sem.title or f"第{sem.page_index + 1}部分",
-                "content": sem.summary or "",
-                "bullets": bullets,
-            }
-        )
+    """使用新 MarkdownParser 解析文本，返回前端期望的 {title, summary, sections} 格式。
+    
+    每个 section 包含: title, subtitle, bullets, content
+    subtitle 显示在 content 上方（如子标题）。
+    """
+    from parsers.markdown_parser import MarkdownParser
 
-    title = next((p.title for p in pages if p.title), "") or "未命名文档"
-    summary = next((p.summary for p in pages if p.summary), "") or ""
-    return {"title": title, "summary": summary, "sections": sections}
+    parser = MarkdownParser()
+    result = parser.parse(text, filename="pasted_text.md")
+
+    sections = []
+    for page in result.pages:
+        parent_title = page.title or f"第{page.page_index + 1}页"
+        headings = page.headings or []
+        paragraphs = page.paragraphs or []
+        page_bullets = page.bullets or []
+
+        if not headings:
+            bullet_texts = []
+            for b in page_bullets:
+                bullet_texts.append(f"{b.title}：{b.description}" if b.description else b.title)
+            sections.append({
+                "title": parent_title,
+                "subtitle": "",
+                "content": " ".join(paragraphs),
+                "bullets": bullet_texts,
+            })
+        else:
+            if not paragraphs and not page_bullets:
+                sections.append({
+                    "title": parent_title,
+                    "subtitle": "",
+                    "content": "",
+                    "bullets": [h.text for h in headings],
+                })
+            else:
+                bullet_texts = []
+                for b in page_bullets:
+                    bullet_texts.append(f"{b.title}：{b.description}" if b.description else b.title)
+                sections.append({
+                    "title": parent_title,
+                    "subtitle": " / ".join(h.text for h in headings),
+                    "content": " ".join(paragraphs),
+                    "bullets": bullet_texts,
+                })
+
+    title = result.metadata.title or "未命名文档"
+    return {"title": title, "summary": "", "sections": sections}
 
 
 def _slide_to_page_markdown(slide: dict) -> str:
@@ -516,6 +549,20 @@ def upload_document():
             f"pages={result.metadata.page_count}, chars={result.metadata.total_chars}"
         )
 
+        # ─── 持久化解析结果 JSON 到 output/ 目录 ───
+        from datetime import datetime
+        output_dir = os.path.join(os.path.dirname(__file__), 'output')
+        os.makedirs(output_dir, exist_ok=True)
+
+        # 文件名格式: <原始文件名去扩展名>_<时间戳>.json
+        base_name = os.path.splitext(filename)[0]
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        json_filename = f"{base_name}_{timestamp}.json"
+        json_path = os.path.join(output_dir, json_filename)
+
+        result.save_json(json_path)
+        logger.info(f"解析结果已保存: {json_path}")
+
         return jsonify({
             'success': True,
             'result': result.model_dump(exclude_none=True),
@@ -525,6 +572,7 @@ def upload_document():
                 'file_size': len(file_bytes),
                 'page_count': result.metadata.page_count,
                 'total_chars': result.metadata.total_chars,
+                'json_output_path': json_path,
             }
         })
 

@@ -54,16 +54,18 @@
       </div>
       <div class="input-panel-footer">
         <span class="input-hint">{{ store.charCount }} 字</span>
+        <!-- 粘贴模式：始终显示按钮；上传模式：上传后才显示"重新解析" -->
         <button 
+          v-if="store.inputMode === 'paste' || (store.inputMode === 'upload' && uploadedFile)"
           class="btn btn-primary" 
           @click="handleParse"
-          :disabled="store.isParsing || !store.documentText.trim()"
+          :disabled="store.isParsing || isUploading || (store.inputMode === 'paste' && !store.documentText.trim())"
         >
           <span v-if="store.isParsing" class="loading-spinner"></span>
           <svg v-else fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
           </svg>
-          {{ store.isParsing ? '解析中...' : '开始解析' }}
+          {{ store.isParsing ? '解析中...' : (store.parseResult ? '重新解析' : '开始解析') }}
         </button>
       </div>
     </div>
@@ -72,11 +74,6 @@
     <div class="parsed-panel">
       <div class="parsed-panel-header">
         <span class="input-panel-title">解析结果</span>
-        <button class="toolbar-btn" @click="handleRefresh" :disabled="store.isParsing">
-          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" :class="{ spinning: store.isParsing }">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-          </svg>
-        </button>
       </div>
       
       <!-- Loading State -->
@@ -102,10 +99,34 @@
             <div class="parsed-section-icon">{{ getSectionIcon(section.title) }}</div>
             <div class="parsed-section-title">{{ section.title || `第${index + 1}部分` }}</div>
           </div>
-          <div class="parsed-section-content" v-if="section.content">{{ section.content }}</div>
+          <div class="parsed-section-subtitle" v-if="section.subtitle">{{ section.subtitle }}</div>
           <ul class="parsed-bullets" v-if="section.bullets && section.bullets.length">
             <li v-for="(bullet, i) in section.bullets" :key="i">{{ bullet }}</li>
           </ul>
+          <div class="parsed-section-content" v-if="section.content">{{ section.content }}</div>
+          <div class="parsed-section-tables" v-if="section.tables && section.tables.length">
+            <table class="parsed-table" v-for="(tbl, tblIdx) in section.tables" :key="tblIdx">
+              <thead>
+                <tr>
+                  <th v-for="(h, hi) in tbl.headers" :key="hi">{{ h }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, ri) in tbl.rows" :key="ri">
+                  <td v-for="(cell, ci) in row" :key="ci">{{ cell }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="parsed-section-images" v-if="section.images && section.images.length">
+            <img
+              v-for="(img, imgIdx) in section.images"
+              :key="imgIdx"
+              :src="img.url"
+              :alt="img.alt || '图片'"
+              class="parsed-image"
+            />
+          </div>
         </div>
 
         <div class="parsed-empty" v-if="!store.parseResult.sections || store.parseResult.sections.length === 0">
@@ -163,6 +184,7 @@ const isApplied = ref(false)
 const isUploading = ref(false)
 const uploadingFilename = ref('')
 const uploadedFile = ref(null)
+const originalFileRef = ref(null) // 保存原始 File 对象，用于"重新解析"时重新上传
 
 // 支持的文件格式
 const SUPPORTED_EXTENSIONS = ['.md', '.txt', '.pdf', '.docx', '.pptx']
@@ -224,6 +246,7 @@ const handleFile = async (file) => {
 
   isUploading.value = true
   uploadingFilename.value = file.name
+  originalFileRef.value = file // 保存原始文件引用
 
   try {
     // 调用后端上传解析 API
@@ -278,35 +301,70 @@ const formatFileSize = (bytes) => {
 }
 
 /**
- * 将后端 DocumentParseResult 转换为前端 store 使用的 parseResult 格式
+ * 将后端 DocumentParseResult 转换为前端 store 使用的 parseResult 格式。
+ * 核心逻辑：每个 heading 拆分为独立 section（PPT一页），
+ * 显示 parent_title 作为页面标题，heading 作为 subtitle，对应段落作为 content。
  */
 const convertToParseResult = (docResult) => {
   const pages = docResult.pages || []
   const metadata = docResult.metadata || {}
 
-  const sections = pages.map((page) => {
-    const bullets = []
-    // 合并 bullets
-    if (page.bullets && page.bullets.length) {
-      page.bullets.forEach(b => {
-        if (b.description) {
-          bullets.push(`${b.title}：${b.description}`)
-        } else {
-          bullets.push(b.title)
-        }
-      })
-    }
-    // 如果有 headings 且无 bullets，将 headings 转为 bullets
-    if (!bullets.length && page.headings && page.headings.length) {
-      page.headings.forEach(h => bullets.push(h.text))
-    }
+  const sections = []
 
-    return {
-      title: page.title || `第${page.page_index + 1}页`,
-      content: page.paragraphs ? page.paragraphs.join(' ') : '',
-      bullets: bullets,
+  for (const page of pages) {
+    const parentTitle = page.title || `第${page.page_index + 1}页`
+    const headings = page.headings || []
+    const paragraphs = page.paragraphs || []
+    const bullets = page.bullets || []
+
+    // 收集图片
+    const images = (page.images || []).filter(img => img.url && img.url.length > 0)
+
+    // 收集表格
+    const tables = page.tables || []
+
+    if (headings.length === 0) {
+      // 无子标题：整页作为一个 section
+      const bulletTexts = bullets.map(b => b.description ? `${b.title}：${b.description}` : b.title)
+      sections.push({
+        title: parentTitle,
+        subtitle: '',
+        content: paragraphs.join(' '),
+        bullets: bulletTexts,
+        images: images,
+        tables: tables,
+      })
+    } else {
+      // 有子标题：每个子标题拆分为独立 section
+      // 如果 headings 之前有段落（概述性文字），先生成一个概述页
+      // 然后每个 heading 对应一页
+      // 简化处理：按顺序将 paragraphs 分配给对应的 heading
+      // （因为解析器按顺序产出 headings 和 paragraphs）
+      
+      // 如果只有 headings 没有 paragraphs，列出所有 heading 作为 bullets
+      if (paragraphs.length === 0 && bullets.length === 0) {
+        sections.push({
+          title: parentTitle,
+          subtitle: '',
+          content: '',
+          bullets: headings.map(h => h.text),
+          images: images,
+          tables: tables,
+        })
+      } else {
+        // 有内容：将内容和 headings 组合展示
+        const bulletTexts = bullets.map(b => b.description ? `${b.title}：${b.description}` : b.title)
+        sections.push({
+          title: parentTitle,
+          subtitle: headings.map(h => h.text).join(' / '),
+          content: paragraphs.join(' '),
+          bullets: bulletTexts,
+          images: images,
+          tables: tables,
+        })
+      }
     }
-  })
+  }
 
   return {
     title: metadata.title || '未命名文档',
@@ -317,6 +375,16 @@ const convertToParseResult = (docResult) => {
 
 const handleParse = async () => {
   console.log('handleParse 被调用')
+  isApplied.value = false
+
+  // 上传模式：重新上传原始文件（保留格式解析能力）
+  if (store.inputMode === 'upload' && originalFileRef.value) {
+    console.log('上传模式：重新上传原始文件', originalFileRef.value.name)
+    await handleFile(originalFileRef.value)
+    return
+  }
+
+  // 粘贴模式：发送文本到 /api/parse-text
   if (!store.documentText.trim()) {
     console.log('文本为空')
     store.showToastMessage('请先输入或上传文档内容')
@@ -325,12 +393,10 @@ const handleParse = async () => {
 
   console.log('开始解析，文本长度:', store.documentText.length)
   progressText.value = '正在解析文档...'
-  isApplied.value = false
   const result = await store.parseDocument()
 
   if (result) {
     console.log('解析成功')
-    // 不自动跳转，等待用户点击"开始应用"
   } else {
     console.log('解析失败或返回null')
   }
@@ -338,6 +404,11 @@ const handleParse = async () => {
 
 const handleRefresh = () => {
   isApplied.value = false
+  // 如果是上传的文件，不重新解析（纯文本解析无法还原原始格式的结构信息）
+  if (store.inputMode === 'upload' && uploadedFile.value) {
+    store.showToastMessage('文件已解析完成，如需重新解析请重新上传')
+    return
+  }
   if (store.parseResult) {
     handleParse()
   }
@@ -632,5 +703,57 @@ const getSectionIcon = (title) => {
 .btn-outline:hover {
   border-color: var(--accent, #6366f1);
   color: var(--accent, #6366f1);
+}
+
+/* 表格样式 */
+.parsed-section-tables {
+  margin-top: 10px;
+}
+
+.parsed-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border-color, #e5e7eb);
+}
+
+.parsed-table th,
+.parsed-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border: 1px solid var(--border-color, #e5e7eb);
+}
+
+.parsed-table th {
+  background: var(--bg-secondary, #f3f4f6);
+  font-weight: 600;
+  color: var(--text-primary, #374151);
+}
+
+.parsed-table td {
+  color: var(--text-secondary, #6b7280);
+}
+
+.parsed-table tbody tr:hover {
+  background: var(--bg-hover, #f9fafb);
+}
+
+/* 图片预览样式 */
+.parsed-section-images {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.parsed-image {
+  max-width: 100%;
+  max-height: 150px;
+  object-fit: contain;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  background: #f9fafb;
 }
 </style>

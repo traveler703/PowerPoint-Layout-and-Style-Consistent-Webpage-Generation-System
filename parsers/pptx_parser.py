@@ -88,14 +88,23 @@ class PptxParser(BaseDocumentParser):
         images: list[ImageContent] = []
         raw_parts: list[str] = []
 
+        # 获取标题形状的 shape_id（如果存在）
+        title_shape = slide.shapes.title
+        title_shape_id = title_shape.shape_id if title_shape else None
+
         for shape in slide.shapes:
             # 标题占位符
             if shape.has_text_frame:
-                if shape.shape_id == slide.shapes.title_id or (
-                    hasattr(shape, "placeholder_format")
-                    and shape.placeholder_format is not None
-                    and shape.placeholder_format.idx == 0
-                ):
+                is_title_shape = shape.shape_id == title_shape_id
+                if not is_title_shape:
+                    try:
+                        pf = shape.placeholder_format
+                        if pf is not None and pf.idx == 0:
+                            is_title_shape = True
+                    except (ValueError, AttributeError):
+                        pass
+
+                if is_title_shape:
                     # 标题形状
                     text = shape.text_frame.text.strip()
                     if text and title is None:
@@ -114,11 +123,19 @@ class PptxParser(BaseDocumentParser):
                 if table:
                     tables.append(table)
 
-            # 图片
+            # 图片：检查 PICTURE 类型和含图片的占位符
             if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
                 img = self._extract_image(shape)
                 if img:
                     images.append(img)
+            elif hasattr(shape, "image"):
+                # 某些占位符（如内容占位符）可以包含图片
+                try:
+                    img = self._extract_image(shape)
+                    if img:
+                        images.append(img)
+                except Exception:
+                    pass
 
         raw_text = "\n".join(raw_parts)
         has_table = len(tables) > 0
@@ -155,19 +172,43 @@ class PptxParser(BaseDocumentParser):
             # 通过缩进级别判断层级
             level = para.level if para.level is not None else 0
 
-            # 检测是否为列表项（有项目符号或缩进）
-            is_bullet = level > 0
+            # 获取段落字号
+            font_size = None
+            is_bold = False
+            for run in para.runs:
+                if run.font.size:
+                    font_size = run.font.size.pt
+                if run.font.bold:
+                    is_bold = True
+                if font_size:
+                    break
 
-            if is_bullet:
-                if ":" in text or "：" in text:
-                    sep = "：" if "：" in text else ":"
-                    t, _, d = text.partition(sep)
+            # 检测是否为列表项
+            # 1. 缩进 level > 0
+            # 2. 或文本以符号开头 (•·●- 等)
+            is_bullet_item = level > 0 or bool(re.match(r"^[•·●◆■▪\-–—]\s*", text))
+
+            if is_bullet_item:
+                # 清除前导符号
+                clean_text = re.sub(r"^[•·●◆■▪\-–—]\s*", "", text).strip()
+                if not clean_text:
+                    clean_text = text
+                if ":" in clean_text or "：" in clean_text:
+                    sep = "：" if "：" in clean_text else ":"
+                    t, _, d = clean_text.partition(sep)
                     bullets.append(BulletPoint(title=t.strip(), description=d.strip()))
                 else:
-                    bullets.append(BulletPoint(title=text, description=""))
-            elif len(text) < 50 and level == 0:
-                # 短文本可能是子标题
+                    bullets.append(BulletPoint(title=clean_text, description=""))
+
+            elif (
+                level == 0
+                and len(text) <= 50
+                and (is_bold or (font_size is not None and font_size >= 18))
+                and not text.endswith(("。", ".", "；", ";", "，", ","))
+            ):
+                # 加粗或大字号 + 短文本 + 不以标点结尾 → 子标题
                 headings.append(HeadingItem(level=2, text=text))
+
             else:
                 paragraphs.append(text)
 
@@ -175,14 +216,15 @@ class PptxParser(BaseDocumentParser):
     def _parse_table(table) -> TableContent | None:
         """解析 PPTX 表格。"""
         try:
-            if not table.rows:
+            all_rows = list(table.rows)
+            if not all_rows:
                 return None
 
             # 第一行作为表头
-            headers = [cell.text.strip() for cell in table.rows[0].cells]
+            headers = [cell.text.strip() for cell in all_rows[0].cells]
             rows: list[list[str]] = []
 
-            for row in table.rows[1:]:
+            for row in all_rows[1:]:
                 row_data = [cell.text.strip() for cell in row.cells]
                 rows.append(row_data)
 
