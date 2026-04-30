@@ -563,18 +563,15 @@ def upload_document():
         result.save_json(json_path)
         logger.info(f"解析结果已保存: {json_path}")
 
-        return jsonify({
-            'success': True,
-            'result': result.model_dump(exclude_none=True),
-            'meta': {
-                'filename': filename,
-                'format': fmt.value,
-                'file_size': len(file_bytes),
-                'page_count': result.metadata.page_count,
-                'total_chars': result.metadata.total_chars,
-                'json_output_path': json_path,
-            }
-        })
+        # 直接返回 DocumentParseResult JSON（metadata + pages 在顶层）
+        # 可直接用于下一步处理
+        response_data = result.model_dump(exclude_none=True)
+        # 附加调试信息（不影响 DocumentParseResult 结构）
+        response_data['_debug'] = {
+            'json_output_path': json_path,
+            'file_size': len(file_bytes),
+        }
+        return jsonify(response_data)
 
     except ImportError as e:
         logger.error(f"缺少解析依赖: {e}")

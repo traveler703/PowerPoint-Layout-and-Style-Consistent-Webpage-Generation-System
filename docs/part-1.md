@@ -78,7 +78,7 @@ cd frontend && npm run dev
 
 ### API 返回与 JSON 保存
 
-**API 直接返回完整的 `DocumentParseResult` JSON**（在响应的 `result` 字段中），这是下一阶段（版式选型）的主要输入来源。
+**`POST /api/upload-document` 的响应体是 `DocumentParseResult` JSON**（`metadata` + `pages` 在顶层），可用于下一步版式选型处理。
 
 同时，为方便调试，解析结果也会自动保存一份到 `output/` 目录：
 
@@ -86,7 +86,7 @@ cd frontend && npm run dev
 output/<文件名>_<时间戳>.json
 ```
 
-> `output/` 中的文件仅用于调试和离线查看，不影响正常流程。API 响应的 `meta.json_output_path` 字段记录了保存路径。
+> `output/` 中的文件仅用于调试和离线查看，不影响正常流程。API 响应的 `_debug.json_output_path` 字段记录了保存路径。
 
 ---
 
@@ -189,11 +189,85 @@ for p in result.pages:
 ```bash
 # 启动后端
 source .venv/bin/activate && python app.py &
-
-# 上传测试
-curl -s -X POST http://localhost:5000/api/upload-document \
-  -F "file=@testcases/carrot/carrot_word.docx" | python3 -m json.tool | head -30
 ```
+
+**API 1：`POST /api/upload-document`** — 上传文件并解析
+
+```bash
+# 请求（multipart/form-data，字段名 file）
+curl -s -X POST http://localhost:5000/api/upload-document \
+  -F "file=@testcases/carrot/carrot_word.docx"
+```
+
+**响应直接就是 `DocumentParseResult` JSON**（metadata + pages 在顶层），可直接用于下一步处理：
+```json
+{
+  "metadata": {
+    "title": "胡萝卜简介",
+    "source_format": "docx",
+    "source_filename": "carrot_word.docx",
+    "page_count": 4,
+    "total_chars": 680
+  },
+  "pages": [
+    {
+      "page_index": 0,
+      "title": "胡萝卜简介",
+      "headings": [],
+      "paragraphs": [],
+      "bullets": [],
+      "tables": [],
+      "images": [],
+      "has_table": false,
+      "raw_text": "..."
+    }
+  ],
+  "_debug": {
+    "json_output_path": "/path/to/output/carrot_word_20260430_160047.json",
+    "file_size": 123456
+  }
+}
+```
+
+> ⚠️ `_debug` 字段仅供调试用，下一步处理时可忽略。响应顶层的 `metadata` 和 `pages` 即为完整的 `DocumentParseResult`。
+
+错误响应（HTTP 400/500）：
+```json
+{"error": "文档解析失败: <具体错误信息>"}
+```
+
+---
+
+**API 2：`GET /api/supported-formats`** — 查询支持的文件格式
+
+```bash
+curl -s http://localhost:5000/api/supported-formats
+```
+
+响应格式：
+```json
+{
+  "success": true,
+  "formats": [
+    {"extension": ".md", "name": "Markdown", "mime": "text/markdown"},
+    {"extension": ".txt", "name": "纯文本", "mime": "text/plain"},
+    {"extension": ".pdf", "name": "PDF", "mime": "application/pdf"},
+    {"extension": ".docx", "name": "Word", "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+    {"extension": ".pptx", "name": "PowerPoint", "mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation"}
+  ],
+  "max_file_size_mb": 20
+}
+```
+
+---
+
+**API 3：`GET /health`** — 健康检查
+
+```bash
+curl -s http://localhost:5000/health
+```
+
+响应：`{"status": "ok"}`
 
 ---
 

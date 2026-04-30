@@ -187,12 +187,12 @@ def test_upload_api():
         result = response.get_json()
 
         assert response.status_code == 200
-        assert result['success'] is True
-        assert result['meta']['page_count'] == 2
-        assert result['meta']['format'] == 'markdown'
+        # API 直接返回 DocumentParseResult（metadata + pages 在顶层）
+        assert result['metadata']['page_count'] == 2
+        assert result['metadata']['source_format'] == 'markdown'
 
         # 验证解析内容
-        pages = result['result']['pages']
+        pages = result['pages']
         assert pages[0]['title'] == "API测试文档"
         assert len(pages[0]['bullets']) == 2
         assert pages[1]['has_table'] is True

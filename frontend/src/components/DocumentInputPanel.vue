@@ -250,33 +250,34 @@ const handleFile = async (file) => {
 
   try {
     // 调用后端上传解析 API
+    // API 直接返回 DocumentParseResult JSON（metadata + pages 在顶层）
     const response = await uploadDocument(file)
 
-    if (response.success) {
-      const result = response.result
-      const meta = response.meta
+    if (response.error) {
+      store.showToastMessage(response.error || '文档解析失败')
+    } else {
+      const docResult = response  // 响应本身就是 DocumentParseResult
+      const metadata = docResult.metadata || {}
 
       // 记录上传文件信息
       uploadedFile.value = {
         name: file.name,
-        format: meta.format,
-        size: meta.file_size,
-        pageCount: meta.page_count,
+        format: metadata.source_format || '',
+        size: docResult._debug?.file_size || file.size,
+        pageCount: metadata.page_count || 0,
       }
 
       // 将文档解析结果转换为 store 期望的 parseResult 格式
-      const parseResult = convertToParseResult(result)
+      const parseResult = convertToParseResult(docResult)
       store.parseResult = parseResult
 
       // 设置字符数
-      store.charCount = meta.total_chars
-      store.documentText = result.pages
-        ? result.pages.map(p => p.raw_text || '').join('\n---\n')
+      store.charCount = metadata.total_chars || 0
+      store.documentText = docResult.pages
+        ? docResult.pages.map(p => p.raw_text || '').join('\n---\n')
         : ''
 
-      store.showToastMessage(`文档解析成功：${meta.page_count} 页`)
-    } else {
-      store.showToastMessage(response.error || '文档解析失败')
+      store.showToastMessage(`文档解析成功：${metadata.page_count || 0} 页`)
     }
   } catch (err) {
     console.error('Upload document error:', err)
