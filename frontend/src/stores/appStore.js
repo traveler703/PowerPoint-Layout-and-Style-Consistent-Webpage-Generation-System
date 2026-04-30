@@ -910,7 +910,7 @@ export const store = reactive({
   },
 
   // 流式生成PPT - 每生成一页就更新预览
-  async generatePPTSteam() {
+  async generatePPTSteam(engine = 'pipeline') {
     if (!this.parseResult) {
       this.showToastMessage('请先解析文档')
       return false
@@ -957,7 +957,8 @@ export const store = reactive({
           outline: outline,
           topic: this.parseResult.title || 'PPT演示文稿',
           scenario: 'general',
-          style: this.selectedStyle || 'modern'
+          style: this.selectedStyle || 'modern',
+          engine
         })
       })
 

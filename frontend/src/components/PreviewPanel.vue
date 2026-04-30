@@ -319,24 +319,43 @@ const downloadPPT = () => {
   }
 
   try {
-    // 构建幻灯片容器
-    const slidesHtml = store.generatedSlides.map(slide =>
-      `<div class="slide" id="slide-${slide.pageNumber}" data-type="content">\n            ${slide.html}\n        </div>`
-    ).join('\n')
+    const title = store.parseResult?.title || 'PPT演示文稿'
+    const slideDocuments = store.generatedSlides.map((slide) => {
+      const raw = String(slide.html || '')
+      if (/<\s*!doctype|<\s*html/i.test(raw)) {
+        return raw
+      }
+      return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    html, body { margin: 0; padding: 0; width: 1280px; height: 720px; overflow: hidden; background: #ffffff; }
+  </style>
+</head>
+<body>${raw}</body>
+</html>`
+    })
 
-    // 生成完整的HTML文档
+    // 使用 iframe + srcdoc 切页，避免把完整 HTML 再嵌入 div 导致乱码/解析错乱
     const fullHtml = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${store.parseResult?.title || 'PPT演示文稿'}</title>
+    <title>${title}</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { width: 100%; height: 100%; overflow: hidden; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
-        .ppt-container { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; background: #1a1a2e; }
-        .slide { display: none; width: 1280px; height: 720px; background: white; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3); position: relative; overflow: hidden; }
-        .slide.active { display: block; }
+        html, body { width: 100%; height: 100%; overflow: hidden; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #1a1a2e; }
+        .ppt-container { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+        .slide-frame {
+            width: 1280px;
+            height: 720px;
+            border: none;
+            background: #fff;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
         .navigation { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 1000; }
         .nav-btn { padding: 10px 20px; background: rgba(255, 255, 255, 0.9); border: none; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.3s; }
         .nav-btn:hover { background: white; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2); }
@@ -346,7 +365,7 @@ const downloadPPT = () => {
 </head>
 <body>
     <div class="ppt-container">
-${slidesHtml}
+        <iframe id="slideFrame" class="slide-frame" sandbox="allow-same-origin allow-scripts"></iframe>
     </div>
     <div class="navigation">
         <button class="nav-btn" id="prevBtn" onclick="prevSlide()">上一页</button>
@@ -355,16 +374,15 @@ ${slidesHtml}
     <div class="slide-counter" id="slideCounter"></div>
     <script>
         let currentSlide = 1;
-        const totalSlides = ${store.generatedSlides.length};
+        const slides = ${JSON.stringify(slideDocuments)};
+        const totalSlides = slides.length;
+        const frame = document.getElementById('slideFrame');
 
         function showSlide(n) {
             if (n < 1) n = 1;
             if (n > totalSlides) n = totalSlides;
             currentSlide = n;
-            document.querySelectorAll('.slide').forEach((slide, index) => {
-                slide.classList.remove('active');
-                if (index + 1 === currentSlide) slide.classList.add('active');
-            });
+            frame.srcdoc = slides[currentSlide - 1] || '';
             document.getElementById('prevBtn').disabled = currentSlide === 1;
             document.getElementById('nextBtn').disabled = currentSlide === totalSlides;
             document.getElementById('slideCounter').textContent = currentSlide + ' / ' + totalSlides;
@@ -380,10 +398,6 @@ ${slidesHtml}
             else if (e.key === 'End') { e.preventDefault(); showSlide(totalSlides); }
         });
 
-        document.querySelectorAll('.slide').forEach((slide) => {
-            slide.addEventListener('click', (e) => { if (!e.target.closest('button')) nextSlide(); });
-        });
-
         showSlide(1);
     <\/script>
 </body>
@@ -394,7 +408,7 @@ ${slidesHtml}
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `${store.parseResult?.title || 'PPT演示文稿'}.html`
+    link.download = `${title}.html`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
