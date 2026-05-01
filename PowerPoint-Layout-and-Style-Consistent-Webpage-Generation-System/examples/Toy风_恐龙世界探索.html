@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>探索神秘的恐龙世界</title>
+    <script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body { 
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            overflow: hidden; 
+            height: 100vh;
+        }
+
+        /* ========== 翻页容器 ========== */
+        .slides-wrapper {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .slides-track {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .slide-container {
+            width: 100vw;
+            height: 100vh;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* ========== 翻页导航 ========== */
+        .nav-dots {
+            position: fixed;
+            right: 30px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            z-index: 1000;
+        }
+
+        .nav-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.4);
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+
+        .nav-dot:hover { background: rgba(255,255,255,0.7); transform: scale(1.2); }
+        .nav-dot.active { background: #FBBF24; border-color: white; transform: scale(1.3); }
+
+        .nav-arrows {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            z-index: 1000;
+        }
+
+        .nav-arrow {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255,255,255,0.3);
+            color: white;
+            font-size: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .nav-arrow:hover { background: rgba(255,255,255,0.4); transform: scale(1.1); }
+        .nav-arrow.disabled { opacity: 0.3; cursor: not-allowed; }
+
+        .page-indicator {
+            position: fixed;
+            bottom: 35px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(10px);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            z-index: 1000;
+        }
+
+        .page-indicator .current { color: #FBBF24; font-size: 18px; }
+
+        /* ========== 通用幻灯片样式 ========== */
+        .slide { width: 1280px; height: 720px; position: relative; overflow: hidden; transform-origin: center center; }
+        
+        /* ========== 封面页样式 ========== */
+        .slide.cover { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); }
+        .slide.cover .stars { position: absolute; width: 100%; height: 100%; }
+        .slide.cover .star { position: absolute; background: white; border-radius: 50%; animation: twinkle 2s infinite; }
+        @keyframes twinkle { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+        
+        .slide.cover .dino-bg { position: absolute; font-size: 300px; opacity: 0.1; right: -50px; bottom: -50px; }
+        .slide.cover .title-box { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; z-index: 10; }
+        .slide.cover .main-title { font-size: 72px; font-weight: 900; color: white; text-shadow: 0 0 30px rgba(251, 191, 36, 0.5); margin-bottom: 20px; animation: glow 3s infinite; }
+        @keyframes glow { 0%, 100% { text-shadow: 0 0 30px rgba(251, 191, 36, 0.5); } 50% { text-shadow: 0 0 60px rgba(251, 191, 36, 0.8); } }
+        .slide.cover .subtitle { font-size: 28px; color: #94a3b8; margin-bottom: 40px; }
+        .slide.cover .date-badge { display: inline-block; background: linear-gradient(135deg, #FBBF24, #F59E0B); color: #1a1a2e; padding: 15px 40px; border-radius: 50px; font-size: 20px; font-weight: 700; }
+        .slide.cover .dino-group { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); font-size: 60px; display: flex; gap: 30px; animation: walk 2s ease-in-out infinite; }
+        @keyframes walk { 0%, 100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(-10px); } }
+        
+        /* ========== 通用样式 ========== */
+        .deco-shape { position: absolute; border-radius: 50%; }
+        .shape1 { background-color: #3B82F6; width: 150px; height: 150px; top: -50px; right: 50px; opacity: 0.8; }
+        .shape2 { background-color: #FBBF24; width: 80px; height: 80px; top: 80px; right: -20px; opacity: 0.9; }
+        .shape3 { background-color: #EF4444; width: 200px; height: 200px; bottom: -100px; left: -80px; opacity: 0.7; }
+        .shape4 { background-color: #22C55E; width: 40px; height: 40px; bottom: 80px; left: 60px; }
+        .page-title { position: absolute; top: 40px; left: 60px; background-color: #3B82F6; color: white; padding: 15px 30px; border-radius: 15px; font-size: 36px; font-weight: 900; display: inline-block; box-shadow: 0 4px 10px rgba(59, 130, 246, 0.4); z-index: 10; }
+        .page-content { position: absolute; top: 150px; left: 60px; right: 60px; bottom: 60px; padding: 20px; z-index: 5; }
+        .pagination { display: none; }
+        
+        /* ========== 内容页样式 ========== */
+        .slide.content { background-color: #FFFBEB; }
+        .page-content h2 { font-size: 32px; color: #1F2937; margin-bottom: 20px; border-bottom: 4px solid #FBBF24; padding-bottom: 10px; display: inline-block; }
+        .page-content p { font-size: 22px; line-height: 1.6; color: #4B5563; margin-bottom: 20px; }
+        
+        /* ========== 目录页样式 ========== */
+        .slide.toc { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .slide.toc .page-title { background-color: white; color: #667eea; }
+        .toc-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; margin-top: 30px; }
+        .toc-item { background: rgba(255,255,255,0.15); backdrop-filter: blur(10px); border-radius: 20px; padding: 25px; display: flex; align-items: center; gap: 20px; transition: all 0.3s; cursor: pointer; }
+        .toc-item:hover { background: rgba(255,255,255,0.25); transform: translateX(10px); }
+        .toc-number { width: 60px; height: 60px; background: white; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 28px; font-weight: 900; color: #667eea; }
+        .toc-text h3 { font-size: 22px; color: white; margin-bottom: 5px; }
+        .toc-text p { font-size: 14px; color: rgba(255,255,255,0.7); }
+        
+        /* ========== 对比页样式 ========== */
+        .slide.compare { background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%); }
+        .compare-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; margin-top: 20px; }
+        .compare-card { background: white; border-radius: 25px; padding: 30px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,0.1); transition: transform 0.3s; }
+        .compare-card:hover { transform: translateY(-10px); }
+        .compare-card .dino-icon { font-size: 80px; display: block; margin-bottom: 15px; }
+        .compare-card h3 { font-size: 26px; color: #1F2937; margin-bottom: 10px; }
+        .compare-card .era { background: linear-gradient(135deg, #3B82F6, #60A5FA); color: white; padding: 8px 20px; border-radius: 20px; font-size: 14px; display: inline-block; margin-bottom: 15px; }
+        .compare-card .era.triassic { background: linear-gradient(135deg, #22C55E, #4ADE80); }
+        .compare-card .era.jurassic { background: linear-gradient(135deg, #FBBF24, #FCD34D); color: #92400E; }
+        .compare-card .era.cretaceous { background: linear-gradient(135deg, #EF4444, #F87171); }
+        .compare-card ul { list-style: none; text-align: left; }
+        .compare-card ul li { font-size: 16px; color: #4B5563; margin-bottom: 8px; padding-left: 25px; position: relative; }
+        .compare-card ul li::before { content: '✓'; position: absolute; left: 0; color: #22C55E; font-weight: bold; }
+        
+        /* ========== 图表页样式 ========== */
+        .slide.chart { background-color: #FFFBEB; }
+        .chart-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; height: 100%; }
+        .chart-left { display: flex; flex-direction: column; gap: 20px; }
+        .chart-box { background: white; border-radius: 20px; padding: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); flex: 1; }
+        .chart-box h3 { font-size: 18px; color: #1F2937; margin-bottom: 15px; text-align: center; }
+        .fact-cards { display: flex; flex-direction: column; gap: 15px; }
+        .fact-card { background: linear-gradient(135deg, #DBEAFE, #BFDBFE); border-radius: 15px; padding: 20px; display: flex; align-items: center; gap: 15px; }
+        .fact-card .emoji { font-size: 40px; }
+        .fact-card .text h4 { font-size: 18px; color: #1E40AF; margin-bottom: 5px; }
+        .fact-card .text p { font-size: 14px; color: #3B82F6; }
+        
+        /* ========== 时间轴样式 ========== */
+        .slide.timeline { background: linear-gradient(135deg, #1e3a5f 0%, #0d1b2a 100%); }
+        .slide.timeline .page-title { background: linear-gradient(135deg, #FBBF24, #F59E0B); color: #1a1a2e; }
+        .timeline-container { position: relative; padding: 20px 0; }
+        .timeline-line { position: absolute; left: 50%; top: 0; bottom: 0; width: 6px; background: linear-gradient(to bottom, #FBBF24, #EF4444, #22C55E); border-radius: 3px; transform: translateX(-50%); }
+        .timeline-item { display: flex; align-items: center; margin-bottom: 30px; position: relative; }
+        .timeline-item:nth-child(odd) { flex-direction: row-reverse; }
+        .timeline-content { width: 45%; background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-radius: 20px; padding: 25px; border: 1px solid rgba(255,255,255,0.2); }
+        .timeline-content h3 { font-size: 22px; color: #FBBF24; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
+        .timeline-content p { font-size: 16px; color: #94a3b8; line-height: 1.6; }
+        .timeline-dot { position: absolute; left: 50%; transform: translateX(-50%); width: 30px; height: 30px; background: #FBBF24; border-radius: 50%; border: 5px solid #1e3a5f; z-index: 5; }
+        .slide.timeline .page-indicator { background: rgba(0,0,0,0.6); }
+        
+        /* ========== 问答页样式 ========== */
+        .slide.qa { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
+        .slide.qa .page-title { background: white; color: #11998e; }
+        .qa-container { display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; margin-top: 20px; }
+        .qa-card { background: white; border-radius: 20px; padding: 25px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); }
+        .qa-card .question { font-size: 18px; color: #1F2937; font-weight: 700; margin-bottom: 15px; display: flex; align-items: flex-start; gap: 10px; }
+        .qa-card .question::before { content: 'Q'; background: #EF4444; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 16px; flex-shrink: 0; }
+        .qa-card .answer { font-size: 16px; color: #4B5563; line-height: 1.6; padding-left: 38px; }
+        
+        /* ========== 结尾页样式 ========== */
+        .slide.ending { background: linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 50%, #16213e 100%); }
+        .ending-content { text-align: center; padding-top: 100px; }
+        .ending-content .big-emoji { font-size: 120px; display: block; margin-bottom: 30px; animation: bounce 1s infinite; }
+        @keyframes bounce { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+        .ending-content h1 { font-size: 56px; color: white; margin-bottom: 20px; }
+        .ending-content p { font-size: 24px; color: #94a3b8; margin-bottom: 40px; }
+        .ending-dinos { display: flex; justify-content: center; gap: 40px; margin-top: 60px; font-size: 50px; }
+        .ending-dinos span { animation: walk2 2s ease-in-out infinite; }
+        .ending-dinos span:nth-child(2) { animation-delay: 0.3s; }
+        .ending-dinos span:nth-child(3) { animation-delay: 0.6s; }
+        @keyframes walk2 { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
+
+        /* 深色页面导航点变白 */
+        .slide.cover .nav-dot,
+        .slide.timeline .nav-dot,
+        .slide.ending .nav-dot {
+            background: rgba(255,255,255,0.4);
+        }
+        .slide.cover .nav-dot.active,
+        .slide.timeline .nav-dot.active,
+        .slide.ending .nav-dot.active {
+            background: #FBBF24;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="slides-wrapper" id="slidesWrapper">
+        <div class="slides-track" id="slidesTrack">
+
+            <!-- ==================== 第1页：封面 ==================== -->
+            <div class="slide-container">
+                <div class="slide cover" data-title="封面">
+                    <div class="stars">
+                        <div class="star" style="width:3px;height:3px;top:20%;left:15%;animation-delay:0s"></div>
+                        <div class="star" style="width:2px;height:2px;top:30%;left:45%;animation-delay:0.5s"></div>
+                        <div class="star" style="width:4px;height:4px;top:15%;left:70%;animation-delay:1s"></div>
+                        <div class="star" style="width:2px;height:2px;top:50%;left:85%;animation-delay:1.5s"></div>
+                        <div class="star" style="width:3px;height:3px;top:60%;left:25%;animation-delay:0.3s"></div>
+                        <div class="star" style="width:2px;height:2px;top:40%;left:60%;animation-delay:0.8s"></div>
+                        <div class="star" style="width:3px;height:3px;top:70%;left:40%;animation-delay:1.2s"></div>
+                    </div>
+                    <div class="dino-bg">🦕</div>
+                    <div class="title-box">
+                        <h1 class="main-title">探索神秘的恐龙世界</h1>
+                        <p class="subtitle">穿越时空，回到亿年前的史前时代</p>
+                        <div class="date-badge">
+                            <i class="fa-solid fa-calendar"></i> 2026年特别企划
+                        </div>
+                    </div>
+                    <div class="dino-group">
+                        <span>🦖</span>
+                        <span>🦕</span>
+                        <span>🦖</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== 第2页：目录 ==================== -->
+            <div class="slide-container">
+                <div class="slide toc" data-title="目录">
+                    <div class="page-title">
+                        <i class="fa-solid fa-list" style="margin-right:10px"></i>今日探索
+                    </div>
+                    <div class="page-content">
+                        <div class="toc-grid">
+                            <div class="toc-item" onclick="goToSlide(2)">
+                                <div class="toc-number">01</div>
+                                <div class="toc-text">
+                                    <h3>恐龙基础知识</h3>
+                                    <p>了解什么是恐龙，它们与爬行动物的区别</p>
+                                </div>
+                            </div>
+                            <div class="toc-item" onclick="goToSlide(3)">
+                                <div class="toc-number">02</div>
+                                <div class="toc-text">
+                                    <h3>三大时代对比</h3>
+                                    <p>三叠纪、侏罗纪、白垩纪的恐龙特点</p>
+                                </div>
+                            </div>
+                            <div class="toc-item" onclick="goToSlide(4)">
+                                <div class="toc-number">03</div>
+                                <div class="toc-text">
+                                    <h3>恐龙趣味数据</h3>
+                                    <p>通过图表了解恐龙的有趣冷知识</p>
+                                </div>
+                            </div>
+                            <div class="toc-item" onclick="goToSlide(5)">
+                                <div class="toc-number">04</div>
+                                <div class="toc-text">
+                                    <h3>恐龙灭绝之谜</h3>
+                                    <p>探索恐龙灭绝的原因和假说</p>
+                                </div>
+                            </div>
+                            <div class="toc-item" onclick="goToSlide(6)">
+                                <div class="toc-number">05</div>
+                                <div class="toc-text">
+                                    <h3>趣味问答</h3>
+                                    <p>测试你对恐龙世界的了解程度</p>
+                                </div>
+                            </div>
+                            <div class="toc-item" onclick="goToSlide(6)">
+                                <div class="toc-number">06</div>
+                                <div class="toc-text">
+                                    <h3>保护动物</h3>
+                                    <p>从恐龙灭绝中我们学到了什么</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== 第3页：基础知识 ==================== -->
+            <div class="slide-container">
+                <div class="slide content" data-title="基础知识">
+                    <div class="deco-shape shape1"></div>
+                    <div class="deco-shape shape2"></div>
+                    <div class="deco-shape shape3"></div>
+                    <div class="deco-shape shape4"></div>
+                    <div class="page-title">
+                        <i class="fa-solid fa-book-open" style="margin-right:10px;color:#FBBF24"></i>恐龙基础知识
+                    </div>
+                    <div class="page-content">
+                        <h2><i class="fa-solid fa-question-circle" style="color:#3B82F6;margin-right:10px"></i>什么是恐龙？</h2>
+                        <p>恐龙是一类生活在中生代时期（2.3亿年前 - 6600万年前）的爬行动物，它们曾经在地球上统治了长达1.6亿年之久！</p>
+                        
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-top:20px;">
+                            <div style="background:white;border-radius:20px;padding:25px;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
+                                <h3 style="font-size:24px;color:#22C55E;margin-bottom:15px;"><i class="fa-solid fa-check-circle"></i> 恐龙的特点</h3>
+                                <ul style="font-size:18px;list-style:none;">
+                                    <li style="margin-bottom:12px;">🦴 直立行走，腿在身体正下方</li>
+                                    <li style="margin-bottom:12px;">🥚 多数为卵生动物</li>
+                                    <li style="margin-bottom:12px;">📏 体型从小鸡大小到巨无霸不等</li>
+                                    <li>✈️ 有的会飞，有的会游泳</li>
+                                </ul>
+                            </div>
+                            <div style="background:white;border-radius:20px;padding:25px;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
+                                <h3 style="font-size:24px;color:#EF4444;margin-bottom:15px;"><i class="fa-solid fa-times-circle"></i> 不是恐龙的"龙"</h3>
+                                <ul style="font-size:18px;list-style:none;">
+                                    <li style="margin-bottom:12px;">🦅 翼龙 - 会飞的爬行动物，但不是恐龙</li>
+                                    <li style="margin-bottom:12px;">🐙 沧龙 - 海洋爬行动物</li>
+                                    <li style="margin-bottom:12px;">🐟 鱼龙 - 海洋爬行动物</li>
+                                    <li>⚠️ 迅猛龙其实应该叫"伶盗龙"</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== 第4页：三大时代对比 ==================== -->
+            <div class="slide-container">
+                <div class="slide compare" data-title="三大时代">
+                    <div class="page-title">
+                        <i class="fa-solid fa-layer-group" style="margin-right:10px"></i>中生代三大时代
+                    </div>
+                    <div class="page-content">
+                        <div class="compare-grid">
+                            <div class="compare-card">
+                                <span class="dino-icon">🦕</span>
+                                <h3>三叠纪</h3>
+                                <span class="era triassic">2.52亿 - 2.01亿年前</span>
+                                <p style="font-size:14px;color:#6B7280;margin:10px 0;">恐龙刚刚出现的时代</p>
+                                <ul>
+                                    <li>气候炎热干燥</li>
+                                    <li>超级大陆：盘古大陆</li>
+                                    <li>早期小型恐龙出现</li>
+                                    <li>哺乳动物开始出现</li>
+                                </ul>
+                            </div>
+                            <div class="compare-card">
+                                <span class="dino-icon">🦖</span>
+                                <h3>侏罗纪</h3>
+                                <span class="era jurassic">2.01亿 - 1.45亿年前</span>
+                                <p style="font-size:14px;color:#6B7280;margin:10px 0;">恐龙的黄金时代</p>
+                                <ul>
+                                    <li>气候温暖湿润</li>
+                                    <li>巨型恐龙繁盛</li>
+                                    <li>腕龙、霸王龙祖先出现</li>
+                                    <li>鸟类首次出现</li>
+                                </ul>
+                            </div>
+                            <div class="compare-card">
+                                <span class="dino-icon">🐉</span>
+                                <h3>白垩纪</h3>
+                                <span class="era cretaceous">1.45亿 - 6600万年前</span>
+                                <p style="font-size:14px;color:#6B7280;margin:10px 0;">恐龙王朝的终结</p>
+                                <ul>
+                                    <li>有花植物繁盛</li>
+                                    <li>霸王龙、三角龙等明星登场</li>
+                                    <li>恐龙多样性达到顶峰</li>
+                                    <li>恐龙时代终结</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== 第5页：趣味数据图表 ==================== -->
+            <div class="slide-container">
+                <div class="slide chart" data-title="趣味数据">
+                    <div class="deco-shape shape1"></div>
+                    <div class="deco-shape shape4"></div>
+                    <div class="page-title">
+                        <i class="fa-solid fa-chart-bar" style="margin-right:10px;color:#FBBF24"></i>恐龙趣味数据
+                    </div>
+                    <div class="page-content">
+                        <div class="chart-layout">
+                            <div class="chart-left">
+                                <div class="chart-box" style="flex:0.6;">
+                                    <h3>体型对比图</h3>
+                                    <canvas id="sizeChart"></canvas>
+                                </div>
+                                <div class="fact-cards" style="flex:0.4;">
+                                    <div class="fact-card">
+                                        <span class="emoji">⚡</span>
+                                        <div class="text">
+                                            <h4>最快的恐龙</h4>
+                                            <p>似鸡龙，时速可达70公里！</p>
+                                        </div>
+                                    </div>
+                                    <div class="fact-card">
+                                        <span class="emoji">🧠</span>
+                                        <div class="text">
+                                            <h4>最聪明的恐龙</h4>
+                                            <p>伤齿龙，脑容量比例最大</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="chart-box">
+                                <h3>恐龙种类分布</h3>
+                                <canvas id="pieChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== 第6页：灭绝之谜时间轴 ==================== -->
+            <div class="slide-container">
+                <div class="slide timeline" data-title="灭绝之谜">
+                    <div class="page-title">
+                        <i class="fa-solid fa-hourglass-end" style="margin-right:10px"></i>恐龙灭绝之谜
+                    </div>
+                    <div class="page-content" style="top:120px;">
+                        <div class="timeline-container">
+                            <div class="timeline-line"></div>
+                            <div class="timeline-item">
+                                <div class="timeline-dot"></div>
+                                <div class="timeline-content">
+                                    <h3><span style="font-size:24px;">☄️</span> 小行星撞击说</h3>
+                                    <p>6600万年前，一颗直径10公里的小行星撞击地球，在墨西哥尤卡坦半岛留下了一个180公里宽的陨石坑。</p>
+                                </div>
+                            </div>
+                            <div class="timeline-item">
+                                <div class="timeline-dot" style="background:#EF4444;"></div>
+                                <div class="timeline-content">
+                                    <h3><span style="font-size:24px;">🌋</span> 火山大爆发</h3>
+                                    <p>印度德干高原的超级火山喷发，持续喷发了数万年，向大气中释放了大量二氧化碳和二氧化硫。</p>
+                                </div>
+                            </div>
+                            <div class="timeline-item">
+                                <div class="timeline-dot" style="background:#22C55E;"></div>
+                                <div class="timeline-content">
+                                    <h3><span style="font-size:24px;">❄️</span> 气候骤变</h3>
+                                    <p>以上灾难导致全球气候急剧变化：撞击产生尘埃遮蔽阳光，火山喷发导致酸雨和温室效应。</p>
+                                </div>
+                            </div>
+                            <div class="timeline-item">
+                                <div class="timeline-dot" style="background:#3B82F6;"></div>
+                                <div class="timeline-content">
+                                    <h3><span style="font-size:24px;">🔬</span> 现代研究</h3>
+                                    <p>最新证据显示，小行星撞击可能是主要原因，但也可能与火山活动共同作用，加速了恐龙的灭绝。</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== 第7页：趣味问答 ==================== -->
+            <div class="slide-container">
+                <div class="slide qa" data-title="趣味问答">
+                    <div class="page-title">
+                        <i class="fa-solid fa-brain" style="margin-right:10px"></i>趣味问答时间
+                    </div>
+                    <div class="page-content">
+                        <div class="qa-container">
+                            <div class="qa-card">
+                                <div class="question">三角龙最可能用头上的角做什么？</div>
+                                <div class="answer">主要用于防御捕食者，也可能是求偶季节用来展示和争斗的工具。</div>
+                            </div>
+                            <div class="qa-card">
+                                <div class="question">霸王龙的手臂为什么那么短？</div>
+                                <div class="answer">虽然手臂短小，但据说力量巨大！科学家认为可能用于固定猎物，或者在交配时抓住对方。</div>
+                            </div>
+                            <div class="qa-card">
+                                <div class="question">哪种恐龙的蛋最大？</div>
+                                <div class="answer">窃蛋龙的蛋实际上是最大的，约30厘米长！但它的名字其实是"冤枉"的，近年研究发现它可能是在保护自己的蛋。</div>
+                            </div>
+                            <div class="qa-card">
+                                <div class="question">恐龙灭绝后什么动物崛起了？</div>
+                                <div class="answer">哺乳动物！恐龙的灭绝为哺乳动物的发展让出了空间，最终演化出了今天丰富多彩的哺乳动物世界，包括我们人类！</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- 导航 -->
+    <div class="nav-dots" id="navDots"></div>
+    <div class="nav-arrows">
+        <div class="nav-arrow" id="prevBtn" onclick="prevSlide()">
+            <i class="fa-solid fa-chevron-left"></i>
+        </div>
+        <div class="nav-arrow" id="nextBtn" onclick="nextSlide()">
+            <i class="fa-solid fa-chevron-right"></i>
+        </div>
+    </div>
+    <div class="page-indicator" id="pageIndicator">
+        <span class="current" id="currentPage">1</span> / <span id="totalPages">7</span>
+    </div>
+
+    <script>
+        const totalSlides = 7;
+        let currentSlide = 0;
+        const track = document.getElementById('slidesTrack');
+        const navDots = document.getElementById('navDots');
+        const currentPageEl = document.getElementById('currentPage');
+        const totalPagesEl = document.getElementById('totalPages');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+
+        // 初始化导航点
+        totalPagesEl.textContent = totalSlides;
+        for (let i = 0; i < totalSlides; i++) {
+            const dot = document.createElement('div');
+            dot.className = 'nav-dot' + (i === 0 ? ' active' : '');
+            dot.onclick = () => goToSlide(i);
+            navDots.appendChild(dot);
+        }
+
+        // 翻页函数
+        function goToSlide(index) {
+            currentSlide = Math.max(0, Math.min(index, totalSlides - 1));
+            updateSlide();
+        }
+
+        function nextSlide() {
+            if (currentSlide < totalSlides - 1) {
+                currentSlide++;
+                updateSlide();
+            }
+        }
+
+        function prevSlide() {
+            if (currentSlide > 0) {
+                currentSlide--;
+                updateSlide();
+            }
+        }
+
+        function updateSlide() {
+            track.style.transform = `translateX(-${currentSlide * 100}vw)`;
+            currentPageEl.textContent = currentSlide + 1;
+            
+            // 更新导航点
+            document.querySelectorAll('.nav-dot').forEach((dot, i) => {
+                dot.classList.toggle('active', i === currentSlide);
+            });
+            
+            // 更新按钮状态
+            prevBtn.classList.toggle('disabled', currentSlide === 0);
+            nextBtn.classList.toggle('disabled', currentSlide === totalSlides - 1);
+
+            // 初始化当前页的图表
+            initChartsForSlide(currentSlide);
+        }
+
+        // 键盘翻页
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') {
+                e.preventDefault();
+                nextSlide();
+            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                prevSlide();
+            }
+        });
+
+        // 滚轮翻页
+        let isScrolling = false;
+        document.addEventListener('wheel', (e) => {
+            if (isScrolling) return;
+            isScrolling = true;
+            
+            if (e.deltaY > 0) {
+                nextSlide();
+            } else {
+                prevSlide();
+            }
+            
+            setTimeout(() => { isScrolling = false; }, 800);
+        }, { passive: true });
+
+        // 触摸翻页
+        let touchStartY = 0;
+        document.addEventListener('touchstart', (e) => {
+            touchStartY = e.touches[0].clientY;
+        }, { passive: true });
+
+        document.addEventListener('touchend', (e) => {
+            const touchEndY = e.changedTouches[0].clientY;
+            const diff = touchStartY - touchEndY;
+            
+            if (Math.abs(diff) > 50) {
+                if (diff > 0) {
+                    nextSlide();
+                } else {
+                    prevSlide();
+                }
+            }
+        }, { passive: true });
+
+        // 图表实例
+        let sizeChartInstance = null;
+        let pieChartInstance = null;
+
+        // 初始化图表
+        function initChartsForSlide(slideIndex) {
+            if (slideIndex === 4) {
+                setTimeout(() => {
+                    const sizeCtx = document.getElementById('sizeChart');
+                    if (sizeCtx && !sizeChartInstance) {
+                        sizeChartInstance = new Chart(sizeCtx, {
+                            type: 'bar',
+                            data: {
+                                labels: ['人类', '迅猛龙', '三角龙', '霸王龙', '腕龙'],
+                                datasets: [{
+                                    label: '身高(米)',
+                                    data: [1.7, 1.5, 3, 4, 12],
+                                    backgroundColor: ['#94a3b8', '#22C55E', '#FBBF24', '#EF4444', '#3B82F6']
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: { legend: { display: false } },
+                                scales: { y: { beginAtZero: true, title: { display: true, text: '身高(米)' } } }
+                            }
+                        });
+                    }
+
+                    const pieCtx = document.getElementById('pieChart');
+                    if (pieCtx && !pieChartInstance) {
+                        pieChartInstance = new Chart(pieCtx, {
+                            type: 'doughnut',
+                            data: {
+                                labels: ['兽脚类', '蜥脚类', '鸟臀类', '其他'],
+                                datasets: [{
+                                    data: [40, 25, 25, 10],
+                                    backgroundColor: ['#EF4444', '#3B82F6', '#FBBF24', '#22C55E'],
+                                    borderWidth: 3,
+                                    borderColor: '#fff'
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: { position: 'bottom', labels: { padding: 15, usePointStyle: true } }
+                                }
+                            }
+                        });
+                    }
+                }, 100);
+            }
+        }
+
+        // 响应式缩放
+        function scaleSlides() {
+            const slides = document.querySelectorAll('.slide');
+            slides.forEach(slide => {
+                const container = slide.parentElement;
+                if (slide && container) {
+                    const scale = Math.min(container.offsetWidth / 1280, container.offsetHeight / 720);
+                    slide.style.transform = `scale(${scale})`;
+                }
+            });
+        }
+
+        // 初始化
+        updateSlide();
+        window.addEventListener('resize', scaleSlides);
+        window.addEventListener('load', scaleSlides);
+    </script>
+</body>
+</html>

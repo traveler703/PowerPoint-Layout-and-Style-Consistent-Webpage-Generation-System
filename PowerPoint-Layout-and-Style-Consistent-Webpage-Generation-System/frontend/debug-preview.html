@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PPT 预览调试工具</title>
+    <script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .debug-header {
+            text-align: center;
+            margin-bottom: 24px;
+            color: #fff;
+        }
+        
+        .debug-header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        
+        .debug-header p {
+            font-size: 14px;
+            color: #888;
+        }
+        
+        /* 主容器：2x2 网格布局 */
+        .preview-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        
+        /* 每个预览卡片容器 */
+        .preview-card {
+            background: #252542;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        /* 预览卡片头部 */
+        .preview-card-header {
+            padding: 12px 16px;
+            background: #2d2d4a;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .preview-card-header h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+        }
+        
+        .preview-card-header .page-num {
+            font-size: 12px;
+            color: #888;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 4px 10px;
+            border-radius: 4px;
+        }
+        
+        /* 预览卡片主体 - 与原始 PreviewPanel.vue 完全一致 */
+        .preview-card-body {
+            width: 100%;
+            height: 450px;
+            background: #1a1a2e;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+        
+        /* iframe容器 - 使用flex居中，让内部内容自适应 */
+        .preview-slide-iframe-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #1a1a2e;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+        
+        /* 缩放器容器 - 保持16:9比例，内容在里面等比缩放 */
+        .preview-slide-scaler {
+            width: 100%;
+            max-width: 100%;
+            aspect-ratio: 16 / 9;
+            max-height: 100%;
+            position: relative;
+            background: white;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        .preview-slide-iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: white;
+        }
+        
+        /* 底部信息栏 */
+        .preview-card-footer {
+            padding: 12px 16px;
+            background: #2d2d4a;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .preview-card-footer .actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .preview-card-footer button {
+            padding: 4px 10px;
+            font-size: 11px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-open {
+            background: rgba(102, 126, 234, 0.2);
+            color: #667eea;
+        }
+        
+        .btn-open:hover {
+            background: rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-fullscreen {
+            background: rgba(80, 200, 120, 0.2);
+            color: #50c878;
+        }
+        
+        .btn-fullscreen:hover {
+            background: rgba(80, 200, 120, 0.4);
+        }
+        
+        /* 全屏模态框 */
+        .fullscreen-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        
+        .fullscreen-modal.active {
+            display: flex;
+        }
+        
+        .fullscreen-modal .close-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 32px;
+            color: #fff;
+            cursor: pointer;
+            background: none;
+            border: none;
+            padding: 10px;
+        }
+        
+        .fullscreen-modal .modal-scaler {
+            width: 90%;
+            max-width: 1280px;
+            aspect-ratio: 16 / 9;
+            position: relative;
+            background: white;
+            box-shadow: 0 10px 50px rgba(0, 0, 0, 0.5);
+        }
+        
+        .fullscreen-modal iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: white;
+        }
+        
+        /* 加载动画 */
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        .spinning {
+            animation: spin 1s linear infinite;
+        }
+        
+        /* 文件路径输入 */
+        .file-input-container {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .file-input-container input {
+            width: 80%;
+            max-width: 800px;
+            padding: 10px 16px;
+            font-size: 13px;
+            border: 1px solid #3d3d5c;
+            border-radius: 8px;
+            background: #252542;
+            color: #fff;
+            outline: none;
+        }
+        
+        .file-input-container input:focus {
+            border-color: #667eea;
+        }
+        
+        .file-input-container .hint {
+            font-size: 12px;
+            color: #666;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="debug-header">
+        <h1>PPT 预览调试工具</h1>
+        <p>四个页面同时预览，方便调试布局和样式 | 按 F5 刷新 | ESC 关闭全屏</p>
+    </div>
+    
+    <div class="file-input-container">
+        <input type="text" id="basePath" placeholder="输入HTML文件基础路径，例如: C:\Users\g3056\Desktop\PPT_proj\PowerPoint-Layout-and-Style-Consistent-Webpage-Generation-System\output\pages" 
+               value="C:\Users\g3056\Desktop\PPT_proj\PowerPoint-Layout-and-Style-Consistent-Webpage-Generation-System\output\pages">
+        <div class="hint">修改路径后按 Enter 或点击任意预览卡片的刷新按钮</div>
+    </div>
+    
+    <div class="preview-grid">
+        <!-- Page 1: Cover -->
+        <div class="preview-card" data-page="1">
+            <div class="preview-card-header">
+                <h3>01 封面页</h3>
+                <span class="page-num">封面</span>
+            </div>
+            <div class="preview-card-body">
+                <div class="preview-slide-iframe-container">
+                    <div class="preview-slide-scaler">
+                        <iframe 
+                            id="iframe-1" 
+                            class="preview-slide-iframe"
+                            sandbox="allow-same-origin allow-scripts"
+                        ></iframe>
+                    </div>
+                </div>
+            </div>
+            <div class="preview-card-footer">
+                <span id="path-1" style="font-size:11px;color:#666;"></span>
+                <div class="actions">
+                    <button class="btn-open" onclick="loadPage(1)">↻ 加载</button>
+                    <button class="btn-fullscreen" onclick="openFullscreen(1)">⛶ 全屏</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Page 2: TOC -->
+        <div class="preview-card" data-page="2">
+            <div class="preview-card-header">
+                <h3>02 目录页</h3>
+                <span class="page-num">目录</span>
+            </div>
+            <div class="preview-card-body">
+                <div class="preview-slide-iframe-container">
+                    <div class="preview-slide-scaler">
+                        <iframe 
+                            id="iframe-2" 
+                            class="preview-slide-iframe"
+                            sandbox="allow-same-origin allow-scripts"
+                        ></iframe>
+                    </div>
+                </div>
+            </div>
+            <div class="preview-card-footer">
+                <span id="path-2" style="font-size:11px;color:#666;"></span>
+                <div class="actions">
+                    <button class="btn-open" onclick="loadPage(2)">↻ 加载</button>
+                    <button class="btn-fullscreen" onclick="openFullscreen(2)">⛶ 全屏</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Page 3: Section -->
+        <div class="preview-card" data-page="3">
+            <div class="preview-card-header">
+                <h3>03 章节页</h3>
+                <span class="page-num">章节</span>
+            </div>
+            <div class="preview-card-body">
+                <div class="preview-slide-iframe-container">
+                    <div class="preview-slide-scaler">
+                        <iframe 
+                            id="iframe-3" 
+                            class="preview-slide-iframe"
+                            sandbox="allow-same-origin allow-scripts"
+                        ></iframe>
+                    </div>
+                </div>
+            </div>
+            <div class="preview-card-footer">
+                <span id="path-3" style="font-size:11px;color:#666;"></span>
+                <div class="actions">
+                    <button class="btn-open" onclick="loadPage(3)">↻ 加载</button>
+                    <button class="btn-fullscreen" onclick="openFullscreen(3)">⛶ 全屏</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Page 4: Content -->
+        <div class="preview-card" data-page="4">
+            <div class="preview-card-header">
+                <h3>04 内容页</h3>
+                <span class="page-num">内容</span>
+            </div>
+            <div class="preview-card-body">
+                <div class="preview-slide-iframe-container">
+                    <div class="preview-slide-scaler">
+                        <iframe 
+                            id="iframe-4" 
+                            class="preview-slide-iframe"
+                            sandbox="allow-same-origin allow-scripts"
+                        ></iframe>
+                    </div>
+                </div>
+            </div>
+            <div class="preview-card-footer">
+                <span id="path-4" style="font-size:11px;color:#666;"></span>
+                <div class="actions">
+                    <button class="btn-open" onclick="loadPage(4)">↻ 加载</button>
+                    <button class="btn-fullscreen" onclick="openFullscreen(4)">⛶ 全屏</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 全屏模态框 -->
+    <div class="fullscreen-modal" id="fullscreen-modal">
+        <button class="close-btn" onclick="closeFullscreen()">×</button>
+        <div class="modal-scaler">
+            <iframe id="fullscreen-iframe" sandbox="allow-same-origin allow-scripts"></iframe>
+        </div>
+    </div>
+    
+    <script>
+        // 文件名配置
+        const fileNames = {
+            1: '01_cover_元宝：你的全场景人工智能助手.html',
+            2: '02_toc_目录.html',
+            3: '03_section_.html',
+            4: '04_content_我是谁.html'
+        };
+        
+        // 缓存的HTML内容
+        const pageContents = {};
+        
+        // 获取基础路径
+        function getBasePath() {
+            const input = document.getElementById('basePath').value.trim();
+            // 移除末尾的斜杠或反斜杠
+            return input.replace(/[\/\\]+$/, '');
+        }
+        
+        // 清理HTML内联样式中的固定尺寸
+        function cleanInlineStyles(html) {
+            if (!html) return '';
+            let cleaned = html;
+            
+            const sizeProps = ['width', 'height', 'max-width', 'min-width', 'max-height', 'min-height'];
+            
+            sizeProps.forEach(prop => {
+                const regex = new RegExp(`${prop}[\\s]*:[\\s]*\\d+px[\\s]*;?`, 'gi');
+                cleaned = cleaned.replace(regex, (match) => {
+                    return match.endsWith(';') ? ';' : '';
+                });
+            });
+            
+            // 清理多余分号
+            cleaned = cleaned.replace(/;(\s*")/g, '$1');
+            cleaned = cleaned.replace(/style="\s*;?\s*"/g, '');
+            
+            // 清理body的100vh设置
+            cleaned = cleaned.replace(/body\s*\{[^}]*height:\s*100vh[^}]*\}/gi, (match) => {
+                return match.replace(/height:\s*100vh;?/gi, '');
+            });
+            
+            return cleaned;
+        }
+        
+        // 提取body内容
+        function extractBodyContent(html) {
+            if (!html) return '';
+            
+            // 提取body内的内容
+            const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+            if (bodyMatch) {
+                return bodyMatch[1];
+            }
+            
+            return html;
+        }
+        
+        // 获取完整的slide HTML
+        function getSlideHtml(fullHtml) {
+            const bodyContent = extractBodyContent(fullHtml);
+            const cleaned = cleanInlineStyles(bodyContent);
+            
+            return `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/4.4.1/chart.umd.js"><\/script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+            overflow: hidden; 
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .slides-wrapper, .slides-track, .slide-container {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+${cleaned}
+</body>
+</html>`;
+        }
+        
+        // 加载单个页面
+        async function loadPage(pageNum) {
+            const basePath = getBasePath();
+            const fileName = fileNames[pageNum];
+            const fullPath = `${basePath}\\${fileName}`;
+            const iframe = document.getElementById(`iframe-${pageNum}`);
+            const pathDisplay = document.getElementById(`path-${pageNum}`);
+            
+            pathDisplay.textContent = fullPath;
+            
+            try {
+                // 使用 file:// 协议加载本地文件
+                const fileUrl = `file:///${fullPath.replace(/\\/g, '/')}`;
+                console.log(`加载页面 ${pageNum}: ${fileUrl}`);
+                
+                const response = await fetch(fileUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const html = await response.text();
+                
+                // 处理HTML
+                const processedHtml = getSlideHtml(html);
+                
+                // 缓存内容
+                pageContents[pageNum] = processedHtml;
+                
+                // 设置iframe内容
+                iframe.srcdoc = processedHtml;
+                
+            } catch (err) {
+                console.error(`加载页面 ${pageNum} 失败:`, err);
+                pathDisplay.textContent = `错误: ${err.message}`;
+            }
+        }
+        
+        // 加载所有页面
+        async function loadAllPages() {
+            for (let i = 1; i <= 4; i++) {
+                await loadPage(i);
+            }
+        }
+        
+        // 全屏功能
+        function openFullscreen(pageNum) {
+            const modal = document.getElementById('fullscreen-modal');
+            const iframe = document.getElementById('fullscreen-iframe');
+            const content = pageContents[pageNum];
+            
+            if (content) {
+                iframe.srcdoc = content;
+            } else {
+                loadPage(pageNum).then(() => {
+                    iframe.srcdoc = pageContents[pageNum];
+                });
+            }
+            
+            modal.classList.add('active');
+        }
+        
+        function closeFullscreen() {
+            const modal = document.getElementById('fullscreen-modal');
+            const iframe = document.getElementById('fullscreen-iframe');
+            
+            modal.classList.remove('active');
+            iframe.srcdoc = '';
+        }
+        
+        // ESC关闭全屏
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeFullscreen();
+            }
+            if (e.key === 'F5') {
+                e.preventDefault();
+                loadAllPages();
+            }
+        });
+        
+        // Enter键加载
+        document.getElementById('basePath').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                loadAllPages();
+            }
+        });
+        
+        // 页面加载完成后自动加载
+        window.addEventListener('load', loadAllPages);
+    </script>
+</body>
+</html>

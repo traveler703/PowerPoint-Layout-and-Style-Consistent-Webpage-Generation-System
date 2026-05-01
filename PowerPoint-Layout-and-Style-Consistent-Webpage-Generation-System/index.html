@@ -1,0 +1,4145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SEEM Studio - 智能PPT创作平台</title>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #09090b;
+      --bg-secondary: #18181b;
+      --bg-tertiary: #27272a;
+      --bg-elevated: #3f3f46;
+      --bg-card: #1c1c1f;
+      --border: #27272a;
+      --border-light: #3f3f46;
+      --text-primary: #fafafa;
+      --text-secondary: #a1a1aa;
+      --text-muted: #71717a;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --accent-bg: rgba(99, 102, 241, 0.15);
+      --accent-green: #22c55e;
+      --accent-green-bg: rgba(34, 197, 94, 0.15);
+      --accent-orange: #f59e0b;
+      --accent-orange-bg: rgba(245, 158, 11, 0.15);
+      --accent-pink: #ec4899;
+      --accent-purple: #a855f7;
+      --radius-sm: 6px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --radius-xl: 16px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* ===== APP LAYOUT ===== */
+    .app {
+      display: none;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .app.active { display: flex; flex-direction: column; }
+
+    /* ===== WORKSPACE VIEW (项目管理层) ===== */
+    .workspace-view {
+      display: none;
+      flex-direction: column;
+      height: 100vh;
+      background: var(--bg-primary);
+    }
+
+    .workspace-view.active { display: flex; }
+
+    /* Workspace Header */
+    .workspace-header {
+      height: 64px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      flex-shrink: 0;
+    }
+
+    .workspace-header-left {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-purple) 100%);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .logo-text {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.5px;
+    }
+
+    .logo-text span {
+      color: var(--text-muted);
+      font-weight: 400;
+      font-size: 13px;
+      margin-left: 8px;
+    }
+
+    .workspace-stats {
+      display: flex;
+      gap: 24px;
+      margin-left: 48px;
+    }
+
+    .workspace-stat {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .workspace-stat-value {
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .workspace-header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 18px;
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      border: none;
+      font-family: inherit;
+    }
+
+    .btn svg { width: 16px; height: 16px; }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-secondary);
+    }
+
+    .btn-ghost:hover {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .btn-secondary {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-elevated);
+      border-color: var(--border-light);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .btn-primary:hover { background: var(--accent-hover); }
+
+    /* Workspace Main */
+    .workspace-main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 32px;
+    }
+
+    /* Toolbar */
+    .workspace-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+
+    .toolbar-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .search-box {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 8px 14px;
+      width: 280px;
+    }
+
+    .search-box svg { width: 16px; height: 16px; color: var(--text-muted); flex-shrink: 0; }
+
+    .search-box input {
+      background: none;
+      border: none;
+      outline: none;
+      color: var(--text-primary);
+      font-size: 13px;
+      width: 100%;
+      font-family: inherit;
+    }
+
+    .search-box input::placeholder { color: var(--text-muted); }
+
+    .filter-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      color: var(--text-secondary);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .filter-btn:hover {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .filter-btn svg { width: 14px; height: 14px; }
+
+    .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .view-toggle {
+      display: flex;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+
+    .view-toggle-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .view-toggle-btn:hover { color: var(--text-primary); }
+
+    .view-toggle-btn.active {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .view-toggle-btn svg { width: 16px; height: 16px; }
+
+    /* Project Grid */
+    .projects-container {
+      display: grid;
+      gap: 20px;
+    }
+
+    .projects-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+
+    .projects-list {
+      grid-template-columns: 1fr;
+    }
+
+    /* Project Card */
+    .project-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+
+    .project-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+    }
+
+    .project-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .project-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      flex-shrink: 0;
+    }
+
+    .project-icon.business { background: linear-gradient(135deg, #1e3a5f, #2d5a87); }
+    .project-icon.academic { background: linear-gradient(135deg, #4a5568, #718096); }
+    .project-icon.vibrant { background: linear-gradient(135deg, #dd6b20, #ed8936); }
+    .project-icon.tech { background: linear-gradient(135deg, #6b46c1, #9f7aea); }
+    .project-icon.nature { background: linear-gradient(135deg, #2f855a, #48bb78); }
+    .project-icon.minimal { background: linear-gradient(135deg, #718096, #a0aec0); }
+
+    .project-menu-btn {
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-sm);
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .project-menu-btn:hover {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .project-menu-btn svg { width: 16px; height: 16px; }
+
+    .project-name {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: var(--text-primary);
+    }
+
+    .project-desc {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .project-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .project-meta-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .project-meta-item svg { width: 12px; height: 12px; }
+
+    .project-preview {
+      height: 120px;
+      background: var(--bg-secondary);
+      border-radius: var(--radius-md);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .project-preview::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, var(--accent-bg), transparent);
+      opacity: 0.5;
+    }
+
+    .project-preview-text {
+      font-size: 32px;
+      z-index: 1;
+    }
+
+    /* Project List Item */
+    .project-list-item {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .project-list-item:hover {
+      border-color: var(--accent);
+      background: var(--bg-secondary);
+    }
+
+    .project-list-item .project-icon {
+      width: 40px;
+      height: 40px;
+      font-size: 20px;
+    }
+
+    .project-list-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .project-list-info .project-name {
+      margin-bottom: 2px;
+    }
+
+    .project-list-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 80px 40px;
+      max-width: 400px;
+      margin: 0 auto;
+    }
+
+    .empty-state-icon {
+      width: 80px;
+      height: 80px;
+      background: var(--bg-secondary);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 24px;
+      font-size: 36px;
+    }
+
+    .empty-state h3 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .empty-state p {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+      line-height: 1.6;
+    }
+
+    /* ===== PROJECT VIEW (项目内部工作流) ===== */
+    .project-view {
+      display: none;
+      flex-direction: column;
+      height: 100vh;
+      background: var(--bg-primary);
+    }
+
+    .project-view.active { display: flex; }
+
+    /* Project Header */
+    .project-header {
+      height: 56px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      flex-shrink: 0;
+    }
+
+    .project-header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .back-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 13px;
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+      transition: all 0.15s;
+    }
+
+    .back-btn:hover {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .back-btn svg { width: 16px; height: 16px; }
+
+    .project-title {
+      font-size: 15px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .project-title-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+
+    .project-header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Project Workflow Layout */
+    .project-layout {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 240px 1fr 280px;
+      overflow: hidden;
+    }
+
+    /* Project Sidebar - Steps */
+    .project-sidebar {
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .project-sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .project-sidebar-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+    }
+
+    .workflow-steps {
+      padding: 12px;
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .workflow-step {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all 0.15s;
+      margin-bottom: 4px;
+    }
+
+    .workflow-step:hover {
+      background: var(--bg-tertiary);
+    }
+
+    .workflow-step.active {
+      background: var(--accent-bg);
+    }
+
+    .workflow-step.completed {
+      background: var(--accent-green-bg);
+    }
+
+    .step-indicator {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 600;
+      flex-shrink: 0;
+      background: var(--bg-tertiary);
+      color: var(--text-muted);
+    }
+
+    .workflow-step.active .step-indicator {
+      background: var(--accent);
+      color: white;
+    }
+
+    .workflow-step.completed .step-indicator {
+      background: var(--accent-green);
+      color: white;
+    }
+
+    .workflow-step.completed .step-indicator::after {
+      content: '✓';
+    }
+
+    .step-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .step-title {
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 2px;
+    }
+
+    .step-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* Project Main Content */
+    .project-main {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .project-main-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .project-main-title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .project-main-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+    }
+
+    /* Step Content Panels */
+    .step-panel {
+      display: none;
+    }
+
+    .step-panel.active { display: block; }
+
+    /* Step 1: Document Input */
+    .document-input-area {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      height: 100%;
+    }
+
+    .input-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .input-panel-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .input-panel-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .input-tabs {
+      display: flex;
+      gap: 4px;
+    }
+
+    .input-tab {
+      padding: 6px 12px;
+      font-size: 12px;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+      transition: all 0.15s;
+    }
+
+    .input-tab:hover { color: var(--text-primary); }
+
+    .input-tab.active {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .input-panel-body {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .text-input-area {
+      flex: 1;
+      padding: 16px;
+    }
+
+    .text-input-area textarea {
+      width: 100%;
+      height: 100%;
+      background: none;
+      border: none;
+      outline: none;
+      resize: none;
+      color: var(--text-primary);
+      font-size: 13px;
+      line-height: 1.7;
+      font-family: inherit;
+    }
+
+    .text-input-area textarea::placeholder { color: var(--text-muted); }
+
+    .file-upload-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+    }
+
+    .drop-zone {
+      flex: 1;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius-md);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      transition: all 0.15s;
+      cursor: pointer;
+    }
+
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-bg);
+    }
+
+    .drop-zone-icon {
+      width: 48px;
+      height: 48px;
+      background: var(--bg-tertiary);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+
+    .drop-zone-text {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .drop-zone-text span {
+      color: var(--accent);
+      cursor: pointer;
+    }
+
+    .drop-zone-formats {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .input-panel-footer {
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .input-hint {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* Parsed Result Panel */
+    .parsed-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .parsed-panel-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .parsed-panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    .parsed-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .parsed-summary {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .parsed-section {
+      margin-bottom: 16px;
+    }
+
+    .parsed-section-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .parsed-section-icon {
+      width: 24px;
+      height: 24px;
+      background: var(--bg-tertiary);
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+    }
+
+    .parsed-section-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .parsed-section-content {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      padding-left: 32px;
+    }
+
+    .parsed-bullets {
+      list-style: none;
+      padding-left: 32px;
+    }
+
+    .parsed-bullets li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+
+    .parsed-bullets li::before {
+      content: '';
+      width: 4px;
+      height: 4px;
+      background: var(--accent);
+      border-radius: 50%;
+    }
+
+    /* Step 2: Outline Editor - New Design */
+    .outline-editor {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 16px;
+      height: 100%;
+    }
+
+    .outline-tree-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .outline-tree-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .outline-tree-header h4 {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .outline-tree-toolbar {
+      display: flex;
+      gap: 4px;
+    }
+
+    /* Page Editor Panel */
+    .page-editor-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .page-editor-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .page-editor-header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .page-editor-header-left h4 {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .page-badge {
+      padding: 2px 8px;
+      background: var(--accent-bg);
+      color: var(--accent);
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .page-editor-toolbar {
+      display: flex;
+      gap: 4px;
+    }
+
+    .toolbar-btn {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+      transition: all 0.15s;
+    }
+
+    .toolbar-btn:hover {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .toolbar-btn.active {
+      background: var(--accent-bg);
+      color: var(--accent);
+    }
+
+    .toolbar-btn svg { width: 16px; height: 16px; }
+
+    .page-editor-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    .editor-section {
+      margin-bottom: 20px;
+    }
+
+    .editor-section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .editor-section-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .editor-section-title svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    /* Text Input */
+    .text-input-group {
+      margin-bottom: 12px;
+    }
+
+    .text-input-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    .text-input {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      color: var(--text-primary);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      transition: all 0.15s;
+    }
+
+    .text-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-bg);
+    }
+
+    .text-input::placeholder { color: var(--text-muted); }
+
+    .text-area {
+      min-height: 80px;
+      resize: vertical;
+      line-height: 1.6;
+    }
+
+    /* Image Upload Area */
+    .image-upload-area {
+      background: var(--bg-secondary);
+      border: 2px dashed var(--border);
+      border-radius: var(--radius-md);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .image-upload-area:hover {
+      border-color: var(--accent);
+      background: var(--accent-bg);
+    }
+
+    .image-upload-area.has-image {
+      border-style: solid;
+      padding: 0;
+    }
+
+    .image-upload-area.has-image .image-upload-preview {
+      display: block;
+    }
+
+    .image-upload-area.has-image .image-upload-placeholder {
+      display: none;
+    }
+
+    .image-upload-placeholder {
+      text-align: center;
+    }
+
+    .image-upload-icon {
+      width: 40px;
+      height: 40px;
+      background: var(--bg-tertiary);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 8px;
+      font-size: 18px;
+    }
+
+    .image-upload-text {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .image-upload-text span {
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    .image-upload-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .image-upload-preview {
+      display: none;
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+
+    .image-upload-preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .image-upload-preview .image-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+
+    .image-upload-area:hover .image-overlay {
+      opacity: 1;
+    }
+
+    .image-remove-btn {
+      padding: 6px 12px;
+      background: #ef4444;
+      color: white;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .image-remove-btn svg { width: 14px; height: 14px; }
+
+    /* Logo Upload */
+    .logo-upload-area {
+      display: flex;
+      gap: 12px;
+    }
+
+    .logo-upload-item {
+      flex: 1;
+    }
+
+    .logo-upload-item label {
+      display: block;
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .logo-upload-box {
+      aspect-ratio: 1;
+      background: var(--bg-secondary);
+      border: 2px dashed var(--border);
+      border-radius: var(--radius-md);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s;
+      position: relative;
+      overflow: hidden;
+      min-height: 60px;
+    }
+
+    .logo-upload-box:hover {
+      border-color: var(--accent);
+      background: var(--accent-bg);
+    }
+
+    .logo-upload-box.has-logo {
+      border-style: solid;
+    }
+
+    .logo-upload-box svg {
+      width: 20px;
+      height: 20px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .logo-upload-box span {
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    .logo-upload-box img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      padding: 8px;
+    }
+
+    /* Bullet Points Editor */
+    .bullet-editor {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .bullet-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .bullet-item .bullet-handle {
+      color: var(--accent);
+      cursor: grab;
+    }
+
+    .bullet-item .bullet-handle svg { width: 14px; height: 14px; }
+
+    .bullet-item input {
+      flex: 1;
+    }
+
+    .bullet-item .bullet-remove {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+      opacity: 0;
+      transition: all 0.15s;
+    }
+
+    .bullet-item:hover .bullet-remove {
+      opacity: 1;
+    }
+
+    .bullet-item .bullet-remove:hover {
+      background: rgba(239, 68, 68, 0.15);
+      color: #ef4444;
+    }
+
+    .bullet-item .bullet-remove svg { width: 14px; height: 14px; }
+
+    .add-bullet-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px;
+      background: var(--bg-secondary);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius-md);
+      color: var(--text-muted);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .add-bullet-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-bg);
+    }
+
+    .add-bullet-btn svg { width: 14px; height: 14px; }
+
+    /* Page Thumbnails */
+    .page-thumbnails-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .page-thumbnails-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .page-thumbnails-header h4 {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .page-count {
+      font-size: 11px;
+      color: var(--text-muted);
+      background: var(--bg-tertiary);
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+
+    .page-thumbnails-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .page-thumb {
+      background: var(--bg-secondary);
+      border: 2px solid transparent;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .page-thumb:hover {
+      border-color: var(--border-light);
+    }
+
+    .page-thumb.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-bg);
+    }
+
+    .page-thumb-preview {
+      aspect-ratio: 16/9;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      color: var(--text-secondary);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .page-thumb-preview img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0.3;
+    }
+
+    .page-thumb-preview span {
+      position: relative;
+      z-index: 1;
+    }
+
+    .page-thumb-info {
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .page-thumb-title {
+      font-size: 11px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 120px;
+    }
+
+    .page-thumb-num {
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    /* Outline Tree Styles */
+    .outline-tree-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+    }
+
+    .outline-node {
+      margin-bottom: 2px;
+    }
+
+    .outline-node-content {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .outline-node-content:hover {
+      background: var(--bg-tertiary);
+    }
+
+    .outline-node-content.selected {
+      background: var(--accent-bg);
+    }
+
+    .outline-expand {
+      width: 16px;
+      height: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+
+    .outline-expand.hidden { visibility: hidden; }
+
+    .outline-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+    }
+
+    .outline-icon.cover { background: linear-gradient(135deg, var(--accent), var(--accent-purple)); }
+    .outline-icon.section { background: var(--accent-orange-bg); }
+    .outline-icon.content { background: var(--accent-green-bg); }
+    .outline-icon.stat { background: var(--accent-purple); opacity: 0.3; }
+
+    .outline-text {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .outline-title {
+      font-size: 12px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .outline-subtitle {
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    .outline-children {
+      padding-left: 24px;
+      margin-top: 2px;
+    }
+
+    /* Step 3: Style Selection */
+    .style-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 20px;
+    }
+
+    .style-card {
+      background: var(--bg-card);
+      border: 2px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .style-card:hover {
+      border-color: var(--accent-hover);
+      transform: translateY(-2px);
+    }
+
+    .style-card.selected {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-bg);
+    }
+
+    .style-preview {
+      height: 140px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .style-preview-content {
+      text-align: center;
+      z-index: 1;
+    }
+
+    .style-preview-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .style-preview-subtitle {
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    .style-info {
+      padding: 16px;
+    }
+
+    .style-name {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .style-desc {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .style-colors {
+      display: flex;
+      gap: 6px;
+      margin-top: 12px;
+    }
+
+    .style-color {
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+
+    /* Step 4: Preview */
+    .preview-container {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      gap: 16px;
+      height: 100%;
+      align-items: start;
+    }
+
+    /* Preview Pages Panel (Left) */
+    .preview-pages-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      max-height: 100%;
+    }
+
+    .preview-pages-header {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .preview-pages-header h4 {
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .preview-pages-body {
+      overflow-y: auto;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .preview-page-thumb {
+      background: var(--bg-secondary);
+      border: 2px solid transparent;
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.15s;
+      flex-shrink: 0;
+    }
+
+    .preview-page-thumb:hover {
+      border-color: var(--border-light);
+    }
+
+    .preview-page-thumb.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-bg);
+    }
+
+    .preview-page-thumb-preview {
+      height: 45px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      color: var(--text-secondary);
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(135deg, #1e3a5f, #2d5a87);
+    }
+
+    .preview-page-thumb-preview.layout-content {
+      background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+      color: #333;
+    }
+
+    .preview-page-thumb-preview img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0.4;
+    }
+
+    .preview-page-thumb-preview span {
+      position: relative;
+      z-index: 1;
+      font-size: 10px;
+    }
+
+    .preview-page-thumb-info {
+      padding: 4px 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .preview-page-thumb-title {
+      font-size: 10px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100px;
+    }
+
+    .preview-page-thumb-num {
+      font-size: 9px;
+      color: var(--text-muted);
+    }
+
+    /* Preview Main Panel (Right) */
+    .preview-main-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      align-self: stretch;
+    }
+
+    .preview-main-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg-secondary);
+    }
+
+    .preview-main-header span {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .preview-main-body {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-primary);
+      padding: 16px;
+      overflow: hidden;
+    }
+
+    .preview-slide-display {
+      aspect-ratio: 16/9;
+      width: 100%;
+      height: 100%;
+      max-height: 100%;
+      background: linear-gradient(135deg, #1e3a5f, #2d5a87);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 25px 80px rgba(0, 0, 0, 0.4);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 48px;
+      color: white;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .preview-slide-display::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), transparent);
+    }
+
+    .preview-slide-display > * {
+      position: relative;
+      z-index: 1;
+    }
+
+    .preview-slide-display h1 {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      text-align: center;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    }
+
+    .preview-slide-display p {
+      font-size: 16px;
+      opacity: 0.85;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .preview-slide-bullets {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px 24px;
+      margin-top: 16px;
+    }
+
+    .preview-slide-bullets span {
+      font-size: 14px;
+      opacity: 0.9;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .preview-slide-bullets span::before {
+      content: '•';
+      color: var(--accent);
+      font-size: 18px;
+    }
+
+    /* Preview Navigation */
+    .preview-nav {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      padding: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    .preview-nav-btn {
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-tertiary);
+      border: none;
+      border-radius: var(--radius-md);
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .preview-nav-btn:hover {
+      background: var(--accent);
+    }
+
+    .preview-nav-btn svg { width: 20px; height: 20px; }
+
+    .preview-page-info {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    /* Project Assistant Panel */
+    .project-assistant {
+      background: var(--bg-secondary);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .assistant-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .assistant-avatar {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-purple));
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+
+    .assistant-info h4 {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .assistant-info p {
+      font-size: 11px;
+      color: var(--accent-green);
+    }
+
+    .assistant-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    .assistant-section {
+      margin-bottom: 20px;
+    }
+
+    .assistant-section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .assistant-suggestion {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 12px;
+      margin-bottom: 8px;
+    }
+
+    .assistant-suggestion-text {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+      margin-bottom: 8px;
+    }
+
+    .assistant-suggestion-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .assistant-btn {
+      padding: 4px 10px;
+      font-size: 11px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+    }
+
+    .assistant-btn-apply {
+      background: var(--accent);
+      color: white;
+    }
+
+    .assistant-btn-apply:hover { background: var(--accent-hover); }
+
+    .assistant-btn-dismiss {
+      background: var(--bg-tertiary);
+      color: var(--text-secondary);
+    }
+
+    .assistant-btn-dismiss:hover { background: var(--bg-elevated); }
+
+    .assistant-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .assistant-stat {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 12px;
+      text-align: center;
+    }
+
+    .assistant-stat-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .assistant-stat-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .assistant-progress {
+      margin-top: 16px;
+    }
+
+    .assistant-progress-bar {
+      height: 8px;
+      background: var(--bg-tertiary);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    .assistant-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-purple));
+      border-radius: 4px;
+      transition: width 0.3s;
+    }
+
+    .assistant-progress-text {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    /* ===== MODALS ===== */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .modal-overlay.active { display: flex; }
+
+    .modal {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      width: 480px;
+      max-width: 90vw;
+      max-height: 90vh;
+      overflow: hidden;
+      animation: modalIn 0.2s ease;
+    }
+
+    @keyframes modalIn {
+      from {
+        opacity: 0;
+        transform: scale(0.95) translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+
+    .modal-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .modal-title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .modal-close {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+      transition: all 0.15s;
+    }
+
+    .modal-close:hover {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .modal-close svg { width: 20px; height: 20px; }
+
+    .modal-body {
+      padding: 24px;
+      overflow-y: auto;
+      max-height: 60vh;
+    }
+
+    .modal-footer {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 8px;
+      color: var(--text-secondary);
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      color: var(--text-primary);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      transition: all 0.15s;
+    }
+
+    .form-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-bg);
+    }
+
+    .form-input::placeholder { color: var(--text-muted); }
+
+    .form-select {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 36px;
+    }
+
+    /* Context Menu */
+    .context-menu {
+      position: fixed;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 6px;
+      min-width: 160px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+      z-index: 1001;
+      display: none;
+    }
+
+    .context-menu.active { display: block; }
+
+    .context-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .context-menu-item:hover {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .context-menu-item.danger:hover {
+      background: rgba(239, 68, 68, 0.15);
+      color: #ef4444;
+    }
+
+    .context-menu-item svg { width: 14px; height: 14px; }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+      z-index: 1002;
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s ease;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .toast-icon {
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .toast.success .toast-icon { color: var(--accent-green); }
+    .toast.error .toast-icon { color: #ef4444; }
+
+    .toast-message { font-size: 13px; }
+
+    /* Animations */
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .project-card {
+      animation: slideUp 0.3s ease forwards;
+    }
+
+    .project-card:nth-child(1) { animation-delay: 0ms; }
+    .project-card:nth-child(2) { animation-delay: 50ms; }
+    .project-card:nth-child(3) { animation-delay: 100ms; }
+    .project-card:nth-child(4) { animation-delay: 150ms; }
+    .project-card:nth-child(5) { animation-delay: 200ms; }
+    .project-card:nth-child(6) { animation-delay: 250ms; }
+  </style>
+</head>
+<body>
+  <!-- ===== WORKSPACE VIEW (项目管理层) ===== -->
+  <div class="workspace-view active" id="workspaceView">
+    <header class="workspace-header">
+      <div class="workspace-header-left">
+        <div class="logo">
+          <div class="logo-icon">S</div>
+          <span class="logo-text">SEEM Studio</span>
+        </div>
+        <div class="workspace-stats">
+          <div class="workspace-stat">
+            <span class="workspace-stat-value" id="projectCount">5</span>
+            <span>个项目</span>
+          </div>
+          <div class="workspace-stat">
+            <span class="workspace-stat-value" id="totalSlides">48</span>
+            <span>张幻灯片</span>
+          </div>
+        </div>
+      </div>
+      <div class="workspace-header-right">
+        <button class="btn btn-secondary" onclick="openImportProjectModal()">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+          </svg>
+          导入项目
+        </button>
+        <button class="btn btn-primary" onclick="openNewProjectModal()">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+          新建项目
+        </button>
+      </div>
+    </header>
+
+    <main class="workspace-main">
+      <div class="workspace-toolbar">
+        <div class="toolbar-left">
+          <div class="search-box">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+            <input type="text" placeholder="搜索项目..." id="searchInput" oninput="filterProjects()">
+          </div>
+          <button class="filter-btn">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
+            </svg>
+            筛选
+          </button>
+          <button class="filter-btn" onclick="sortProjects()">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"/>
+            </svg>
+            排序
+          </button>
+        </div>
+        <div class="toolbar-right">
+          <div class="view-toggle">
+            <button class="view-toggle-btn active" onclick="setView('grid')" id="gridViewBtn">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+              </svg>
+            </button>
+            <button class="view-toggle-btn" onclick="setView('list')" id="listViewBtn">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="projects-container projects-grid" id="projectsContainer">
+        <!-- Projects will be rendered here -->
+      </div>
+
+      <!-- Empty State -->
+      <div class="empty-state" id="emptyState" style="display: none;">
+        <div class="empty-state-icon">📊</div>
+        <h3>还没有项目</h3>
+        <p>创建您的第一个项目，开始使用SEEM Studio快速生成专业PPT。</p>
+        <button class="btn btn-primary" onclick="openNewProjectModal()">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+          新建项目
+        </button>
+      </div>
+    </main>
+  </div>
+
+  <!-- ===== PROJECT VIEW (项目内部工作流) ===== -->
+  <div class="project-view" id="projectView">
+    <header class="project-header">
+      <div class="project-header-left">
+        <button class="back-btn" onclick="goToWorkspace()">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+          返回工作空间
+        </button>
+        <div class="project-title">
+          <div class="project-title-icon" id="projectTitleIcon">📊</div>
+          <span id="projectTitle">项目名称</span>
+        </div>
+      </div>
+      <div class="project-header-right">
+        <button class="btn btn-ghost">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
+          </svg>
+          分享
+        </button>
+        <button class="btn btn-ghost">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+          </svg>
+          导出
+        </button>
+        <button class="btn btn-primary" onclick="generatePPT()">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+          生成PPT
+        </button>
+      </div>
+    </header>
+
+    <div class="project-layout">
+      <!-- Project Sidebar - Workflow Steps -->
+      <aside class="project-sidebar">
+        <div class="project-sidebar-header">
+          <span class="project-sidebar-title">工作流程</span>
+        </div>
+        <nav class="workflow-steps">
+          <div class="workflow-step active" data-step="input" onclick="switchWorkflowStep('input')">
+            <div class="step-indicator">1</div>
+            <div class="step-info">
+              <div class="step-title">输入文档</div>
+              <div class="step-desc">粘贴或上传文档</div>
+            </div>
+          </div>
+          <div class="workflow-step" data-step="outline" onclick="switchWorkflowStep('outline')">
+            <div class="step-indicator">2</div>
+            <div class="step-info">
+              <div class="step-title">编辑大纲</div>
+              <div class="step-desc">调整内容结构</div>
+            </div>
+          </div>
+          <div class="workflow-step" data-step="style" onclick="switchWorkflowStep('style')">
+            <div class="step-indicator">3</div>
+            <div class="step-info">
+              <div class="step-title">应用风格</div>
+              <div class="step-desc">选择视觉主题</div>
+            </div>
+          </div>
+          <div class="workflow-step" data-step="preview" onclick="switchWorkflowStep('preview')">
+            <div class="step-indicator">4</div>
+            <div class="step-info">
+              <div class="step-title">预览导出</div>
+              <div class="step-desc">查看并下载</div>
+            </div>
+          </div>
+        </nav>
+      </aside>
+
+      <!-- Project Main Content -->
+      <main class="project-main">
+        <div class="project-main-header">
+          <h2 class="project-main-title" id="currentStepTitle">输入文档</h2>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-ghost" id="prevStepBtn" onclick="prevStep()" style="display: none;">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+              </svg>
+              上一步
+            </button>
+            <button class="btn btn-primary" id="nextStepBtn" onclick="nextStep()">
+              下一步
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="project-main-content">
+          <!-- Step 1: Document Input -->
+          <div class="step-panel active" data-panel="input">
+            <div class="document-input-area">
+              <div class="input-panel">
+                <div class="input-panel-header">
+                  <span class="input-panel-title">文档输入</span>
+                  <div class="input-tabs">
+                    <button class="input-tab active" onclick="setInputMode('paste')">粘贴文本</button>
+                    <button class="input-tab" onclick="setInputMode('upload')">上传文件</button>
+                  </div>
+                </div>
+                <div class="input-panel-body">
+                  <div class="text-input-area" id="textInputArea">
+                    <textarea id="documentText" placeholder="在此粘贴您的文档内容...
+
+支持格式：
+• Markdown 文档
+• Word 文档 (.docx)
+• PDF 文档
+• 纯文本
+
+粘贴后点击「开始解析」按钮，系统将自动分析内容结构并生成PPT大纲。"></textarea>
+                  </div>
+                  <div class="file-upload-area" id="fileUploadArea" style="display: none;">
+                    <div class="drop-zone" id="dropZone">
+                      <div class="drop-zone-icon">📄</div>
+                      <div class="drop-zone-text">将文件拖拽到此处，或<span>点击选择文件</span></div>
+                      <div class="drop-zone-formats">支持 .md .docx .pdf .txt 格式</div>
+                    </div>
+                    <input type="file" id="fileInput" accept=".md,.docx,.pdf,.txt" style="display: none;">
+                  </div>
+                </div>
+                <div class="input-panel-footer">
+                  <span class="input-hint" id="charCount">0 字</span>
+                  <button class="btn btn-primary" onclick="parseDocument()">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                    </svg>
+                    开始解析
+                  </button>
+                </div>
+              </div>
+
+              <div class="parsed-panel" id="parsedPanel">
+                <div class="parsed-panel-header">
+                  <span class="input-panel-title">解析结果</span>
+                  <button class="toolbar-btn" onclick="refreshParse()">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                  </button>
+                </div>
+                <div class="parsed-panel-body" id="parsedBody">
+                  <div style="text-align: center; padding: 60px 20px; color: var(--text-muted);">
+                    <div style="font-size: 48px; margin-bottom: 16px;">📋</div>
+                    <p>粘贴或上传文档后，<br>解析结果将显示在这里</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 2: Outline Editor -->
+          <div class="step-panel" data-panel="outline">
+            <div class="outline-editor">
+              <!-- Left: Outline Tree -->
+              <div class="outline-tree-panel" style="width: 320px;">
+                <div class="outline-tree-header">
+                  <h4>内容大纲</h4>
+                  <div class="outline-tree-toolbar">
+                    <button class="toolbar-btn" title="展开全部" onclick="toggleAllOutline()">
+                      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                      </svg>
+                    </button>
+                    <button class="toolbar-btn" title="添加页面" onclick="addNewPage()">
+                      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                      </svg>
+                    </button>
+                    <button class="toolbar-btn" title="自动优化" onclick="autoOptimizeOutline()">
+                      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="outline-tree-body" id="outlineTree">
+                  <!-- Outline items will be rendered here -->
+                </div>
+              </div>
+
+              <!-- Center: Page Editor -->
+              <div class="page-editor-panel" style="flex: 1;">
+                <div class="page-editor-header">
+                  <div class="page-editor-header-left">
+                    <h4 id="pageEditorTitle">编辑页面</h4>
+                    <span class="page-badge" id="pageEditorBadge">第 1 页</span>
+                  </div>
+                  <div class="page-editor-toolbar">
+                    <button class="toolbar-btn" title="上移" onclick="movePageUp()">
+                      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
+                      </svg>
+                    </button>
+                    <button class="toolbar-btn" title="下移" onclick="movePageDown()">
+                      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                      </svg>
+                    </button>
+                    <button class="toolbar-btn" title="删除页面" onclick="deleteCurrentPage()">
+                      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                      </svg>
+                    </button>
+                    <button class="toolbar-btn" title="复制页面" onclick="duplicateCurrentPage()">
+                      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="page-editor-body">
+                  <!-- Basic Info -->
+                  <div class="editor-section">
+                    <div class="editor-section-header">
+                      <span class="editor-section-title">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        基本信息
+                      </span>
+                    </div>
+                    <div class="text-input-group">
+                      <label class="text-input-label">页面标题</label>
+                      <input type="text" class="text-input" id="pageTitleInput" placeholder="输入页面标题..." value="2026年Q1市场分析报告">
+                    </div>
+                    <div class="text-input-group">
+                      <label class="text-input-label">副标题</label>
+                      <input type="text" class="text-input" id="pageSubtitleInput" placeholder="输入副标题..." value="业务增长与市场趋势深度解读">
+                    </div>
+                  </div>
+
+                  <!-- Page Image -->
+                  <div class="editor-section">
+                    <div class="editor-section-header">
+                      <span class="editor-section-title">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                        页面图片
+                      </span>
+                    </div>
+                    <div class="image-upload-area" id="pageImageUpload" onclick="document.getElementById('pageImageInput').click()">
+                      <input type="file" id="pageImageInput" accept="image/*" style="display: none;" onchange="handlePageImageUpload(this)">
+                      <div class="image-upload-placeholder">
+                        <div class="image-upload-icon">🖼️</div>
+                        <div class="image-upload-text">点击上传页面图片</div>
+                        <div class="image-upload-hint">支持 JPG、PNG，最大 5MB</div>
+                      </div>
+                      <div class="image-upload-preview" id="pageImagePreview">
+                        <img id="pageImagePreviewImg" src="" alt="页面图片">
+                        <div class="image-overlay">
+                          <button class="image-remove-btn" onclick="event.stopPropagation(); removePageImage()">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                            移除
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Background & Logo -->
+                  <div class="editor-section">
+                    <div class="editor-section-header">
+                      <span class="editor-section-title">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/>
+                        </svg>
+                        背景与Logo
+                      </span>
+                    </div>
+                    <div class="logo-upload-area">
+                      <div class="logo-upload-item">
+                        <label>背景图片</label>
+                        <div class="logo-upload-box" id="bgImageUpload" onclick="document.getElementById('bgImageInput').click()">
+                          <input type="file" id="bgImageInput" accept="image/*" style="display: none;" onchange="handleBgImageUpload(this)">
+                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                          </svg>
+                          <span>背景图</span>
+                        </div>
+                      </div>
+                      <div class="logo-upload-item">
+                        <label>公司Logo</label>
+                        <div class="logo-upload-box" id="logoImageUpload" onclick="document.getElementById('logoImageInput').click()">
+                          <input type="file" id="logoImageInput" accept="image/*" style="display: none;" onchange="handleLogoImageUpload(this)">
+                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                          </svg>
+                          <span>Logo</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Content Bullets -->
+                  <div class="editor-section">
+                    <div class="editor-section-header">
+                      <span class="editor-section-title">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+                        </svg>
+                        内容要点
+                      </span>
+                    </div>
+                    <div class="bullet-editor" id="bulletEditor">
+                      <div class="bullet-item">
+                        <span class="bullet-handle">
+                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"/>
+                          </svg>
+                        </span>
+                        <input type="text" class="text-input" value="营收同比增长23.5%，表现超预期">
+                        <button class="bullet-remove" onclick="removeBullet(this)">
+                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                          </svg>
+                        </button>
+                      </div>
+                      <div class="bullet-item">
+                        <span class="bullet-handle">
+                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"/>
+                          </svg>
+                        </span>
+                        <input type="text" class="text-input" value="新增用户突破50万，DAU峰值120万">
+                        <button class="bullet-remove" onclick="removeBullet(this)">
+                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                          </svg>
+                        </button>
+                      </div>
+                      <div class="bullet-item">
+                        <span class="bullet-handle">
+                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"/>
+                          </svg>
+                        </span>
+                        <input type="text" class="text-input" value="市场份额提升至18.7%，行业领先">
+                        <button class="bullet-remove" onclick="removeBullet(this)">
+                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <button class="add-bullet-btn" onclick="addBullet()">
+                      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                      </svg>
+                      添加要点
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 3: Style Selection -->
+          <div class="step-panel" data-panel="style">
+            <div class="style-grid">
+              <div class="style-card selected" onclick="selectStyle(this, 'business')">
+                <div class="style-preview" style="background: linear-gradient(135deg, #1e3a5f, #2d5a87);">
+                  <div class="style-preview-content">
+                    <div class="style-preview-title" style="color: white;">商务蓝</div>
+                    <div class="style-preview-subtitle" style="color: rgba(255,255,255,0.7);">专业 · 稳重</div>
+                  </div>
+                </div>
+                <div class="style-info">
+                  <div class="style-name">商务蓝</div>
+                  <div class="style-desc">适合正式汇报、企业提案</div>
+                  <div class="style-colors">
+                    <div class="style-color" style="background: #1e3a5f;"></div>
+                    <div class="style-color" style="background: #2d5a87;"></div>
+                    <div class="style-color" style="background: #4a90d9;"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="style-card" onclick="selectStyle(this, 'academic')">
+                <div class="style-preview" style="background: linear-gradient(135deg, #4a5568, #718096);">
+                  <div class="style-preview-content">
+                    <div class="style-preview-title" style="color: white;">学术灰</div>
+                    <div class="style-preview-subtitle" style="color: rgba(255,255,255,0.7);">简约 · 清晰</div>
+                  </div>
+                </div>
+                <div class="style-info">
+                  <div class="style-name">学术灰</div>
+                  <div class="style-desc">适合学术报告、论文答辩</div>
+                  <div class="style-colors">
+                    <div class="style-color" style="background: #4a5568;"></div>
+                    <div class="style-color" style="background: #718096;"></div>
+                    <div class="style-color" style="background: #a0aec0;"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="style-card" onclick="selectStyle(this, 'vibrant')">
+                <div class="style-preview" style="background: linear-gradient(135deg, #dd6b20, #ed8936);">
+                  <div class="style-preview-content">
+                    <div class="style-preview-title" style="color: white;">活力橙</div>
+                    <div class="style-preview-subtitle" style="color: rgba(255,255,255,0.7);">活力 · 创意</div>
+                  </div>
+                </div>
+                <div class="style-info">
+                  <div class="style-name">活力橙</div>
+                  <div class="style-desc">适合创业路演、活动策划</div>
+                  <div class="style-colors">
+                    <div class="style-color" style="background: #dd6b20;"></div>
+                    <div class="style-color" style="background: #ed8936;"></div>
+                    <div class="style-color" style="background: #f6ad55;"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="style-card" onclick="selectStyle(this, 'tech')">
+                <div class="style-preview" style="background: linear-gradient(135deg, #6b46c1, #9f7aea);">
+                  <div class="style-preview-content">
+                    <div class="style-preview-title" style="color: white;">科技紫</div>
+                    <div class="style-preview-subtitle" style="color: rgba(255,255,255,0.7);">科技 · 神秘</div>
+                  </div>
+                </div>
+                <div class="style-info">
+                  <div class="style-name">科技紫</div>
+                  <div class="style-desc">适合科技产品、技术分享</div>
+                  <div class="style-colors">
+                    <div class="style-color" style="background: #6b46c1;"></div>
+                    <div class="style-color" style="background: #9f7aea;"></div>
+                    <div class="style-color" style="background: #b794f4;"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="style-card" onclick="selectStyle(this, 'nature')">
+                <div class="style-preview" style="background: linear-gradient(135deg, #2f855a, #48bb78);">
+                  <div class="style-preview-content">
+                    <div class="style-preview-title" style="color: white;">清新绿</div>
+                    <div class="style-preview-subtitle" style="color: rgba(255,255,255,0.7);">自然 · 健康</div>
+                  </div>
+                </div>
+                <div class="style-info">
+                  <div class="style-name">清新绿</div>
+                  <div class="style-desc">适合环保、健康主题</div>
+                  <div class="style-colors">
+                    <div class="style-color" style="background: #2f855a;"></div>
+                    <div class="style-color" style="background: #48bb78;"></div>
+                    <div class="style-color" style="background: #68d391;"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="style-card" onclick="selectStyle(this, 'minimal')">
+                <div class="style-preview" style="background: linear-gradient(135deg, #f7fafc, #edf2f7);">
+                  <div class="style-preview-content">
+                    <div class="style-preview-title" style="color: #1a202c;">极简白</div>
+                    <div class="style-preview-subtitle" style="color: #718096;">文艺 · 优雅</div>
+                  </div>
+                </div>
+                <div class="style-info">
+                  <div class="style-name">极简白</div>
+                  <div class="style-desc">适合文艺分享、个人展示</div>
+                  <div class="style-colors">
+                    <div class="style-color" style="background: #f7fafc;"></div>
+                    <div class="style-color" style="background: #edf2f7;"></div>
+                    <div class="style-color" style="background: #e2e8f0;"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 5: Preview -->
+          <div class="step-panel" data-panel="preview">
+            <div class="preview-container">
+              <!-- Left: Page Thumbnails (Navigation) -->
+              <div class="preview-pages-panel">
+                <div class="preview-pages-header">
+                  <h4>所有页面</h4>
+                  <span class="page-count" id="previewPageCount">8 页</span>
+                </div>
+                <div class="preview-pages-body" id="previewThumbnails">
+                  <!-- Thumbnails will be rendered here -->
+                </div>
+              </div>
+
+              <!-- Right: Main Preview -->
+              <div class="preview-main-panel">
+                <div class="preview-main-header">
+                  <span style="font-size: 14px; font-weight: 600;" id="previewSlideHeader">第 1 页 / 8 页</span>
+                  <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-ghost" style="padding: 6px 12px; font-size: 12px;" onclick="prevSlide()">
+                      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                      </svg>
+                      上一页
+                    </button>
+                    <button class="btn btn-ghost" style="padding: 6px 12px; font-size: 12px;" onclick="nextSlide()">
+                      下一页
+                      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="preview-main-body">
+                  <div class="preview-slide-display" id="previewSlideDisplay">
+                    <h1 id="previewSlideTitle">2026年Q1市场分析报告</h1>
+                    <p id="previewSlideSubtitle">业务增长与市场趋势深度解读</p>
+                    <div class="preview-slide-bullets" id="previewSlideBullets">
+                      <span>• 营收同比增长23.5%</span>
+                      <span>• 新增用户突破50万</span>
+                      <span>• 市场份额提升至18.7%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- Project Assistant Panel -->
+      <aside class="project-assistant">
+        <div class="assistant-header">
+          <div class="assistant-avatar">🤖</div>
+          <div class="assistant-info">
+            <h4>SEEM 助手</h4>
+            <p>在线</p>
+          </div>
+        </div>
+        <div class="assistant-body">
+          <div class="assistant-section">
+            <div class="assistant-section-title">💡 建议</div>
+            <div class="assistant-suggestion">
+              <div class="assistant-suggestion-text">基于您的内容，推荐使用「数据卡片」版式展示营收数据，效果会更好。</div>
+              <div class="assistant-suggestion-actions">
+                <button class="assistant-btn assistant-btn-apply">应用</button>
+                <button class="assistant-btn assistant-btn-dismiss">忽略</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="assistant-section">
+            <div class="assistant-section-title">📊 内容统计</div>
+            <div class="assistant-stats">
+              <div class="assistant-stat">
+                <div class="assistant-stat-value">2,500</div>
+                <div class="assistant-stat-label">总字数</div>
+              </div>
+              <div class="assistant-stat">
+                <div class="assistant-stat-value">5</div>
+                <div class="assistant-stat-label">章节数</div>
+              </div>
+              <div class="assistant-stat">
+                <div class="assistant-stat-value">8</div>
+                <div class="assistant-stat-label">预计页数</div>
+              </div>
+              <div class="assistant-stat">
+                <div class="assistant-stat-value">2</div>
+                <div class="assistant-stat-label">图表数</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="assistant-section">
+            <div class="assistant-section-title">⏱️ 生成进度</div>
+            <div class="assistant-progress">
+              <div class="assistant-progress-bar">
+                <div class="assistant-progress-fill" id="progressFill" style="width: 0%;"></div>
+              </div>
+              <div class="assistant-progress-text" id="progressText">准备就绪</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- ===== NEW PROJECT MODAL ===== -->
+  <div class="modal-overlay" id="newProjectModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">新建项目</h3>
+        <button class="modal-close" onclick="closeNewProjectModal()">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">项目名称</label>
+          <input type="text" class="form-input" id="newProjectName" placeholder="输入项目名称...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">项目类型</label>
+          <select class="form-input form-select" id="newProjectType">
+            <option value="business">📊 商务汇报</option>
+            <option value="academic">🎓 学术报告</option>
+            <option value="vibrant">🎨 活动策划</option>
+            <option value="tech">🚀 科技产品</option>
+            <option value="nature">🌿 健康环保</option>
+            <option value="minimal">✨ 个人展示</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">初始风格</label>
+          <select class="form-input form-select" id="newProjectStyle">
+            <option value="business">商务蓝</option>
+            <option value="academic">学术灰</option>
+            <option value="vibrant">活力橙</option>
+            <option value="tech">科技紫</option>
+            <option value="nature">清新绿</option>
+            <option value="minimal">极简白</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeNewProjectModal()">取消</button>
+        <button class="btn btn-primary" onclick="createProject()">创建项目</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== IMPORT PROJECT MODAL ===== -->
+  <div class="modal-overlay" id="importProjectModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">导入项目</h3>
+        <button class="modal-close" onclick="closeImportProjectModal()">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="drop-zone" style="margin-bottom: 20px; padding: 40px;" id="importDropZone">
+          <div class="drop-zone-icon">📦</div>
+          <div class="drop-zone-text">将项目文件拖拽到此处，或<span>点击选择</span></div>
+          <div class="drop-zone-formats">支持 .seem 项目文件格式</div>
+        </div>
+        <input type="file" id="importFileInput" accept=".seem,.zip,.json" style="display: none;">
+        <p style="font-size: 12px; color: var(--text-muted); text-align: center;">
+          导入的项目将合并到您的工作空间
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeImportProjectModal()">取消</button>
+        <button class="btn btn-primary" onclick="importProject()">导入</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== CONTEXT MENU ===== -->
+  <div class="context-menu" id="contextMenu">
+    <div class="context-menu-item" onclick="openProject()">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+      </svg>
+      打开项目
+    </div>
+    <div class="context-menu-item" onclick="duplicateProject()">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+      </svg>
+      复制项目
+    </div>
+    <div class="context-menu-item" onclick="exportProject()">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+      </svg>
+      导出项目
+    </div>
+    <div class="context-menu-item" onclick="renameProject()">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+      </svg>
+      重命名
+    </div>
+    <div style="height: 1px; background: var(--border); margin: 6px 0;"></div>
+    <div class="context-menu-item danger" onclick="deleteProject()">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+      </svg>
+      删除项目
+    </div>
+  </div>
+
+  <!-- ===== TOAST ===== -->
+  <div class="toast" id="toast">
+    <div class="toast-icon">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+      </svg>
+    </div>
+    <span class="toast-message" id="toastMessage">操作成功</span>
+  </div>
+
+  <script>
+    // ===== DATA =====
+    let projects = [
+      {
+        id: 1,
+        name: 'Q1市场分析报告',
+        desc: '2026年第一季度市场表现分析，涵盖营收、用户、产品三维度核心数据',
+        type: 'business',
+        icon: '📊',
+        pages: 8,
+        updated: Date.now() - 2 * 60 * 60 * 1000,
+        created: Date.now() - 7 * 24 * 60 * 60 * 1000
+      },
+      {
+        id: 2,
+        name: '产品发布会PPT',
+        desc: '新一代产品功能介绍与价值主张展示',
+        type: 'tech',
+        icon: '🚀',
+        pages: 12,
+        updated: Date.now() - 24 * 60 * 60 * 1000,
+        created: Date.now() - 5 * 24 * 60 * 60 * 1000
+      },
+      {
+        id: 3,
+        name: '年度总结汇报',
+        desc: '2025年度工作总结与2026年规划',
+        type: 'business',
+        icon: '💼',
+        pages: 15,
+        updated: Date.now() - 3 * 24 * 60 * 60 * 1000,
+        created: Date.now() - 30 * 24 * 60 * 60 * 1000
+      },
+      {
+        id: 4,
+        name: '培训课件模板',
+        desc: '内部培训课程结构与内容模板',
+        type: 'academic',
+        icon: '📚',
+        pages: 6,
+        updated: Date.now() - 7 * 24 * 60 * 60 * 1000,
+        created: Date.now() - 14 * 24 * 60 * 60 * 1000
+      },
+      {
+        id: 5,
+        name: '创业计划书',
+        desc: '商业计划书完整版，包含市场分析、盈利模式、融资需求',
+        type: 'vibrant',
+        icon: '🎯',
+        pages: 20,
+        updated: Date.now() - 14 * 24 * 60 * 60 * 1000,
+        created: Date.now() - 60 * 24 * 60 * 60 * 1000
+      }
+    ];
+
+    let currentProject = null;
+    let currentView = 'grid';
+    let currentStep = 'input';
+    let contextMenuProjectId = null;
+
+    const workflowSteps = ['input', 'outline', 'style', 'preview'];
+    const stepTitles = {
+      input: '输入文档',
+      outline: '编辑大纲',
+      style: '应用风格',
+      preview: '预览导出'
+    };
+
+    const typeIcons = {
+      business: '📊',
+      academic: '🎓',
+      vibrant: '🎨',
+      tech: '🚀',
+      nature: '🌿',
+      minimal: '✨'
+    };
+
+    const typeNames = {
+      business: '商务',
+      academic: '学术',
+      vibrant: '创意',
+      tech: '科技',
+      nature: '自然',
+      minimal: '个人'
+    };
+
+    // ===== INIT =====
+    document.addEventListener('DOMContentLoaded', function() {
+      renderProjects();
+      initEventListeners();
+    });
+
+    function initEventListeners() {
+      // Close context menu on click outside
+      document.addEventListener('click', function(e) {
+        const contextMenu = document.getElementById('contextMenu');
+        if (!contextMenu.contains(e.target)) {
+          contextMenu.classList.remove('active');
+        }
+      });
+
+      // Close modals on overlay click
+      document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        overlay.addEventListener('click', function(e) {
+          if (e.target === overlay) {
+            overlay.classList.remove('active');
+          }
+        });
+      });
+
+      // File input for document
+      const fileInput = document.getElementById('fileInput');
+      fileInput.addEventListener('change', handleFileSelect);
+
+      // File input for import
+      const importFileInput = document.getElementById('importFileInput');
+      importFileInput.addEventListener('change', handleImportFileSelect);
+
+      // Drop zones
+      const dropZone = document.getElementById('dropZone');
+      dropZone.addEventListener('dragover', handleDragOver);
+      dropZone.addEventListener('dragleave', handleDragLeave);
+      dropZone.addEventListener('drop', handleDrop);
+      dropZone.addEventListener('click', () => fileInput.click());
+
+      const importDropZone = document.getElementById('importDropZone');
+      importDropZone.addEventListener('dragover', handleDragOver);
+      importDropZone.addEventListener('dragleave', handleDragLeave);
+      importDropZone.addEventListener('drop', handleImportDrop);
+      importDropZone.addEventListener('click', () => importFileInput.click());
+
+      // Document text input
+      const documentText = document.getElementById('documentText');
+      documentText.addEventListener('input', updateCharCount);
+
+      // Keyboard shortcuts
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+          document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
+          document.getElementById('contextMenu').classList.remove('active');
+        }
+      });
+    }
+
+    // ===== RENDER =====
+    function renderProjects() {
+      const container = document.getElementById('projectsContainer');
+      const emptyState = document.getElementById('emptyState');
+      const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+
+      const filteredProjects = projects.filter(p =>
+        p.name.toLowerCase().includes(searchTerm) ||
+        p.desc.toLowerCase().includes(searchTerm)
+      );
+
+      if (filteredProjects.length === 0) {
+        container.style.display = 'none';
+        emptyState.style.display = 'block';
+        return;
+      }
+
+      container.style.display = 'grid';
+      emptyState.style.display = 'none';
+
+      if (currentView === 'grid') {
+        container.className = 'projects-container projects-grid';
+        container.innerHTML = filteredProjects.map(p => renderProjectCard(p)).join('');
+      } else {
+        container.className = 'projects-container projects-list';
+        container.innerHTML = filteredProjects.map(p => renderProjectListItem(p)).join('');
+      }
+
+      updateStats();
+    }
+
+    function renderProjectCard(project) {
+      return `
+        <div class="project-card" onclick="openProjectById(${project.id})" oncontextmenu="showContextMenu(event, ${project.id})">
+          <div class="project-card-header">
+            <div class="project-icon ${project.type}">${project.icon}</div>
+            <button class="project-menu-btn" onclick="event.stopPropagation(); showContextMenu(event, ${project.id})">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
+              </svg>
+            </button>
+          </div>
+          <div class="project-preview">
+            <div class="project-preview-text">${project.icon}</div>
+          </div>
+          <div class="project-name">${project.name}</div>
+          <div class="project-desc">${project.desc}</div>
+          <div class="project-meta">
+            <div class="project-meta-item">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+              ${project.pages}页
+            </div>
+            <div class="project-meta-item">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              ${formatTime(project.updated)}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderProjectListItem(project) {
+      return `
+        <div class="project-list-item" onclick="openProjectById(${project.id})" oncontextmenu="showContextMenu(event, ${project.id})">
+          <div class="project-icon ${project.type}">${project.icon}</div>
+          <div class="project-list-info">
+            <div class="project-name">${project.name}</div>
+            <div class="project-desc">${project.desc}</div>
+          </div>
+          <div class="project-meta">
+            <div class="project-meta-item">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+              ${project.pages}页
+            </div>
+            <div class="project-meta-item">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              ${formatTime(project.updated)}
+            </div>
+          </div>
+          <div class="project-list-actions">
+            <button class="btn btn-ghost" style="padding: 6px 10px; font-size: 12px;" onclick="event.stopPropagation(); exportProjectById(${project.id})">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+              </svg>
+              导出
+            </button>
+            <button class="btn btn-ghost" style="padding: 6px 10px; font-size: 12px;" onclick="event.stopPropagation(); showContextMenu(event, ${project.id})">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderPreviewThumbnails() {
+      const container = document.getElementById('previewThumbnails');
+      if (!container) return;
+
+      container.innerHTML = pages.map((page, index) => `
+        <div class="preview-page-thumb ${page.id === currentSlide ? 'active' : ''}" onclick="goToSlide(${page.id})">
+          <div class="preview-page-thumb-preview ${page.layout === 'content' ? 'layout-content' : ''}" ${page.background ? `style="background: url(${page.background}) center/cover"` : ''}>
+            ${page.image && !page.background ? `<img src="${page.image}" alt="">` : ''}
+            <span>${index + 1}</span>
+          </div>
+          <div class="preview-page-thumb-info">
+            <span class="preview-page-thumb-title">${page.title}</span>
+            <span class="preview-page-thumb-num">${index + 1}/${pages.length}</span>
+          </div>
+        </div>
+      `).join('');
+
+      const pageCount = document.getElementById('previewPageCount');
+      if (pageCount) pageCount.textContent = `${pages.length} 页`;
+    }
+
+    function updateStats() {
+      document.getElementById('projectCount').textContent = projects.length;
+      document.getElementById('totalSlides').textContent = projects.reduce((sum, p) => sum + p.pages, 0);
+    }
+
+    // ===== FORMAT =====
+    function formatTime(timestamp) {
+      const diff = Date.now() - timestamp;
+      const minutes = Math.floor(diff / 60000);
+      const hours = Math.floor(diff / 3600000);
+      const days = Math.floor(diff / 86400000);
+
+      if (minutes < 60) return `${minutes}分钟前更新`;
+      if (hours < 24) return `${hours}小时前更新`;
+      if (days < 7) return `${days}天前更新`;
+      if (days < 30) return `${Math.floor(days / 7)}周前更新`;
+      return `${Math.floor(days / 30)}个月前更新`;
+    }
+
+    // ===== PAGE DATA =====
+    let pages = [
+      { id: 1, title: '2026年Q1市场分析报告', subtitle: '业务增长与市场趋势深度解读', layout: 'cover', image: null, background: null, logo: null, bullets: ['营收同比增长23.5%，表现超预期', '新增用户突破50万，DAU峰值120万', '市场份额提升至18.7%，行业领先'] },
+      { id: 2, title: '市场概况', subtitle: '整体市场表现稳健', layout: 'title', image: null, background: null, logo: null, bullets: ['行业整体增长15%', '公司表现优于行业平均'] },
+      { id: 3, title: '营收数据', subtitle: '财务表现分析', layout: 'stat', image: null, background: null, logo: null, bullets: ['Q1营收25.8亿', '同比增长23.5%', '毛利率提升至42%'] },
+      { id: 4, title: '用户分析', subtitle: '用户增长与留存', layout: 'points-3', image: null, background: null, logo: null, bullets: ['DAU峰值120万', '新增用户50万+', '留存率86%'] },
+      { id: 5, title: '产品表现', subtitle: '核心产品数据', layout: 'points-2', image: null, background: null, logo: null, bullets: ['产品A月活增长30%', '产品B付费转化率提升15%'] },
+      { id: 6, title: '竞争分析', subtitle: '市场格局分析', layout: 'image-text', image: null, background: null, logo: null, bullets: ['市场份额18.7%', '竞争对手动态'] },
+      { id: 7, title: '策略建议', subtitle: '下一步行动计划', layout: 'points-3', image: null, background: null, logo: null, bullets: ['加大研发投入', '优化用户体验', '扩大市场份额'] },
+      { id: 8, title: '结论与建议', subtitle: '总结与展望', layout: 'cover', image: null, background: null, logo: null, bullets: ['持续增长态势', '建议保持投入'] }
+    ];
+
+    let currentPageId = 1;
+
+    // ===== PAGE EDITOR FUNCTIONS =====
+    function renderOutlineTree() {
+      const container = document.getElementById('outlineTree');
+      if (!container) return;
+
+      container.innerHTML = pages.map(page => `
+        <div class="outline-node">
+          <div class="outline-node-content ${page.id === currentPageId ? 'selected' : ''}" onclick="selectPage(${page.id})">
+            <div class="outline-expand hidden">▼</div>
+            <div class="outline-icon ${page.layout === 'cover' ? 'cover' : 'content'}">${getPageIcon(page.layout)}</div>
+            <div class="outline-text">
+              <div class="outline-title">${page.title}</div>
+              <div class="outline-subtitle">${getLayoutName(page.layout)}</div>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function getPageIcon(layout) {
+      const icons = { cover: '📄', title: '📑', 'points-2': '📝', 'points-3': '📋', stat: '📊', 'image-text': '🖼️', text: '📃' };
+      return icons[layout] || '📄';
+    }
+
+    function getLayoutName(layout) {
+      const names = { cover: '封面版式', title: '标题版式', 'points-2': '双列版式', 'points-3': '三列版式', stat: '数据卡片', 'image-text': '图文版式', text: '纯文版式' };
+      return names[layout] || '标准版式';
+    }
+
+    function renderPageThumbnails() {
+      // Right panel removed, kept for compatibility
+    }
+
+    function selectPage(pageId) {
+      currentPageId = pageId;
+      const page = pages.find(p => p.id === pageId);
+      if (!page) return;
+
+      // Update UI
+      document.getElementById('pageEditorTitle').textContent = page.title;
+      document.getElementById('pageEditorBadge').textContent = `第 ${page.id} 页`;
+      document.getElementById('pageTitleInput').value = page.title;
+      document.getElementById('pageSubtitleInput').value = page.subtitle || '';
+
+      // Update page image
+      const pageImageUpload = document.getElementById('pageImageUpload');
+      const pageImagePreview = document.getElementById('pageImagePreview');
+      const pageImagePreviewImg = document.getElementById('pageImagePreviewImg');
+      if (page.image) {
+        pageImagePreviewImg.src = page.image;
+        pageImageUpload.classList.add('has-image');
+      } else {
+        pageImageUpload.classList.remove('has-image');
+      }
+
+      // Update bullets
+      renderBullets(page.bullets || []);
+
+      // Update thumbnails and outline
+      renderPageThumbnails();
+      renderOutlineTree();
+    }
+
+    function renderBullets(bullets) {
+      const container = document.getElementById('bulletEditor');
+      container.innerHTML = bullets.map(b => `
+        <div class="bullet-item">
+          <span class="bullet-handle">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"/>
+            </svg>
+          </span>
+          <input type="text" class="text-input" value="${b}" onchange="updateBulletText(this)">
+          <button class="bullet-remove" onclick="removeBullet(this)">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+      `).join('');
+    }
+
+    function updateBulletText(input) {
+      const page = pages.find(p => p.id === currentPageId);
+      if (!page) return;
+      const index = Array.from(input.parentElement.parentElement.children).indexOf(input.parentElement);
+      page.bullets[index] = input.value;
+    }
+
+    function addBullet() {
+      const page = pages.find(p => p.id === currentPageId);
+      if (!page) return;
+      if (!page.bullets) page.bullets = [];
+      page.bullets.push('新要点');
+      renderBullets(page.bullets);
+    }
+
+    function removeBullet(btn) {
+      const page = pages.find(p => p.id === currentPageId);
+      if (!page || !page.bullets) return;
+      const item = btn.closest('.bullet-item');
+      const index = Array.from(item.parentElement.children).indexOf(item);
+      page.bullets.splice(index, 1);
+      item.remove();
+    }
+
+    function handlePageImageUpload(input) {
+      const file = input.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const page = pages.find(p => p.id === currentPageId);
+        if (!page) return;
+        page.image = e.target.result;
+
+        const pageImageUpload = document.getElementById('pageImageUpload');
+        const pageImagePreviewImg = document.getElementById('pageImagePreviewImg');
+        pageImagePreviewImg.src = e.target.result;
+        pageImageUpload.classList.add('has-image');
+
+        renderPageThumbnails();
+        showToast('页面图片已上传');
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function removePageImage() {
+      const page = pages.find(p => p.id === currentPageId);
+      if (!page) return;
+      page.image = null;
+
+      const pageImageUpload = document.getElementById('pageImageUpload');
+      pageImageUpload.classList.remove('has-image');
+
+      renderPageThumbnails();
+      showToast('页面图片已移除');
+    }
+
+    function handleBgImageUpload(input) {
+      const file = input.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const page = pages.find(p => p.id === currentPageId);
+        if (!page) return;
+        page.background = e.target.result;
+
+        const bgUpload = document.getElementById('bgImageUpload');
+        bgUpload.classList.add('has-logo');
+        bgUpload.innerHTML = `<img src="${e.target.result}" alt="背景">`;
+
+        renderPageThumbnails();
+        showToast('背景图片已上传');
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function handleLogoImageUpload(input) {
+      const file = input.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const page = pages.find(p => p.id === currentPageId);
+        if (!page) return;
+        page.logo = e.target.result;
+
+        const logoUpload = document.getElementById('logoImageUpload');
+        logoUpload.classList.add('has-logo');
+        logoUpload.innerHTML = `<img src="${e.target.result}" alt="Logo">`;
+
+        showToast('Logo已上传');
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function movePageUp() {
+      const index = pages.findIndex(p => p.id === currentPageId);
+      if (index > 0) {
+        [pages[index], pages[index - 1]] = [pages[index - 1], pages[index]];
+        renderPageThumbnails();
+        renderOutlineTree();
+        showToast('页面上移成功');
+      }
+    }
+
+    function movePageDown() {
+      const index = pages.findIndex(p => p.id === currentPageId);
+      if (index < pages.length - 1) {
+        [pages[index], pages[index + 1]] = [pages[index + 1], pages[index]];
+        renderPageThumbnails();
+        renderOutlineTree();
+        showToast('页面下移成功');
+      }
+    }
+
+    function deleteCurrentPage() {
+      if (pages.length <= 1) {
+        showToast('至少保留一页');
+        return;
+      }
+      if (confirm('确定要删除这一页吗？')) {
+        pages = pages.filter(p => p.id !== currentPageId);
+        currentPageId = pages[0].id;
+        renderPageThumbnails();
+        renderOutlineTree();
+        selectPage(currentPageId);
+        showToast('页面已删除');
+      }
+    }
+
+    function duplicateCurrentPage() {
+      const page = pages.find(p => p.id === currentPageId);
+      if (!page) return;
+
+      const newPage = {
+        ...JSON.parse(JSON.stringify(page)),
+        id: Date.now(),
+        title: page.title + ' (副本)'
+      };
+
+      const index = pages.findIndex(p => p.id === currentPageId);
+      pages.splice(index + 1, 0, newPage);
+      currentPageId = newPage.id;
+
+      renderPageThumbnails();
+      renderOutlineTree();
+      selectPage(currentPageId);
+      showToast('页面已复制');
+    }
+
+    function addNewPage() {
+      const newPage = {
+        id: Date.now(),
+        title: '新页面',
+        subtitle: '',
+        layout: 'text',
+        image: null,
+        background: null,
+        logo: null,
+        bullets: ['新内容']
+      };
+
+      pages.push(newPage);
+      currentPageId = newPage.id;
+
+      renderPageThumbnails();
+      renderOutlineTree();
+      selectPage(currentPageId);
+      showToast('新页面已添加');
+    }
+
+    function autoOptimizeOutline() {
+      showToast('正在优化大纲结构...');
+      setTimeout(() => {
+        showToast('大纲优化完成');
+      }, 1000);
+    }
+
+    function toggleAllOutline() {
+      showToast('大纲已展开');
+    }
+
+    // Update page data on input change
+    document.addEventListener('DOMContentLoaded', function() {
+      // Page title input
+      const pageTitleInput = document.getElementById('pageTitleInput');
+      if (pageTitleInput) {
+        pageTitleInput.addEventListener('input', function() {
+          const page = pages.find(p => p.id === currentPageId);
+          if (page) {
+            page.title = this.value;
+            document.getElementById('pageEditorTitle').textContent = this.value;
+            renderPageThumbnails();
+            renderOutlineTree();
+          }
+        });
+      }
+
+      // Page subtitle input
+      const pageSubtitleInput = document.getElementById('pageSubtitleInput');
+      if (pageSubtitleInput) {
+        pageSubtitleInput.addEventListener('input', function() {
+          const page = pages.find(p => p.id === currentPageId);
+          if (page) {
+            page.subtitle = this.value;
+          }
+        });
+      }
+
+    });
+
+    // Initialize page editor
+    function initPageEditor() {
+      renderOutlineTree();
+      renderPageThumbnails();
+      selectPage(1);
+    }
+
+    // ===== WORKSPACE ACTIONS =====
+    function setView(view) {
+      currentView = view;
+      document.getElementById('gridViewBtn').classList.toggle('active', view === 'grid');
+      document.getElementById('listViewBtn').classList.toggle('active', view === 'list');
+      renderProjects();
+    }
+
+    function filterProjects() {
+      renderProjects();
+    }
+
+    function sortProjects() {
+      projects.sort((a, b) => b.updated - a.updated);
+      renderProjects();
+      showToast('已按更新时间排序');
+    }
+
+    function openNewProjectModal() {
+      document.getElementById('newProjectModal').classList.add('active');
+      document.getElementById('newProjectName').focus();
+    }
+
+    function closeNewProjectModal() {
+      document.getElementById('newProjectModal').classList.remove('active');
+    }
+
+    function createProject() {
+      const name = document.getElementById('newProjectName').value.trim() || '未命名项目';
+      const type = document.getElementById('newProjectType').value;
+      const style = document.getElementById('newProjectStyle').value;
+
+      const newProject = {
+        id: Date.now(),
+        name: name,
+        desc: '新创建的项目',
+        type: type,
+        icon: typeIcons[type],
+        pages: 0,
+        updated: Date.now(),
+        created: Date.now()
+      };
+
+      projects.unshift(newProject);
+      closeNewProjectModal();
+      renderProjects();
+      showToast(`项目「${name}」已创建`);
+
+      // Open the new project
+      setTimeout(() => openProjectById(newProject.id), 500);
+    }
+
+    function openImportProjectModal() {
+      document.getElementById('importProjectModal').classList.add('active');
+    }
+
+    function closeImportProjectModal() {
+      document.getElementById('importProjectModal').classList.remove('active');
+    }
+
+    function handleImportFileSelect(e) {
+      const file = e.target.files[0];
+      if (file) {
+        importProject(file);
+      }
+    }
+
+    function handleImportDrop(e) {
+      e.preventDefault();
+      e.currentTarget.classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file) {
+        importProject(file);
+      }
+    }
+
+    function importProject(file) {
+      closeImportProjectModal();
+      showToast(`正在导入项目「${file.name}」...`);
+
+      // Simulate import
+      setTimeout(() => {
+        const importedProject = {
+          id: Date.now(),
+          name: file.name.replace(/\.[^/.]+$/, ''),
+          desc: '从外部导入的项目',
+          type: 'business',
+          icon: '📦',
+          pages: 10,
+          updated: Date.now(),
+          created: Date.now()
+        };
+        projects.unshift(importedProject);
+        renderProjects();
+        showToast('项目导入成功');
+      }, 1000);
+    }
+
+    function exportProjectById(id) {
+      const project = projects.find(p => p.id === id);
+      if (project) {
+        showToast(`正在导出项目「${project.name}」...`);
+        // Simulate export
+        setTimeout(() => {
+          showToast(`项目「${project.name}」已导出`);
+        }, 1000);
+      }
+    }
+
+    // ===== CONTEXT MENU =====
+    function showContextMenu(e, projectId) {
+      e.preventDefault();
+      e.stopPropagation();
+      contextMenuProjectId = projectId;
+
+      const menu = document.getElementById('contextMenu');
+      menu.style.left = e.clientX + 'px';
+      menu.style.top = e.clientY + 'px';
+      menu.classList.add('active');
+    }
+
+    function openProject() {
+      if (contextMenuProjectId) {
+        openProjectById(contextMenuProjectId);
+      }
+      document.getElementById('contextMenu').classList.remove('active');
+    }
+
+    function duplicateProject() {
+      if (contextMenuProjectId) {
+        const original = projects.find(p => p.id === contextMenuProjectId);
+        if (original) {
+          const duplicate = {
+            ...original,
+            id: Date.now(),
+            name: original.name + ' (副本)',
+            updated: Date.now(),
+            created: Date.now()
+          };
+          projects.unshift(duplicate);
+          renderProjects();
+          showToast(`项目「${duplicate.name}」已创建`);
+        }
+      }
+      document.getElementById('contextMenu').classList.remove('active');
+    }
+
+    function exportProject() {
+      if (contextMenuProjectId) {
+        exportProjectById(contextMenuProjectId);
+      }
+      document.getElementById('contextMenu').classList.remove('active');
+    }
+
+    function renameProject() {
+      if (contextMenuProjectId) {
+        const project = projects.find(p => p.id === contextMenuProjectId);
+        if (project) {
+          const newName = prompt('请输入新的项目名称：', project.name);
+          if (newName && newName.trim()) {
+            project.name = newName.trim();
+            project.updated = Date.now();
+            renderProjects();
+            showToast('项目已重命名');
+          }
+        }
+      }
+      document.getElementById('contextMenu').classList.remove('active');
+    }
+
+    function deleteProject() {
+      if (contextMenuProjectId) {
+        const project = projects.find(p => p.id === contextMenuProjectId);
+        if (project && confirm(`确定要删除项目「${project.name}」吗？此操作不可恢复。`)) {
+          projects = projects.filter(p => p.id !== contextMenuProjectId);
+          renderProjects();
+          showToast(`项目「${project.name}」已删除`);
+        }
+      }
+      document.getElementById('contextMenu').classList.remove('active');
+    }
+
+    // ===== PROJECT VIEW =====
+    function openProjectById(id) {
+      currentProject = projects.find(p => p.id === id);
+      if (!currentProject) return;
+
+      // Update project header
+      document.getElementById('projectTitle').textContent = currentProject.name;
+      document.getElementById('projectTitleIcon').textContent = currentProject.icon;
+      document.getElementById('projectTitleIcon').className = 'project-title-icon project-icon ' + currentProject.type;
+      document.getElementById('previewSlideTitle').textContent = currentProject.name;
+
+      // Switch views
+      document.getElementById('workspaceView').classList.remove('active');
+      document.getElementById('projectView').classList.add('active');
+
+      // Reset to first step
+      currentStep = 'input';
+      updateWorkflowUI();
+      renderPreviewThumbnails();
+
+      // Initialize page editor
+      initPageEditor();
+    }
+
+    function goToWorkspace() {
+      document.getElementById('projectView').classList.remove('active');
+      document.getElementById('workspaceView').classList.add('active');
+      currentProject = null;
+      renderProjects();
+    }
+
+    // ===== WORKFLOW STEPS =====
+    function switchWorkflowStep(step) {
+      currentStep = step;
+      updateWorkflowUI();
+      if (step === 'preview') {
+        // nothing needed
+      }
+    }
+
+    function updateWorkflowUI() {
+      // Update step indicators
+      document.querySelectorAll('.workflow-step').forEach(el => {
+        const stepName = el.dataset.step;
+        const stepIndex = workflowSteps.indexOf(stepName);
+        const currentIndex = workflowSteps.indexOf(currentStep);
+
+        el.classList.remove('active', 'completed');
+        if (stepName === currentStep) {
+          el.classList.add('active');
+        } else if (stepIndex < currentIndex) {
+          el.classList.add('completed');
+        }
+      });
+
+      // Update panels
+      document.querySelectorAll('.step-panel').forEach(el => {
+        el.classList.toggle('active', el.dataset.panel === currentStep);
+      });
+
+      // Update header
+      document.getElementById('currentStepTitle').textContent = stepTitles[currentStep];
+
+      // Update navigation buttons
+      const currentIndex = workflowSteps.indexOf(currentStep);
+      document.getElementById('prevStepBtn').style.display = currentIndex > 0 ? 'flex' : 'none';
+      document.getElementById('nextStepBtn').textContent = currentIndex === workflowSteps.length - 1 ? '生成PPT' : '下一步';
+    }
+
+    function prevStep() {
+      const currentIndex = workflowSteps.indexOf(currentStep);
+      if (currentIndex > 0) {
+        currentStep = workflowSteps[currentIndex - 1];
+        updateWorkflowUI();
+      }
+    }
+
+    function nextStep() {
+      const currentIndex = workflowSteps.indexOf(currentStep);
+      if (currentIndex < workflowSteps.length - 1) {
+        currentStep = workflowSteps[currentIndex + 1];
+        updateWorkflowUI();
+      } else {
+        generatePPT();
+      }
+    }
+
+    // ===== DOCUMENT INPUT =====
+    function setInputMode(mode) {
+      document.querySelectorAll('.input-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.textContent.includes(mode === 'paste' ? '粘贴' : '上传'));
+      });
+      document.getElementById('textInputArea').style.display = mode === 'paste' ? 'block' : 'none';
+      document.getElementById('fileUploadArea').style.display = mode === 'upload' ? 'flex' : 'none';
+    }
+
+    function updateCharCount() {
+      const text = document.getElementById('documentText').value;
+      const count = text.length;
+      document.getElementById('charCount').textContent = count + ' 字';
+    }
+
+    function handleDragOver(e) {
+      e.preventDefault();
+      e.currentTarget.classList.add('dragover');
+    }
+
+    function handleDragLeave(e) {
+      e.currentTarget.classList.remove('dragover');
+    }
+
+    function handleDrop(e) {
+      e.preventDefault();
+      e.currentTarget.classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file) {
+        handleFile(file);
+      }
+    }
+
+    function handleFileSelect(e) {
+      const file = e.target.files[0];
+      if (file) {
+        handleFile(file);
+      }
+    }
+
+    function handleFile(file) {
+      showToast(`已选择文件：${file.name}`);
+      document.getElementById('documentText').value = `[文件内容将在此处显示]\n\n文件名: ${file.name}\n大小: ${(file.size / 1024).toFixed(1)} KB`;
+      updateCharCount();
+    }
+
+    function parseDocument() {
+      const text = document.getElementById('documentText').value.trim();
+      if (!text) {
+        showToast('请先输入或上传文档内容');
+        return;
+      }
+
+      showToast('正在解析文档...');
+
+      // Simulate parsing
+      setTimeout(() => {
+        const parsedBody = document.getElementById('parsedBody');
+        parsedBody.innerHTML = `
+          <div class="parsed-title">2026年Q1市场分析报告</div>
+          <div class="parsed-summary">本报告分析Q1市场表现，涵盖营收、用户、产品三维度核心数据，整体呈现稳健增长态势。</div>
+
+          <div class="parsed-section">
+            <div class="parsed-section-header">
+              <div class="parsed-section-icon">📑</div>
+              <div class="parsed-section-title">一、市场概况</div>
+            </div>
+            <div class="parsed-section-content">
+              本季度整体市场表现稳健，营收同比增长23.5%，新增用户突破50万。
+            </div>
+            <ul class="parsed-bullets">
+              <li>营收同比增长23.5%</li>
+              <li>新增用户突破50万</li>
+              <li>市场份额提升至18.7%</li>
+            </ul>
+          </div>
+
+          <div class="parsed-section">
+            <div class="parsed-section-header">
+              <div class="parsed-section-icon">📑</div>
+              <div class="parsed-section-title">二、用户分析</div>
+            </div>
+            <div class="parsed-section-content">
+              用户增长符合预期目标，DAU峰值达120万，留存率保持行业领先水平。
+            </div>
+            <ul class="parsed-bullets">
+              <li>DAU峰值达120万</li>
+              <li>用户留存率86%</li>
+              <li>付费转化率提升15%</li>
+            </ul>
+          </div>
+
+          <div class="parsed-section">
+            <div class="parsed-section-header">
+              <div class="parsed-section-icon">🎯</div>
+              <div class="parsed-section-title">三、结论与建议</div>
+            </div>
+            <div class="parsed-section-content">
+              基于以上分析，建议持续加大产品研发投入，优化用户体验，进一步扩大市场份额。
+            </div>
+          </div>
+        `;
+
+        // Update progress
+        document.getElementById('progressFill').style.width = '20%';
+        document.getElementById('progressText').textContent = '文档解析完成';
+
+        showToast('文档解析完成，已生成大纲');
+      }, 1500);
+    }
+
+    function refreshParse() {
+      parseDocument();
+    }
+
+    // ===== STYLE =====
+    function selectStyle(card, style) {
+      document.querySelectorAll('.style-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+    }
+
+    // ===== PREVIEW =====
+    let currentSlide = 1;
+
+    function prevSlide() {
+      const currentIndex = pages.findIndex(p => p.id === currentSlide);
+      if (currentIndex > 0) {
+        currentSlide = pages[currentIndex - 1].id;
+        updateSlideDisplay();
+      }
+    }
+
+    function nextSlide() {
+      const currentIndex = pages.findIndex(p => p.id === currentSlide);
+      if (currentIndex < pages.length - 1) {
+        currentSlide = pages[currentIndex + 1].id;
+        updateSlideDisplay();
+      }
+    }
+
+    // 同步预览面板高度
+    function syncPreviewPanelHeight() {
+      const mainPanel = document.querySelector('.preview-main-panel');
+      const pagesPanel = document.querySelector('.preview-pages-panel');
+      if (mainPanel && pagesPanel) {
+        pagesPanel.style.height = mainPanel.offsetHeight + 'px';
+      }
+    }
+
+    function goToSlide(id) {
+      currentSlide = id;
+      updateSlideDisplay();
+    }
+
+    function updateSlideDisplay() {
+      const page = pages.find(p => p.id === currentSlide);
+      if (!page) return;
+
+      // Update header
+      const currentIndex = pages.findIndex(p => p.id === currentSlide) + 1;
+      document.getElementById('previewSlideHeader').textContent = `第 ${currentIndex} 页 / ${pages.length} 页`;
+
+      // Update slide display
+      document.getElementById('previewSlideTitle').textContent = page.title;
+      document.getElementById('previewSlideSubtitle').textContent = page.subtitle || '';
+
+      // Update bullets
+      const bulletsContainer = document.getElementById('previewSlideBullets');
+      if (bulletsContainer && page.bullets && page.bullets.length > 0) {
+        bulletsContainer.innerHTML = page.bullets.slice(0, 4).map(b => `<span>${b}</span>`).join('');
+        bulletsContainer.style.display = 'flex';
+      } else if (bulletsContainer) {
+        bulletsContainer.style.display = 'none';
+      }
+
+      // Update slide background
+      const slideDisplay = document.getElementById('previewSlideDisplay');
+      if (page.background) {
+        slideDisplay.style.backgroundImage = `url(${page.background})`;
+        slideDisplay.style.backgroundSize = 'cover';
+        slideDisplay.style.backgroundPosition = 'center';
+      } else if (page.layout === 'cover') {
+        slideDisplay.style.background = 'linear-gradient(135deg, #1e3a5f, #2d5a87)';
+        slideDisplay.style.backgroundImage = 'none';
+      } else {
+        slideDisplay.style.background = '#f8f9fa';
+        slideDisplay.style.color = '#1a1a1a';
+        slideDisplay.style.backgroundImage = 'none';
+      }
+
+      // Update thumbnail active state
+      renderPreviewThumbnails();
+    }
+
+    // ===== GENERATE =====
+    function generatePPT() {
+      showToast('正在生成PPT...');
+      document.getElementById('progressFill').style.width = '100%';
+      document.getElementById('progressText').textContent = '生成中...';
+
+      setTimeout(() => {
+        showToast('PPT生成完成！');
+        document.getElementById('progressText').textContent = '已完成';
+      }, 2000);
+    }
+
+    // ===== TOAST =====
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      const toastMessage = document.getElementById('toastMessage');
+      toastMessage.textContent = message;
+      toast.classList.add('show');
+
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 3000);
+    }
+
+    // Initialize
+    renderPreviewThumbnails();
+    initPageEditor();
+  </script>
+</body>
+</html>
