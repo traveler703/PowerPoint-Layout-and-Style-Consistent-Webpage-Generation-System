@@ -134,6 +134,7 @@ class TemplateRenderer:
 
     def render_ending_page(
         self,
+        title: str = "谢谢观看",
         content: str = "",
         emoji: str = "",
         page_number: int = 1,
@@ -142,11 +143,11 @@ class TemplateRenderer:
         """Render an ending/thank you page."""
         return self.render_page(
             page_type=PageType.ENDING,
-            title="",  # Empty title for ending page
+            title=title,
             content="",  # Not used, we use message placeholder
             extra={
                 "emoji": emoji,
-                "message": content,  # Pass content as message
+                "message": content,
             },
             page_number=page_number,
             total_pages=total_pages,

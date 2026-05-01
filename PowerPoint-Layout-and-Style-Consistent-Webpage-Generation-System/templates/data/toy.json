@@ -42,34 +42,6 @@
         "toc_items"
       ]
     },
-    "compare": {
-      "skeleton": "<div class=\"slide compare\"><div class=\"slide-footer\"><span class=\"page-num\">{{page_number}}</span></div><div class=\"page-title\"><i class=\"fa-solid fa-layer-group\" style=\"margin-right:10px\"></i>{{title}}</div><div class=\"page-content\"><div class=\"compare-grid\">{{items}}</div></div></div>",
-      "placeholders": [
-        "title",
-        "items"
-      ]
-    },
-    "chart": {
-      "skeleton": "<div class=\"slide chart\"><div class=\"slide-footer\"><span class=\"page-num\">{{page_number}}</span></div><div class=\"deco-shape shape1\"></div><div class=\"deco-shape shape4\"></div><div class=\"page-title\"><i class=\"fa-solid fa-chart-bar\" style=\"margin-right:10px;color:#FBBF24\"></i>{{title}}</div><div class=\"page-content\">{{content}}</div></div>",
-      "placeholders": [
-        "title",
-        "content"
-      ]
-    },
-    "timeline": {
-      "skeleton": "<div class=\"slide timeline\"><div class=\"slide-footer\"><span class=\"page-num\">{{page_number}}</span></div><div class=\"page-title\"><i class=\"fa-solid fa-hourglass-end\" style=\"margin-right:10px\"></i>{{title}}</div><div class=\"page-content\"><div class=\"timeline-container\"><div class=\"timeline-line\"></div>{{timeline_items}}</div></div></div>",
-      "placeholders": [
-        "title",
-        "timeline_items"
-      ]
-    },
-    "qa": {
-      "skeleton": "<div class=\"slide qa\"><div class=\"slide-footer\"><span class=\"page-num\">{{page_number}}</span></div><div class=\"page-title\"><i class=\"fa-solid fa-brain\" style=\"margin-right:10px\"></i>{{title}}</div><div class=\"page-content\"><div class=\"qa-container\">{{qa_items}}</div></div></div>",
-      "placeholders": [
-        "title",
-        "qa_items"
-      ]
-    },
     "ending": {
       "skeleton": "<div class=\"slide ending\"><div class=\"slide-footer\"><span class=\"page-num\">{{page_number}}</span></div><div class=\"ending-content\"><span class=\"big-emoji\">🎉</span><h1>{{title}}</h1><p>{{message}}</p><div class=\"ending-dinos\"><span>🦖</span><span>🦑</span><span>🦖</span></div></div></div>",
       "placeholders": [

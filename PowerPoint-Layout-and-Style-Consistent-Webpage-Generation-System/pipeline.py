@@ -64,6 +64,8 @@ class PresentationOutline:
     subtitle: str
     date_badge: str = ""
     sections: list[SectionInput] = field(default_factory=list)
+    ending_title: str = "谢谢观看"
+    ending_message: str = ""
 
 
 @dataclass
@@ -213,10 +215,10 @@ class PresentationGenerator:
             await self.initialize()
 
         try:
-            # 计算总页数
+            # 计算总页数 (cover + toc + sections + content + ending)
             total_sections = len(outline.sections)
             total_content_pages = sum(len(s.content_pages) for s in outline.sections)
-            total_pages = 1 + 1 + total_sections + total_content_pages
+            total_pages = 1 + 1 + total_sections + total_content_pages + 1  # +1 for ending
 
             # ============================================================
             # 构建页面列表（按正确顺序）
@@ -302,6 +304,20 @@ class PresentationGenerator:
                             "title": page_title,
                             **layout_info,
                         })
+
+            # ============================================================
+            # Last Page: Ending
+            # ============================================================
+            ending_page = self.renderer.render_ending_page(
+                title=outline.ending_title,
+                content=outline.ending_message,
+                page_number=current_page_number,
+                total_pages=total_pages,
+            )
+            pages_list.append((current_page_number, "ending", ending_page, {
+                "type": "ending",
+                "title": outline.ending_title,
+            }))
 
             # 提取最终的 pages 和 page_layouts
             pages = [page_html for _, _, page_html, _ in pages_list]
@@ -431,6 +447,8 @@ def outline_from_dict(data: dict) -> PresentationOutline:
         subtitle=data.get("subtitle", ""),
         date_badge=data.get("date_badge", ""),
         sections=sections,
+        ending_title=data.get("ending_title", "谢谢观看"),
+        ending_message=data.get("ending_message", ""),
     )
 
 
@@ -486,6 +504,8 @@ async def main():
         "title": "人工智能技术专题",
         "subtitle": "从基础理论到行业应用",
         "date_badge": "2026年度",
+        "ending_title": "谢谢观看",
+        "ending_message": "感谢您的聆听，期待与您深入交流！",
         "sections": [
             {
                 "title": "人工智能发展史",

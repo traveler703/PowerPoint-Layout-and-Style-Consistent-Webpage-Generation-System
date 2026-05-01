@@ -33,6 +33,8 @@ PRESENTATION_OUTLINE = {
     "title": "人工智能技术专题",
     "subtitle": "从基础理论到行业应用",
     "date_badge": "2026年度",
+    "ending_title": "谢谢观看",
+    "ending_message": "感谢您的聆听，期待与您深入交流！",
     "sections": [
         {
             "title": "人工智能发展史",
@@ -206,7 +208,7 @@ async def main():
     total_content_pages = sum(
         len(s["content_pages"]) for s in PRESENTATION_OUTLINE["sections"]
     )
-    total_pages = 1 + 1 + total_sections + total_content_pages  # cover + toc + sections + content
+    total_pages = 1 + 1 + total_sections + total_content_pages + 1  # cover + toc + sections + content + ending
 
     # ============================================================
     # Page 1: Cover
@@ -285,6 +287,19 @@ async def main():
             pages.append(content_page_rendered)
             print(f"      ✓ 生成完成")
             page_number += 1
+
+    # ============================================================
+    # Last Page: Ending
+    # ============================================================
+    print(f"\n[{page_number}/{total_pages}] Rendering ending page...")
+    ending_page = renderer.render_ending_page(
+        title=PRESENTATION_OUTLINE.get("ending_title", "谢谢观看"),
+        content=PRESENTATION_OUTLINE.get("ending_message", ""),
+        page_number=page_number,
+        total_pages=total_pages,
+    )
+    pages.append(ending_page)
+    print(f"      ✓ 谢谢观看")
 
     # ============================================================
     # Merge and Save
