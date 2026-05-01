@@ -92,21 +92,9 @@ export async function generatePreview(data) {
   return response.data
 }
 
-// 从大纲生成PPT
-export async function generatePPTFromOutline(data) {
-  const response = await apiClient.post('/generate-ppt-from-outline', data)
-  return response.data
-}
-
 // 并行生成PPT（一次性返回所有页面）
 export async function generatePPTParallel(data) {
   const response = await apiClient.post('/generate-ppt-parallel', data)
-  return response.data
-}
-
-// 完整生成PPT
-export async function generatePPT(data) {
-  const response = await apiClient.post('/generate-ppt', data)
   return response.data
 }
 
@@ -174,8 +162,6 @@ export default {
   // PPT生成
   generateOutline,
   generatePreview,
-  generatePPTFromOutline,
-  generatePPT,
   generatePPTParallel,
   // PPT管理
   savePPT,
