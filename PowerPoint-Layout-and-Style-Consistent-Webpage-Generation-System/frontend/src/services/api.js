@@ -134,6 +134,12 @@ export async function parseText(data) {
 // 系统API
 // ----------------------------------------
 
+// 获取模板列表
+export async function getTemplates() {
+  const response = await apiClient.get('/templates')
+  return response.data
+}
+
 // 数据库连接测试
 export async function testDbConnection() {
   const response = await apiClient.get('/db-test')
@@ -167,6 +173,8 @@ export default {
   savePPT,
   getPPT,
   getProjectPPTs,
+  // 模板
+  getTemplates,
   // 系统
   testDbConnection,
   healthCheck

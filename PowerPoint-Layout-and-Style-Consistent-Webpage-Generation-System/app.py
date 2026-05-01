@@ -834,6 +834,43 @@ def get_stats():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/templates', methods=['GET'])
+def get_templates():
+    """获取模板列表"""
+    try:
+        import os
+        templates_dir = os.path.join(os.path.dirname(__file__), 'templates', 'data')
+        templates = []
+
+        if os.path.exists(templates_dir):
+            for filename in os.listdir(templates_dir):
+                if filename.endswith('.json'):
+                    filepath = os.path.join(templates_dir, filename)
+                    try:
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            template_data = json.load(f)
+                            # 只返回必要的字段
+                            templates.append({
+                                'template_id': template_data.get('template_id'),
+                                'template_name': template_data.get('template_name'),
+                                'description': template_data.get('description'),
+                                'css_variables': template_data.get('css_variables'),
+                                'tags': template_data.get('tags', []),
+                                'is_default': template_data.get('is_default', False),
+                                'page_types': list(template_data.get('page_types', {}).keys())
+                            })
+                    except Exception as e:
+                        logger.error(f"加载模板文件 {filename} 失败: {e}")
+
+        return jsonify({
+            'success': True,
+            'templates': templates
+        })
+    except Exception as e:
+        logger.error(f"获取模板列表失败: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 def main():
     """主函数"""
     logger.info(f"启动LandPPT Demo服务: http://{APP_HOST}:{APP_PORT}")

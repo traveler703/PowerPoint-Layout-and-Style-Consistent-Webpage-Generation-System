@@ -132,7 +132,7 @@ import PreviewPanel from './PreviewPanel.vue'
 const stepDescriptions = {
   input: '粘贴或上传文档',
   outline: '调整内容结构',
-  style: '选择视觉主题',
+  style: '选择PPT模板',
   preview: '查看并下载'
 }
 

@@ -1,5 +1,5 @@
 import { reactive, computed } from 'vue'
-import { getProjects, createProject, updateProject, deleteProject, createOutline, getOutline, updateOutline, getProjectOutlines, getProjectPPTs, getPPT, generatePPTParallel } from '@/services/api'
+import { getProjects, createProject, updateProject, deleteProject, createOutline, getOutline, updateOutline, getProjectOutlines, getProjectPPTs, getPPT, generatePPTParallel, getTemplates } from '@/services/api'
 
 // 项目类型图标映射
 const typeIcons = {
@@ -26,7 +26,7 @@ const workflowSteps = ['input', 'outline', 'style', 'preview']
 const stepTitles = {
   input: '输入文档',
   outline: '编辑大纲',
-  style: '应用风格',
+  style: '应用模板',
   preview: '预览导出'
 }
 
@@ -83,6 +83,10 @@ export const store = reactive({
 
   // 风格选择
   selectedStyle: 'business',
+
+  // 模板相关
+  templates: [],
+  selectedTemplate: null,
 
   // 进度
   progressPercent: 0,
@@ -849,6 +853,32 @@ export const store = reactive({
   // 样式
   setStyle(style) {
     this.selectedStyle = style
+  },
+
+  // 模板相关
+  async loadTemplates() {
+    try {
+      const response = await getTemplates()
+      if (response.success) {
+        this.templates = response.templates || []
+        // 如果有默认模板，默认选中
+        const defaultTemplate = this.templates.find(t => t.is_default)
+        if (defaultTemplate && !this.selectedTemplate) {
+          this.selectedTemplate = defaultTemplate.template_id
+          this.selectedStyle = defaultTemplate.template_id
+        }
+        console.log('加载模板成功:', this.templates.length, '个模板')
+        return true
+      }
+    } catch (err) {
+      console.error('加载模板失败:', err)
+    }
+    return false
+  },
+
+  selectTemplate(templateId) {
+    this.selectedTemplate = templateId
+    this.selectedStyle = templateId
   },
 
   // 输入
