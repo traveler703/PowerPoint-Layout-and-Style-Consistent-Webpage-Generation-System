@@ -20,6 +20,7 @@ class PageType(str, Enum):
     TIMELINE = "timeline" # Timeline page
     QA = "qa"           # Q&A page
     ENDING = "ending"   # Ending/thank you page
+    SECTION = "section"  # Section divider page
     UNKNOWN = "unknown"  # Auto-detected or fallback
 
 

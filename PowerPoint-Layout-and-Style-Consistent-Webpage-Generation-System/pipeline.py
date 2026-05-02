@@ -127,6 +127,59 @@ class PresentationGenerator:
         if self.llm_client is None:
             self.llm_client = default_llm_client()
 
+    def _build_template_info(self) -> dict[str, Any]:
+        """
+        从当前模板构建风格信息字典，供 prompt 函数使用。
+
+        包含：模板名称、描述、标签、字体风格、视觉美学、布局倾向。
+        """
+        if self.template is None:
+            return {}
+
+        css = self.template.css_variables
+        # 从 css_variables 中提取字体信息
+        font_body = css.get("font-body", css.get("font_body", ""))
+        font_heading = css.get("font-heading", css.get("font_heading", ""))
+
+        # 根据模板名称/描述推断视觉美学和布局倾向
+        name = self.template.name
+        description = self.template.description
+        tags = self.template.tags
+
+        aesthetic = ""
+        layout_tendency = ""
+
+        # 常见风格的视觉美学和布局倾向推断
+        tag_str = " ".join(tags).lower()
+        name_str = name.lower()
+        desc_str = description.lower()
+
+        if any(k in tag_str or k in name_str or k in desc_str for k in ["toy", "儿童", "活泼", "可爱", "积木"]):
+            aesthetic = "活泼可爱、色彩明亮、圆润的边角、卡通装饰元素，适合儿童内容"
+            layout_tendency = "卡片式布局为主，内容居中，大量留白，避免复杂排版"
+        elif any(k in tag_str or k in name_str or k in desc_str for k in ["科技", "赛博", "cyber", "深色", "未来", "技术"]):
+            aesthetic = "深邃科技感、霓虹光效、赛博朋克风格、发光边框和扫描线效果"
+            layout_tendency = "紧凑的信息密度、HUD风格边框、网格背景、粒子动画装饰"
+        elif any(k in tag_str or k in name_str or k in desc_str for k in ["水墨", "中国风", "传统", "文人", "古典", "雅致"]):
+            aesthetic = "清新淡雅的中国传统水墨画风格，留白为美，印章点缀，衬线书法字体"
+            layout_tendency = "简洁大方、左右对称或居中布局、留白充足、文字为主、避免过度装饰"
+        elif any(k in tag_str or k in name_str or k in desc_str for k in ["商务", "企业", "报告", "正式"]):
+            aesthetic = "商务专业、简洁干练、配色稳重、层次分明"
+            layout_tendency = "标准化的卡片或列表布局、信息密度适中、清晰的视觉层级"
+        elif any(k in tag_str or k in name_str or k in desc_str for k in ["简约", "极简", "干净", "清新"]):
+            aesthetic = "简约极致、大量留白、克制用色、优雅精致"
+            layout_tendency = "极简排版、单一内容突出、避免堆砌装饰元素"
+
+        return {
+            "name": name,
+            "description": description,
+            "tags": tags,
+            "font_body": font_body,
+            "font_heading": font_heading,
+            "aesthetic": aesthetic,
+            "layout_tendency": layout_tendency,
+        }
+
     async def generate_content_page_html(
         self,
         page: SemanticPageInput,
@@ -140,9 +193,9 @@ class PresentationGenerator:
         Returns:
             (html_content, layout_info) 元组
         """
-        # Stage 1: 布局专家分析（传入CSS变量，让专家知道背景深浅）
+        # Stage 1: 布局专家分析（传入CSS变量和模板风格信息）
         sys_prompt, user_prompt = build_layout_analysis_prompt(
-            page, css_variables=self.template.css_variables
+            page, css_variables=self.template.css_variables, template_info=self._build_template_info()
         )
         logger.info(f"[Pipeline] [Stage1] ===== 布局专家分析 =====")
         logger.info(f"[Pipeline] [Stage1] 主题: {page.title}")
@@ -165,11 +218,12 @@ class PresentationGenerator:
 
         logger.info(f"[Pipeline] 内容页生成 - 主题: {page.title}, 模板: {self.template_name}")
 
-        # Stage 2: HTML 生成
+        # Stage 2: HTML 生成（传入CSS变量和模板风格信息）
         sys_prompt, user_prompt = build_html_generation_prompt(
             page=page,
             layout_analysis=layout_analysis,
             css_variables=self.template.css_variables,
+            template_info=self._build_template_info(),
         )
         logger.info(f"[Pipeline] [Stage2] ===== HTML生成 =====")
         logger.info(f"[Pipeline] [Stage2] 主题: {page.title}")
