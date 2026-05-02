@@ -21,16 +21,19 @@ PPT 生成引擎 - 基于两阶段布局方法的完整流水线
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
+import traceback
 from dataclasses import dataclass, field
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from engine.types import SemanticPageInput
 from generator.llm_client import LLMClient, default_llm_client
 from generator.prompts import (
     build_html_generation_prompt,
     build_layout_analysis_prompt,
-    generate_color_scheme_from_template,
     parse_html_response,
     parse_layout_analysis,
 )
@@ -109,7 +112,6 @@ class PresentationGenerator:
         self.template_name = template_name
         self.template: Template | None = None
         self.renderer: TemplateRenderer | None = None
-        self.colors: dict[str, str] = {}
         self.llm_client = llm_client
 
     async def initialize(self) -> None:
@@ -117,7 +119,9 @@ class PresentationGenerator:
         # 加载模板
         self.template = load_template(self.template_name)
         self.renderer = TemplateRenderer(self.template)
-        self.colors = generate_color_scheme_from_template(self.template.css_variables)
+
+        logger.info(f"[Pipeline] 模板加载: {self.template_name}")
+        logger.info(f"[Pipeline] CSS变量: {self.template.css_variables}")
 
         # 获取 LLM 客户端
         if self.llm_client is None:
@@ -136,10 +140,22 @@ class PresentationGenerator:
         Returns:
             (html_content, layout_info) 元组
         """
-        # Stage 1: 布局专家分析
-        sys_prompt, user_prompt = build_layout_analysis_prompt(page)
+        # Stage 1: 布局专家分析（传入CSS变量，让专家知道背景深浅）
+        sys_prompt, user_prompt = build_layout_analysis_prompt(
+            page, css_variables=self.template.css_variables
+        )
+        logger.info(f"[Pipeline] [Stage1] ===== 布局专家分析 =====")
+        logger.info(f"[Pipeline] [Stage1] 主题: {page.title}")
+        logger.info(f"[Pipeline] [Stage1] sys_prompt:\n{sys_prompt}")
+        logger.info(f"[Pipeline] [Stage1] user_prompt:\n{user_prompt}")
         response = await self.llm_client.complete(sys_prompt, user_prompt)
-        layout_analysis = parse_layout_analysis(response)
+        logger.info(f"[Pipeline] [Stage1] LLM原始响应:\n{response}")
+        try:
+            layout_analysis = parse_layout_analysis(response)
+        except Exception as parse_err:
+            logger.error(f"[Pipeline] [Stage1] 解析失败: {parse_err}")
+            raise
+        logger.info(f"[Pipeline] [Stage1] 解析结果: {layout_analysis}")
 
         layout_info = {
             "layout_type": layout_analysis.get("layout_type", "card_grid"),
@@ -147,14 +163,23 @@ class PresentationGenerator:
             "reasoning": layout_analysis.get("reasoning", ""),
         }
 
+        logger.info(f"[Pipeline] 内容页生成 - 主题: {page.title}, 模板: {self.template_name}")
+
         # Stage 2: HTML 生成
         sys_prompt, user_prompt = build_html_generation_prompt(
             page=page,
             layout_analysis=layout_analysis,
-            colors=self.colors,
+            css_variables=self.template.css_variables,
         )
+        logger.info(f"[Pipeline] [Stage2] ===== HTML生成 =====")
+        logger.info(f"[Pipeline] [Stage2] 主题: {page.title}")
+        logger.info(f"[Pipeline] [Stage2] CSS变量: {self.template.css_variables}")
+        logger.info(f"[Pipeline] [Stage2] sys_prompt:\n{sys_prompt}")
+        logger.info(f"[Pipeline] [Stage2] user_prompt:\n{user_prompt}")
         response = await self.llm_client.complete(sys_prompt, user_prompt)
+        logger.info(f"[Pipeline] [Stage2] LLM原始响应:\n{response[:1000]}")
         html = parse_html_response(response)
+        logger.info(f"[Pipeline] [Stage2] 解析后HTML长度: {len(html)}")
 
         return html, layout_info
 
@@ -362,9 +387,11 @@ class PresentationGenerator:
             )
 
         except Exception as e:
+            tb = traceback.format_exc()
+            logger.error(f"[Pipeline] 未捕获异常:\n{tb}")
             return GenerationResult(
                 success=False,
-                error=str(e),
+                error=f"{type(e).__name__}: {e}\n{tb}",
             )
 
     def _save_individual_pages(
@@ -401,12 +428,20 @@ class PresentationGenerator:
             single_html = single_html.replace('<div class="nav-arrows">', '<div class="nav-arrows" style="display:none">')
             single_html = single_html.replace('<div class="page-indicator"', '<div class="page-indicator" style="display:none"')
 
-            # 保存文件
+            # 保存文件 - 加入模板名称前缀，避免不同模板的页面混淆
             safe_title = title.replace("/", "_")[:20] if title else ""
-            filename = f"{page_num:02d}_{ptype}_{safe_title}.html"
+            # 文件名格式: {页码}_{模板名}_{类型}_{标题}.html
+            filename = f"{page_num:02d}_{self.template_name}_{ptype}_{safe_title}.html"
             filepath = os.path.join(pages_dir, filename)
+            
+            # 先删除旧的同名文件（如果存在）
+            if os.path.exists(filepath):
+                os.remove(filepath)
+                logger.info(f"[Pipeline] 删除旧文件: {filename}")
+            
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(single_html)
+            logger.info(f"[Pipeline] 保存页面文件: {filename}")
 
 
 # ============================================================
