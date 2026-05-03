@@ -226,18 +226,29 @@ class TemplateRenderer:
         # Find slides-track
         track = soup.find("div", class_=lambda c: c and "slides-track" in c.split())
         if track:
-            # Remove all skeleton/example slide divs inside slides-track
-            for slide in track.find_all("div", class_=lambda c: c and "slide" in c.split()):
-                slide.decompose()
-            # Remove comment nodes inside track
-            for comment in list(track.children):
-                if hasattr(comment, 'name') and comment.name is None:
-                    comment.extract()
-            # Remove non-slide child divs (decorations, etc.)
+            # 只删除 slides-track 的直接子元素中属于示例 slide 的部分
+            # 不递归删除（避免把 slide-container / slide-wrapper 也删掉）
             for child in list(track.children):
-                if hasattr(child, 'name') and child.name == "div":
+                if not hasattr(child, 'name') or child.name != 'div':
+                    continue
+                child_class = child.get('class', [])
+                child_class_str = ' '.join(child_class) if isinstance(child_class, list) else str(child_class)
+                # 只删除直接的示例 slide div（不是 slide-container / slide-wrapper）
+                is_example_slide = (
+                    'slide' in child_class_str.split()
+                    and 'container' not in child_class_str
+                    and 'wrapper' not in child_class_str
+                )
+                if is_example_slide:
+                    # 删除示例 slide 内部的 footer（避免合并后出现两套 footer）
+                    for footer in child.find_all("div", class_=lambda c: c and 'slide-footer' in c.split()):
+                        footer.decompose()
+                    child.decompose()
+            # 移除 track 内的文本节点/注释
+            for child in list(track.children):
+                if hasattr(child, 'name') and child.name is None:
                     child.extract()
-            # Inject rendered pages
+            # 注入渲染后的页面
             pages_soup = BeautifulSoup(slides_inner, "html.parser")
             for child in list(pages_soup.find_all("div", recursive=False)):
                 track.append(child)

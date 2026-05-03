@@ -88,14 +88,18 @@ HTML 要求：
 ```
 **注意**：`{{chapter_tag}}`（如"第一章"）和 `{{title}}`（如"森林探险"）是**两个不同的占位符**，不可省略 `{{title}}`。
 
-### content 内容页（重点要求）
+### content 内容页（核心要求 - 必须严格遵守）
 ```html
 <div class="slide content">
   <div class="page-title">{{title}}</div>
   <div class="page-content">{{content}}</div>
 </div>
 ```
-- **必须有 `{{title}}` 且在 `{{content}}` 之上**，两者缺一不可
+**严格要求**：
+- `{{title}}`（标题）和 `{{content}}`（内容）是**两个不同的占位符**，必须同时存在且 `{{title}}` 在前
+- `{{content}}` **内部必须保持空白**，不要放任何示例内容（如卡片、列表、图标、文字段落等）
+- `{{content}}` 只用于运行时被 LLM 生成的 HTML 替换，不要在模板示例里预先填充
+- 参考 tech.json 内容页样式：`.page-content` 只需要背景色/字体等基础样式，不需要任何子元素
 
 ### ending 结尾页
 ```html
@@ -111,6 +115,10 @@ HTML 要求：
 2. **占位符使用双花括号**：`{{title}}`、`{{subtitle}}`、`{{date_badge}}`、`{{chapter_tag}}`、`{{content}}`、`{{toc_items}}`、`{{message}}`
 3. **color-* 和 font-* CSS 变量必须全部填写**，不得为空
 4. **页面中要有装饰元素**（emoji、几何图形、渐变等），体现主题特色
+5. **【最关键】`{{content}}` 占位符内部必须保持空白**：
+   - 不要在 `{{content}}` 内部放任何示例文字、列表、卡片、图标等
+   - `{{content}}` 是一个纯净的占位符，运行时才会被替换为实际内容
+   - 可以给 `.page-content` 设置背景色、内边距等样式，但不能有任何子元素
 
 现在开始生成！"""
 
@@ -177,11 +185,27 @@ def _extract_page_types(html: str) -> dict[str, dict[str, Any]]:
 
         for ph in PLACEHOLDER_MAP[ptype]:
             ph_double = f"{{{{{ph}}}}}"
-            raw_skeleton = re.sub(
-                rf"(?i)\{{\{{\s*{re.escape(ph)}\s*\}}\}}",
-                ph_double,
-                raw_skeleton,
-            )
+
+            if ph == "content":
+                raw_skeleton = re.sub(
+                    r'(<div\s+class="[^"]*\bpage-content\b[^"]*"[^>]*>).*?(</div>)',
+                    r"\1" + ph_double + r"\2",
+                    raw_skeleton,
+                    flags=re.DOTALL | re.IGNORECASE,
+                )
+                # 去掉 .page-content 包裹层，内容直接放在 slide 内
+                raw_skeleton = re.sub(
+                    r'\s*<div\s+class="[^"]*\bpage-content\b[^"]*"[^>]*>{{content}}</div>\s*',
+                    "\n  " + ph_double + "\n",
+                    raw_skeleton,
+                    flags=re.IGNORECASE,
+                )
+            else:
+                raw_skeleton = re.sub(
+                    rf"(?i)\{{\{{\s*{re.escape(ph)}\s*\}}\}}",
+                    ph_double,
+                    raw_skeleton,
+                )
 
         result[ptype] = {
             "skeleton": raw_skeleton,
@@ -226,11 +250,27 @@ def _extract_page_types_regex(html: str) -> dict[str, dict[str, Any]]:
 
         for ph in PLACEHOLDER_MAP[ptype]:
             ph_double = f"{{{{{ph}}}}}"
-            raw_skeleton = re.sub(
-                rf"(?i)\{{\{{\s*{re.escape(ph)}\s*\}}\}}",
-                ph_double,
-                raw_skeleton,
-            )
+
+            if ph == "content":
+                raw_skeleton = re.sub(
+                    r'(<div\s+class="[^"]*\bpage-content\b[^"]*"[^>]*>).*?(</div>)',
+                    r"\1" + ph_double + r"\2",
+                    raw_skeleton,
+                    flags=re.DOTALL | re.IGNORECASE,
+                )
+                # 去掉 .page-content 包裹层，内容直接放在 slide 内
+                raw_skeleton = re.sub(
+                    r'\s*<div\s+class="[^"]*\bpage-content\b[^"]*"[^>]*>{{content}}</div>\s*',
+                    "\n  " + ph_double + "\n",
+                    raw_skeleton,
+                    flags=re.IGNORECASE,
+                )
+            else:
+                raw_skeleton = re.sub(
+                    rf"(?i)\{{\{{\s*{re.escape(ph)}\s*\}}\}}",
+                    ph_double,
+                    raw_skeleton,
+                )
 
         result[ptype] = {
             "skeleton": raw_skeleton,
