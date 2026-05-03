@@ -131,12 +131,66 @@ export async function parseText(data) {
 }
 
 // ----------------------------------------
+// 模板生成 API (LLM 驱动)
+// ----------------------------------------
+
+// LLM 对话生成模板
+export async function llmGenerateTemplate(messages, mode = 'template') {
+  const response = await apiClient.post('/llm/chat', {
+    messages: messages,
+    mode: mode
+  })
+  return response.data
+}
+
+// LLM 单次生成模板
+export async function llmGenerateOnce(userDescription) {
+  const response = await apiClient.post('/llm/chat', {
+    messages: [
+      { role: 'user', content: userDescription }
+    ],
+    mode: 'template'
+  })
+  return response.data
+}
+
+// 保存模板到文件系统
+export async function saveTemplateToFile(templateData) {
+  const response = await apiClient.post('/templates', { template_data: templateData })
+  return response.data
+}
+
+// ----------------------------------------
 // 系统API
 // ----------------------------------------
 
 // 获取模板列表
 export async function getTemplates() {
   const response = await apiClient.get('/templates')
+  return response.data
+}
+
+// 创建模板
+export async function createTemplate(data) {
+  const response = await apiClient.post('/templates', data)
+  return response.data
+}
+
+// 更新模板
+export async function updateTemplate(templateId, data) {
+  const response = await apiClient.put(`/templates/${templateId}`, data)
+  return response.data
+}
+
+// 删除模板
+export async function deleteTemplate(templateId) {
+  const response = await apiClient.delete(`/templates/${templateId}`)
+  return response.data
+}
+
+// 设置默认模板
+export async function setDefaultTemplate(templateId) {
+  const response = await apiClient.post(`/templates/${templateId}/set-default`)
   return response.data
 }
 
@@ -175,6 +229,13 @@ export default {
   getProjectPPTs,
   // 模板
   getTemplates,
+  createTemplate,
+  updateTemplate,
+  deleteTemplate,
+  setDefaultTemplate,
+  llmGenerateTemplate,
+  llmGenerateOnce,
+  saveTemplateToFile,
   // 系统
   testDbConnection,
   healthCheck

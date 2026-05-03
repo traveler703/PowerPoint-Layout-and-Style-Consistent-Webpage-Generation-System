@@ -30,12 +30,25 @@ class TemplateLoader:
         if not self.templates_dir.exists():
             return
 
+        loaded = set()
         for json_file in self.templates_dir.glob("*.json"):
+            loaded.add(json_file.stem)
             try:
                 template = self.load_from_file(json_file)
                 self._registry[template.template_id] = template
             except Exception as e:
                 print(f"Failed to load template {json_file}: {e}")
+
+        # Also scan user_generated subdirectory
+        user_dir = self.templates_dir / "user_generated"
+        if user_dir.exists():
+            for json_file in user_dir.glob("*.json"):
+                if json_file.stem not in loaded:
+                    try:
+                        template = self.load_from_file(json_file)
+                        self._registry[template.template_id] = template
+                    except Exception as e:
+                        print(f"Failed to load user template {json_file}: {e}")
 
     def load_from_file(self, path: Path | str) -> Template:
         """Load a template from a JSON file."""
@@ -47,19 +60,12 @@ class TemplateLoader:
 
     def _parse_template_data(self, data: dict) -> Template:
         """Parse template data into a Template object."""
-        # Handle legacy format (Toy风.json style)
-        if "html_template" in data:
-            return self._parse_legacy_format(data)
-
-        # Handle new structured format
         template_id = data.get("template_id", data.get("id", "unknown"))
         name = data.get("template_name", data.get("name", "Unnamed"))
         description = data.get("description", "")
 
-        # Parse CSS variables
         css_vars = data.get("css_variables", {})
 
-        # Parse page types
         page_types = {}
         for type_key, type_config in data.get("page_types", {}).items():
             page_types[type_key] = PageTypeConfig(
@@ -69,7 +75,6 @@ class TemplateLoader:
                 content_patterns=type_config.get("content_patterns", {})
             )
 
-        # Extract default page type if not specified
         if "content" not in page_types:
             page_types["content"] = PageTypeConfig(
                 type_name=PageType.CONTENT,
@@ -78,7 +83,6 @@ class TemplateLoader:
                 content_patterns={}
             )
 
-        # Extract viewport dimensions from HTML
         viewport_w, viewport_h = self._extract_viewport(data.get("raw_html", ""))
 
         return Template(
@@ -87,73 +91,7 @@ class TemplateLoader:
             description=description,
             css_variables=css_vars,
             page_types=page_types,
-            raw_html=data.get("raw_html", data.get("html_template", "")),
-            viewport_width=viewport_w,
-            viewport_height=viewport_h,
-            tags=data.get("tags", []),
-            is_default=data.get("is_default", False)
-        )
-
-    def _parse_legacy_format(self, data: dict) -> Template:
-        """Parse legacy template format (e.g., Toy风.json)."""
-        html = data["html_template"]
-
-        # Extract CSS variables from the HTML style block
-        css_vars = self._extract_css_from_html(html)
-
-        # Extract placeholders
-        placeholders = re.findall(r"\{\{(\w+)\}\}", html)
-
-        # Create default page types
-        page_types = {
-            "content": PageTypeConfig(
-                type_name=PageType.CONTENT,
-                skeleton=self._generate_skeleton_from_html(html),
-                placeholders=list(set(placeholders)),
-                content_patterns={}
-            ),
-            "cover": PageTypeConfig(
-                type_name=PageType.COVER,
-                skeleton=self._extract_cover_skeleton(html),
-                placeholders=["title", "subtitle", "date_badge"],
-                content_patterns={}
-            )
-        }
-
-        # Try to infer more page types from the HTML
-        if "toc" in html.lower() or "目录" in html:
-            page_types["toc"] = PageTypeConfig(
-                type_name=PageType.TOC,
-                skeleton=self._extract_toc_skeleton(html),
-                placeholders=["title", "toc_items"],
-                content_patterns={}
-            )
-
-        if "compare" in html.lower():
-            page_types["compare"] = PageTypeConfig(
-                type_name=PageType.COMPARE,
-                skeleton=self._extract_compare_skeleton(html),
-                placeholders=["title", "items"],
-                content_patterns={}
-            )
-
-        if "timeline" in html.lower() or "时间" in html:
-            page_types["timeline"] = PageTypeConfig(
-                type_name=PageType.TIMELINE,
-                skeleton=self._extract_timeline_skeleton(html),
-                placeholders=["title", "timeline_items"],
-                content_patterns={}
-            )
-
-        viewport_w, viewport_h = self._extract_viewport(html)
-
-        return Template(
-            template_id=data.get("template_name", data.get("id", "toy")).replace("风", ""),
-            name=data.get("template_name", "Unnamed"),
-            description=data.get("description", ""),
-            css_variables=css_vars,
-            page_types=page_types,
-            raw_html=html,
+            raw_html=data.get("raw_html", ""),
             viewport_width=viewport_w,
             viewport_height=viewport_h,
             tags=data.get("tags", []),

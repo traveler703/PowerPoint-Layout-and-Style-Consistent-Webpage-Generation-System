@@ -336,11 +336,12 @@ class PresentationGenerator:
             for section_idx, section in enumerate(outline.sections, 1):
                 # Section Page
                 section_page = self.renderer.render_page(
-                    page_type="cover",
-                    title=f"第{_roman_numeral(section_idx)}章",
-                    subtitle=section.title,
+                    page_type="section",
+                    title=section.title,
+                    subtitle="",
                     page_number=current_page_number,
                     total_pages=total_pages,
+                    extra={"chapter_tag": f"第{_roman_numeral(section_idx)}章"},
                 )
                 pages_list.append((current_page_number, "section", section_page, {"type": "section", "title": section.title}))
                 current_page_number += 1

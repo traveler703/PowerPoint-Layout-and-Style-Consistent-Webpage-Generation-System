@@ -1,5 +1,5 @@
 import { reactive, computed } from 'vue'
-import { getProjects, createProject, updateProject, deleteProject, createOutline, getOutline, updateOutline, getProjectOutlines, getProjectPPTs, getPPT, generatePPTParallel, getTemplates } from '@/services/api'
+import { getProjects, createProject, updateProject, deleteProject, createOutline, getOutline, updateOutline, getProjectOutlines, getProjectPPTs, getPPT, generatePPTParallel, getTemplates, updateTemplate, deleteTemplate, setDefaultTemplate, llmGenerateOnce, saveTemplateToFile } from '@/services/api'
 
 // 项目类型图标映射
 const typeIcons = {
@@ -34,6 +34,9 @@ const stepTitles = {
 export const store = reactive({
   // 视图状态
   currentView: 'workspace',
+
+  // 模板管理视图 tab
+  currentTemplateTab: 'gallery',
 
   // 项目列表
   projects: [],
@@ -161,6 +164,15 @@ export const store = reactive({
   // 视图切换
   setView(view) {
     this.currentView = view
+  },
+
+  goToTemplate() {
+    this.currentView = 'template'
+    this.currentTemplateTab = 'gallery'
+  },
+
+  goToCreator() {
+    this.currentView = 'creator'
   },
 
   goToWorkspace() {
@@ -861,7 +873,6 @@ export const store = reactive({
       const response = await getTemplates()
       if (response.success) {
         this.templates = response.templates || []
-        // 如果有默认模板，默认选中
         const defaultTemplate = this.templates.find(t => t.is_default)
         if (defaultTemplate && !this.selectedTemplate) {
           this.selectedTemplate = defaultTemplate.template_id
@@ -872,6 +883,90 @@ export const store = reactive({
       }
     } catch (err) {
       console.error('加载模板失败:', err)
+    }
+    return false
+  },
+
+  async createTemplate(data) {
+    try {
+      const response = await saveTemplateToFile(data)
+      if (response.success) {
+        this.templates.push(response.template)
+        this.showToastMessage('模板创建成功')
+        return response.template
+      }
+    } catch (err) {
+      console.error('创建模板失败:', err)
+      this.showToastMessage('创建模板失败')
+    }
+    return null
+  },
+
+  // 使用 LLM 生成模板
+  async generateTemplateFromLLM(userDescription) {
+    try {
+      const response = await llmGenerateOnce(userDescription)
+      if (response.success && response.parsed) {
+        return response.parsed
+      } else {
+        console.error('LLM 生成失败:', response)
+        return null
+      }
+    } catch (err) {
+      console.error('LLM 生成模板失败:', err)
+      return null
+    }
+  },
+
+  async updateTemplate(templateId, data) {
+    try {
+      const response = await updateTemplate(templateId, data)
+      if (response.success) {
+        const index = this.templates.findIndex(t => t.template_id === templateId)
+        if (index !== -1) {
+          Object.assign(this.templates[index], response.template)
+        }
+        this.showToastMessage('模板更新成功')
+        return true
+      }
+    } catch (err) {
+      console.error('更新模板失败:', err)
+      this.showToastMessage('更新模板失败')
+    }
+    return false
+  },
+
+  async deleteTemplate(templateId) {
+    try {
+      const response = await deleteTemplate(templateId)
+      if (response.success) {
+        this.templates = this.templates.filter(t => t.template_id !== templateId)
+        if (this.selectedTemplate === templateId) {
+          this.selectedTemplate = null
+        }
+        this.showToastMessage('模板已删除')
+        return true
+      }
+    } catch (err) {
+      console.error('删除模板失败:', err)
+      this.showToastMessage('删除模板失败')
+    }
+    return false
+  },
+
+  async setTemplateAsDefault(templateId) {
+    try {
+      const response = await setDefaultTemplate(templateId)
+      if (response.success) {
+        this.templates.forEach(t => {
+          t.is_default = t.template_id === templateId
+        })
+        this.showToastMessage('已设为默认模板')
+        return true
+      }
+    } catch (err) {
+      console.error('设置默认模板失败:', err)
+      this.showToastMessage('设置失败')
     }
     return false
   },
