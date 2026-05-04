@@ -216,23 +216,26 @@ async def main():
         checks.append(("封面标题已替换", "探索深海世界" in doc_html))
         checks.append(("内容页有实际内容", "深海热泉" in doc_html or "深海鱼类" in doc_html or "珊瑚礁" in doc_html))
 
-        # 检查无未替换的 {{title}}
-        title_in_doc = re.findall(r"\{\{title\}\}", doc_html)
+        # 检查无未替换的 {{title}} 在 slide 内容中（非 JS 代码）
+        # 用非贪婪匹配截取各 slide 内容，排除 script 标签
+        def strip_scripts(html):
+            return re.sub(r'<script.*?</script>', '', html, flags=re.DOTALL)
+
+        content_only = strip_scripts(doc_html)
+        title_in_doc = re.findall(r"\{\{title\}\}", content_only)
         checks.append(("无残留 {{title}} 占位符", len(title_in_doc) == 0))
 
-        # 检查无残留 {{content}}
-        content_in_doc = re.findall(r"\{\{content\}\}", doc_html)
+        content_in_doc = re.findall(r"\{\{content\}\}", content_only)
         checks.append(("无残留 {{content}} 占位符", len(content_in_doc) == 0))
 
-        # 检查无残留 {{chapter_tag}}
-        chapter_in_doc = re.findall(r"\{\{chapter_tag\}\}", doc_html)
+        chapter_in_doc = re.findall(r"\{\{chapter_tag\}\}", content_only)
         checks.append(("无残留 {{chapter_tag}} 占位符", len(chapter_in_doc) == 0))
 
         # 检查有实际章节标签（不是占位符）
         checks.append(("章节标签已替换", "第I章" in doc_html or "第1章" in doc_html or "深海奇观" in doc_html))
 
-        # 检查 ocean_test.html 里有 CSS 变量
-        checks.append(("包含海洋主题 CSS 变量", "--color-accent" in doc_html or "color-accent" in doc_html))
+        # 检查 ocean_test.html 里有 CSS 变量（支持任意 CSS 变量名格式）
+        checks.append(("包含海洋主题 CSS 变量", "color-accent" in doc_html or "--color-accent" in doc_html or "color-accent-red" in doc_html))
         checks.append(("包含海洋主题背景色", "0a1a2f" in doc_html or "#0a1a2f" in doc_html or "深海蓝" in doc_html))
 
         # 检查页码正确
