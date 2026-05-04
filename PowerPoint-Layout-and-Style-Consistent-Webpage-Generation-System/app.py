@@ -13,6 +13,7 @@ from config import APP_HOST, APP_PORT, DEBUG
 from services.project_service import (
     ProjectService, OutlineService, GeneratedPptService
 )
+from scripts.template_generator import register_template_api_routes
 from engine.content import parse_user_document
 from engine.types import SemanticPageInput
 from pipeline import run_pipeline
@@ -849,7 +850,6 @@ def get_templates():
                     try:
                         with open(filepath, 'r', encoding='utf-8') as f:
                             template_data = json.load(f)
-                            # 只返回必要的字段
                             templates.append({
                                 'template_id': template_data.get('template_id'),
                                 'template_name': template_data.get('template_name'),
@@ -857,7 +857,8 @@ def get_templates():
                                 'css_variables': template_data.get('css_variables'),
                                 'tags': template_data.get('tags', []),
                                 'is_default': template_data.get('is_default', False),
-                                'page_types': list(template_data.get('page_types', {}).keys())
+                                'page_types': list(template_data.get('page_types', {}).keys()),
+                                'template_type': template_data.get('template_type', 'preset')
                             })
                     except Exception as e:
                         logger.error(f"加载模板文件 {filename} 失败: {e}")
@@ -871,8 +872,59 @@ def get_templates():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/templates', methods=['POST'])
+def create_template():
+    """创建新模板 - 保存用户生成的模板"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': '请求数据不能为空'}), 400
+
+        template_data = data.get('template_data') or data
+
+        template_id = template_data.get('template_id')
+        if not template_id:
+            return jsonify({'error': 'template_id 不能为空'}), 400
+
+        logger.info(f"创建模板: {template_id}")
+
+        output_dir = os.path.join(
+            os.path.dirname(__file__), 'templates', 'data', 'user_generated'
+        )
+        os.makedirs(output_dir, exist_ok=True)
+        output_path = os.path.join(output_dir, f"{template_id}.json")
+
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(template_data, f, ensure_ascii=False, indent=2)
+
+        logger.info(f"模板已保存: {output_path}")
+
+        return jsonify({
+            'success': True,
+            'message': '模板保存成功',
+            'template': {
+                'template_id': template_id,
+                'template_name': template_data.get('template_name', ''),
+                'description': template_data.get('description', ''),
+                'css_variables': template_data.get('css_variables'),
+                'tags': template_data.get('tags', []),
+                'page_types': list(template_data.get('page_types', {}).keys()),
+                'template_type': template_data.get('template_type', 'user'),
+                'is_default': False
+            }
+        }), 201
+
+    except Exception as e:
+        logger.error(f"创建模板失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 def main():
     """主函数"""
+    # 注册模板生成 API
+    register_template_api_routes(app)
     logger.info(f"启动LandPPT Demo服务: http://{APP_HOST}:{APP_PORT}")
     app.run(host=APP_HOST, port=APP_PORT, debug=DEBUG)
 

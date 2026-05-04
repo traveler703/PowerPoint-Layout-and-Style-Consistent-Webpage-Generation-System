@@ -6,6 +6,12 @@
     <!-- Project View -->
     <ProjectView v-else-if="store.currentView === 'project'" />
 
+    <!-- Template View -->
+    <TemplateView v-else-if="store.currentView === 'template'" />
+
+    <!-- Template Creator -->
+    <TemplateCreator v-else-if="store.currentView === 'creator'" />
+
     <!-- Context Menu -->
     <ContextMenu />
 
@@ -25,6 +31,8 @@ import { onMounted, onUnmounted } from 'vue'
 import { store } from './stores/appStore'
 import WorkspaceView from './components/WorkspaceView.vue'
 import ProjectView from './components/ProjectView.vue'
+import TemplateView from './components/TemplateView.vue'
+import TemplateCreator from './components/TemplateCreator.vue'
 import ContextMenu from './components/ContextMenu.vue'
 import Toast from './components/Toast.vue'
 import NewProjectModal from './components/NewProjectModal.vue'

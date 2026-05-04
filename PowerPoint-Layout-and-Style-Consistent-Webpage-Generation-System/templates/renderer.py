@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import json
 import html as html_lib
 from typing import Any
 
@@ -28,35 +27,22 @@ class TemplateRenderer:
         total_pages: int = 1,
         extra: dict[str, Any] | None = None,
     ) -> str:
-        """
-        Render a single page with the given content.
-
-        Args:
-            page_type: The type of page (cover, content, toc, etc.)
-            title: Page title
-            subtitle: Page subtitle (for cover pages)
-            content: Main content (HTML or text)
-            bullets: List of bullet points
-            page_number: Current page number
-            total_pages: Total number of pages
-            extra: Additional placeholder values
-
-        Returns:
-            Rendered HTML for the page
-        """
         page_config = self.template.get_page_type_config(page_type)
 
         if page_config is None:
-            # Fallback to default content skeleton
-            return self._render_default_page(
-                title=title,
-                content=content,
-                bullets=bullets,
-                page_number=page_number,
-                total_pages=total_pages,
-            )
+            if page_type == "section":
+                fallback = self.template.get_page_type_config("cover")
+                if fallback is not None:
+                    page_config = fallback
+            if page_config is None:
+                return self._render_default_page(
+                    title=title,
+                    content=content,
+                    bullets=bullets,
+                    page_number=page_number,
+                    total_pages=total_pages,
+                )
 
-        # Prepare placeholders
         placeholders = {
             "title": html_lib.escape(title) if title else "",
             "subtitle": html_lib.escape(subtitle) if subtitle else "",
@@ -67,12 +53,10 @@ class TemplateRenderer:
             "page_type": page_type,
         }
 
-        # Add extra placeholders
         if extra:
             for key, value in extra.items():
                 placeholders[key] = str(value)
 
-        # Replace placeholders in skeleton
         rendered = page_config.skeleton
         for key, value in placeholders.items():
             rendered = rendered.replace(f"{{{{{key}}}}}", str(value))
@@ -87,7 +71,6 @@ class TemplateRenderer:
         page_number: int = 1,
         total_pages: int = 1,
     ) -> str:
-        """Render a cover/title page."""
         return self.render_page(
             page_type=PageType.COVER,
             title=title,
@@ -105,7 +88,6 @@ class TemplateRenderer:
         page_number: int = 1,
         total_pages: int = 1,
     ) -> str:
-        """Render a content page."""
         return self.render_page(
             page_type=PageType.CONTENT,
             title=title,
@@ -122,7 +104,6 @@ class TemplateRenderer:
         page_number: int = 1,
         total_pages: int = 1,
     ) -> str:
-        """Render a table of contents page."""
         toc_html = self._render_toc_items(toc_items or [])
         return self.render_page(
             page_type=PageType.TOC,
@@ -140,11 +121,10 @@ class TemplateRenderer:
         page_number: int = 1,
         total_pages: int = 1,
     ) -> str:
-        """Render an ending/thank you page."""
         return self.render_page(
             page_type=PageType.ENDING,
             title=title,
-            content="",  # Not used, we use message placeholder
+            content="",
             extra={
                 "emoji": emoji,
                 "message": content,
@@ -160,7 +140,6 @@ class TemplateRenderer:
         page_number: int = 1,
         total_pages: int = 1,
     ) -> str:
-        """Render a comparison page with multiple cards."""
         items_html = self._render_comparison_items(items or [])
         return self.render_page(
             page_type=PageType.COMPARE,
@@ -177,7 +156,6 @@ class TemplateRenderer:
         page_number: int = 1,
         total_pages: int = 1,
     ) -> str:
-        """Render a timeline page."""
         timeline_html = self._render_timeline_items(timeline_items or [])
         return self.render_page(
             page_type=PageType.TIMELINE,
@@ -194,7 +172,6 @@ class TemplateRenderer:
         page_number: int = 1,
         total_pages: int = 1,
     ) -> str:
-        """Render a Q&A page."""
         qa_html = self._render_qa_items(qa_items or [])
         return self.render_page(
             page_type=PageType.QA,
@@ -211,53 +188,78 @@ class TemplateRenderer:
         document_title: str = "演示文稿",
         navigation: bool = True,
     ) -> str:
-        """
-        Merge multiple rendered pages into a complete HTML document.
-
-        Args:
-            pages: List of rendered page HTML strings
-            document_title: Title for the document
-            navigation: Whether to include navigation UI
-
-        Returns:
-            Complete HTML document with all pages
-        """
         if not pages:
             return ""
 
         total_pages = len(pages)
 
-        # Build slide containers with rendered content
+        # Build slide containers
         slide_containers = []
         for idx, page_html in enumerate(pages):
             page_num = idx + 1
-            container = f'''
-            <div class="slide-container">
-                <div class="slide-wrapper" data-page="{page_num}">
-                    {page_html}
-                </div>
-            </div>
-            '''
+            container = (
+                f'<div class="slide-container">'
+                f'<div class="slide-wrapper" data-page="{page_num}">{page_html}</div>'
+                f'</div>'
+            )
             slide_containers.append(container)
+        slides_inner = "".join(slide_containers)
 
-        slides_inner = "\n".join(slide_containers)
-
-        # Navigation UI
-        nav_html = ""
-        if navigation:
-            nav_html = self._generate_navigation(total_pages)
-
-        # Use the template's raw HTML as the base
         base_html = self.template.raw_html
 
-        # Replace placeholders
-        base_html = base_html.replace("{{SLIDES_CONTENT}}", slides_inner)
+        # Try BeautifulSoup for robust HTML manipulation
+        try:
+            from bs4 import BeautifulSoup
+        except ImportError:
+            base_html = base_html.replace("{{SLIDES_CONTENT}}", slides_inner)
+            base_html = base_html.replace("{SLIDES_CONTENT}", slides_inner)
+            base_html = base_html.replace("{{TOTAL_PAGES}}", str(total_pages))
+            base_html = base_html.replace("{TOTAL_PAGES}", str(total_pages))
+            base_html = base_html.replace("<title>PPT Template</title>", f"<title>{html_lib.escape(document_title)}</title>")
+            if not navigation:
+                base_html = re.sub(r'<div class="nav-dots"[^>]*></div>', '', base_html)
+                base_html = base_html.replace('<div class="nav-arrows">', '<div class="nav-arrows" style="display:none">')
+            return base_html
+
+        soup = BeautifulSoup(base_html, "html.parser")
+
+        # Find slides-track
+        track = soup.find("div", class_=lambda c: c and "slides-track" in c.split())
+        if track:
+            # 只删除 slides-track 的直接子元素中属于示例 slide 的部分
+            # 不递归删除（避免把 slide-container / slide-wrapper 也删掉）
+            for child in list(track.children):
+                if not hasattr(child, 'name') or child.name != 'div':
+                    continue
+                child_class = child.get('class', [])
+                child_class_str = ' '.join(child_class) if isinstance(child_class, list) else str(child_class)
+                # 只删除直接的示例 slide div（不是 slide-container / slide-wrapper）
+                is_example_slide = (
+                    'slide' in child_class_str.split()
+                    and 'container' not in child_class_str
+                    and 'wrapper' not in child_class_str
+                )
+                if is_example_slide:
+                    # 删除示例 slide 内部的 footer（避免合并后出现两套 footer）
+                    for footer in child.find_all("div", class_=lambda c: c and 'slide-footer' in c.split()):
+                        footer.decompose()
+                    child.decompose()
+            # 移除 track 内的文本节点/注释
+            for child in list(track.children):
+                if hasattr(child, 'name') and child.name is None:
+                    child.extract()
+            # 注入渲染后的页面
+            pages_soup = BeautifulSoup(slides_inner, "html.parser")
+            for child in list(pages_soup.find_all("div", recursive=False)):
+                track.append(child)
+
+        base_html = str(soup)
         base_html = base_html.replace("{{TOTAL_PAGES}}", str(total_pages))
+        base_html = base_html.replace("{TOTAL_PAGES}", str(total_pages))
         base_html = base_html.replace("<title>PPT Template</title>", f"<title>{html_lib.escape(document_title)}</title>")
 
-        # If navigation is disabled, remove nav elements
         if not navigation:
-            base_html = base_html.replace('<div class="nav-dots" id="navDots"></div>', '')
+            base_html = re.sub(r'<div class="nav-dots"[^>]*></div>', '', base_html)
             base_html = base_html.replace('<div class="nav-arrows">', '<div class="nav-arrows" style="display:none">')
 
         return base_html
@@ -270,22 +272,20 @@ class TemplateRenderer:
         page_number: int,
         total_pages: int,
     ) -> str:
-        """Render a page using the default content skeleton."""
         bullets_html = self._render_bullets(bullets or [])
         combined_content = f"{content}\n{bullets_html}" if content else bullets_html
 
-        return f'''
-        <div class="slide content">
-            <div class="page-title">{html_lib.escape(title)}</div>
-            <div class="page-content">{combined_content}</div>
-            <div class="pagination">
-                <span class="current-page">{page_number}</span> / <span class="total-pages">{total_pages}</span>
-            </div>
-        </div>
-        '''
+        return (
+            f'<div class="slide content">'
+            f'<div class="page-title">{html_lib.escape(title)}</div>'
+            f'<div class="page-content">{combined_content}</div>'
+            f'<div class="pagination">'
+            f'<span class="current-page">{page_number}</span> / <span class="total-pages">{total_pages}</span>'
+            f'</div>'
+            f'</div>'
+        )
 
     def _render_bullets(self, bullets: list[str]) -> str:
-        """Render bullet points as HTML list."""
         if not bullets:
             return ""
         items = []
@@ -295,120 +295,97 @@ class TemplateRenderer:
         return f"<ul>{''.join(items)}</ul>"
 
     def _render_toc_items(self, items: list[dict[str, str]]) -> str:
-        """Render TOC items as HTML."""
         if not items:
             return ""
         html_parts = []
         for idx, item in enumerate(items, 1):
             number = f"{idx:02d}"
-            title = html_lib.escape(item.get("title", ""))
-            description = html_lib.escape(item.get("description", ""))
-            html_parts.append(f'''
-                <div class="toc-item">
-                    <div class="toc-number">{number}</div>
-                    <div class="toc-text">
-                        <h3>{title}</h3>
-                        <p>{description}</p>
-                    </div>
-                </div>
-            ''')
+            title_esc = html_lib.escape(item.get("title", ""))
+            desc_esc = html_lib.escape(item.get("description", ""))
+            html_parts.append(
+                f'<div class="toc-item">'
+                f'<div class="toc-number">{number}</div>'
+                f'<div class="toc-text"><h3>{title_esc}</h3><p>{desc_esc}</p></div>'
+                f'</div>'
+            )
         return "".join(html_parts)
 
     def _render_comparison_items(self, items: list[dict[str, Any]]) -> str:
-        """Render comparison cards as HTML."""
         if not items:
             return ""
         html_parts = []
         for item in items:
-            title = html_lib.escape(item.get("title", ""))
+            title_esc = html_lib.escape(item.get("title", ""))
             era = item.get("era", "")
-            description = item.get("description", "")
+            desc_esc = html_lib.escape(item.get("description", ""))
             features = item.get("features", [])
-
-            features_html = ""
-            for feature in features:
-                features_html += f"<li>{html_lib.escape(feature)}</li>"
-
-            html_parts.append(f'''
-                <div class="compare-card">
-                    <h3>{title}</h3>
-                    <span class="era">{html_lib.escape(era)}</span>
-                    <p>{html_lib.escape(description)}</p>
-                    <ul>{features_html}</ul>
-                </div>
-            ''')
+            features_html = "".join(f"<li>{html_lib.escape(f)}</li>" for f in features)
+            html_parts.append(
+                f'<div class="compare-card">'
+                f'<h3>{title_esc}</h3>'
+                f'<span class="era">{html_lib.escape(era)}</span>'
+                f'<p>{desc_esc}</p>'
+                f'<ul>{features_html}</ul>'
+                f'</div>'
+            )
         return "".join(html_parts)
 
     def _render_timeline_items(self, items: list[dict[str, str]]) -> str:
-        """Render timeline items as HTML."""
         if not items:
             return ""
         html_parts = []
         for item in items:
-            title = html_lib.escape(item.get("title", ""))
-            description = html_lib.escape(item.get("description", ""))
+            title_esc = html_lib.escape(item.get("title", ""))
+            desc_esc = html_lib.escape(item.get("description", ""))
             icon = item.get("icon", "●")
-            html_parts.append(f'''
-                <div class="timeline-item">
-                    <div class="timeline-content">
-                        <h3>{icon} {title}</h3>
-                        <p>{description}</p>
-                    </div>
-                </div>
-            ''')
+            html_parts.append(
+                f'<div class="timeline-item">'
+                f'<div class="timeline-content"><h3>{icon} {title_esc}</h3><p>{desc_esc}</p></div>'
+                f'</div>'
+            )
         return "".join(html_parts)
 
     def _render_qa_items(self, items: list[dict[str, str]]) -> str:
-        """Render Q&A items as HTML."""
         if not items:
             return ""
         html_parts = []
         for item in items:
-            question = html_lib.escape(item.get("question", ""))
-            answer = html_lib.escape(item.get("answer", ""))
-            html_parts.append(f'''
-                <div class="qa-card">
-                    <div class="question">{question}</div>
-                    <div class="answer">{answer}</div>
-                </div>
-            ''')
+            q_esc = html_lib.escape(item.get("question", ""))
+            a_esc = html_lib.escape(item.get("answer", ""))
+            html_parts.append(
+                f'<div class="qa-card">'
+                f'<div class="question">{q_esc}</div>'
+                f'<div class="answer">{a_esc}</div>'
+                f'</div>'
+            )
         return "".join(html_parts)
 
     def _generate_navigation(self, total_pages: int) -> str:
-        """Generate navigation UI HTML."""
         dots = []
         for i in range(total_pages):
             active = "active" if i == 0 else ""
             dots.append(f'<div class="nav-dot {active}" data-page="{i + 1}"></div>')
 
-        return f'''
-        <div class="nav-dots" id="navDots">
-            {"".join(dots)}
-        </div>
-        <div class="nav-arrows">
-            <div class="nav-arrow" id="prevBtn" onclick="prevSlide()">
-                <i class="fa-solid fa-chevron-left"></i>
-            </div>
-            <div class="nav-arrow" id="nextBtn" onclick="nextSlide()">
-                <i class="fa-solid fa-chevron-right"></i>
-            </div>
-        </div>
-        <div class="page-indicator" id="pageIndicator">
-            <span class="current" id="currentPage">1</span> / <span id="totalPages">{total_pages}</span>
-        </div>
-        '''
+        return (
+            f'<div class="nav-dots" id="navDots">{"".join(dots)}</div>'
+            f'<div class="nav-arrows">'
+            f'<div class="nav-arrow" id="prevBtn" onclick="prevSlide()">'
+            f'<i class="fa-solid fa-chevron-left"></i></div>'
+            f'<div class="nav-arrow" id="nextBtn" onclick="nextSlide()">'
+            f'<i class="fa-solid fa-chevron-right"></i></div>'
+            f'</div>'
+            f'<div class="page-indicator" id="pageIndicator">'
+            f'<span class="current" id="currentPage">1</span> / <span id="totalPages">{total_pages}</span>'
+            f'</div>'
+        )
 
     def _extract_template_css(self) -> str:
-        """Extract CSS from the template's raw HTML."""
-        import re
         style_match = re.search(r"<style>(.*?)</style>", self.template.raw_html, re.DOTALL)
         if style_match:
             return style_match.group(1)
         return ""
 
     def _extract_template_js(self) -> str:
-        """Extract JavaScript from the template's raw HTML."""
-        import re
         script_match = re.search(r"<script>(.*?)</script>", self.template.raw_html, re.DOTALL)
         if script_match:
             return script_match.group(1)

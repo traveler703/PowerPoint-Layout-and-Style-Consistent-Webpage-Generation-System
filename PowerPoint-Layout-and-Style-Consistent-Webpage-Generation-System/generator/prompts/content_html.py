@@ -86,9 +86,39 @@ def generate_color_scheme_from_template(css_variables: dict[str, str]) -> dict[s
     }
 
 
+def _extract_style_parts(template_info: dict | None) -> list[str]:
+    """从 template_info 中提取风格描述行列表。"""
+    if not template_info:
+        return []
+    parts = []
+    name = template_info.get("name", "")
+    description = template_info.get("description", "")
+    tags = template_info.get("tags", [])
+    font_body = template_info.get("font_body", "")
+    font_heading = template_info.get("font_heading", "")
+    aesthetic = template_info.get("aesthetic", "")
+    layout_tendency = template_info.get("layout_tendency", "")
+    if name:
+        parts.append(f"- 模板名称：{name}")
+    if description:
+        parts.append(f"- 风格描述：{description}")
+    if tags:
+        parts.append(f"- 风格标签：{'、'.join(tags)}")
+    if font_body:
+        parts.append(f"- 正文字体风格：{font_body}")
+    if font_heading:
+        parts.append(f"- 标题字体风格：{font_heading}")
+    if aesthetic:
+        parts.append(f"- 视觉美学：{aesthetic}")
+    if layout_tendency:
+        parts.append(f"- 布局倾向：{layout_tendency}")
+    return parts
+
+
 def build_content_html_prompt(
     content: SemanticPageInput,
     css_variables: dict[str, str] | None = None,
+    template_info: dict | None = None,
 ) -> tuple[str, str]:
     """
     Build a prompt for generating creative HTML layout for content pages.
@@ -96,6 +126,7 @@ def build_content_html_prompt(
     Args:
         content: The semantic page input with title, summary, and bullet points
         css_variables: Template CSS variables for color scheme (auto-generated if None)
+        template_info: Template style metadata (name, description, tags, fonts, aesthetic)
 
     Returns:
         Tuple of (system_prompt, user_prompt)
@@ -104,77 +135,97 @@ def build_content_html_prompt(
         css_variables = _get_default_css_variables()
 
     colors = generate_color_scheme_from_template(css_variables)
+    color_prompt = _build_color_prompt(colors)
+    theme_color = colors["THEME_COLOR"]
 
-    system_prompt = f"""你是一位专业的前端开发工程师。
+    # 构建模板风格信息
+    style_parts = _extract_style_parts(template_info)
 
-重要规则：
-- 标题区域和页码由模板自动生成，请勿包含
-- 你只需要生成内容区域的 HTML 代码片段
-- 主题色：{colors['THEME_COLOR']}
+    # 用拼接方式构建 system_prompt
+    system_prompt_parts = [
+        "你是一位专业的前端开发工程师。",
+        "",
+        "重要规则：",
+        "- 标题区域和页码由模板自动生成，请勿包含",
+        "- 你只需要生成内容区域的 HTML 代码片段",
+        f"- 主题色：{theme_color}",
+        "",
+        color_prompt,
+        "",
+        "创意布局 - 多样性是关键：",
+        "- 不要只用卡片！每一页应该有独特的布局风格",
+    ]
 
-{_build_color_prompt(colors)}
+    if style_parts:
+        system_prompt_parts.append("")
+        system_prompt_parts.append("【模板风格信息 - 必须严格遵守】")
+        system_prompt_parts.extend(style_parts)
+        system_prompt_parts.append("请确保生成的内容页与该模板的整体风格完全一致。")
 
-创意布局 - 多样性是关键：
-- 不要只用卡片！每一页应该有独特的布局风格
-- 尝试以下布局方案：
-  * 时间线：横向或纵向的演进展示
-  * 阶梯式：像楼梯一样的递进层级
-  * 放射式：主题在中心，向外辐射
-  * 分栏式：左侧标题，右侧内容
-  * 杂志风：大标题 + 多栏排版
-  * 仪表盘：数字和指标展示
-  * 流程图：带箭头的流程展示
-  * 表格/网格：结构化数据展示
-  * 路线图：带里程碑的路径
-- 自由组合 flex、grid、position
-- 大量使用图标和 emoji
+    system_prompt_parts.extend([
+        "",
+        "尝试以下布局方案：",
+        "  * 时间线：横向或纵向的演进展示",
+        "  * 阶梯式：像楼梯一样的递进层级",
+        "  * 放射式：主题在中心，向外辐射",
+        "  * 分栏式：左侧标题，右侧内容",
+        "  * 杂志风：大标题 + 多栏排版",
+        "  * 仪表盘：数字和指标展示",
+        "  * 流程图：带箭头的流程展示",
+        "  * 表格/网格：结构化数据展示",
+        "  * 路线图：带里程碑的路径",
+        "- 自由组合 flex、grid、position",
+        "- 大量使用图标和 emoji",
+        "",
+        "尺寸约束 - 视觉质量的关键：",
+        "- 内容区域：1160px 宽 x 530px 高",
+        "- 所有内容必须在这个区域内，禁止溢出",
+        "- 字体大小 14-18px",
+        "- 使用 flex/grid 布局",
+        "",
+        "【溢出控制 - 最重要】",
+        "- 每个容器 div 必须添加 `overflow: hidden` 防止内容溢出",
+        "- 对长文本使用 `word-wrap: break-word`",
+        "- 对单行文本使用 `text-overflow: ellipsis` 或 `white-space: nowrap`",
+        "- 保持文字简洁，避免每行内容过多",
+        "",
+        "输出格式：",
+        "- 用 ```html ... ``` 包裹",
+        "- 只输出 div 代码片段",
+        "- 不要使用 class=\"page-content\"",
+        "",
+        "【样式要求 - 最重要】",
+        "- **禁止使用自定义 class，所有样式必须使用内联 style 属性**",
+        "- **禁止使用 <style> 标签，不要生成任何 CSS 样式定义**",
+        "- **禁止使用 overflow: visible，这会导致内容溢出**",
+        "- 每个 div 必须有 `overflow: hidden` 或明确的 overflow 控制",
+        "- 宽度和高度必须用具体数值（如 1160px, 100%）而不是 auto",
+        "",
+        "示例：",
+        "```html",
+        "<div style=\"width:1160px;height:530px;overflow:hidden;display:flex;\">",
+        "  <div style=\"flex:1;background:rgba(0,0,0,0.05);overflow:hidden;\">内容...</div>",
+        "</div>",
+        "```",
+    ])
 
-尺寸约束 - 视觉质量的关键：
-- 内容区域：1160px 宽 x 530px 高
-- 所有内容必须在这个区域内，禁止溢出
-- 字体大小 14-18px
-- 使用 flex/grid 布局
+    system_prompt = "\n".join(system_prompt_parts)
 
-【溢出控制 - 最重要】
-- 每个容器 div 必须添加 `overflow: hidden` 防止内容溢出
-- 对长文本使用 `word-wrap: break-word`
-- 对单行文本使用 `text-overflow: ellipsis` 或 `white-space: nowrap`
-- 保持文字简洁，避免每行内容过多
-
-输出格式：
-- 用 ```html ... ``` 包裹
-- 只输出 div 代码片段
-- 不要使用 class="page-content"
-
-【样式要求 - 最重要】
-- **禁止使用自定义 class，所有样式必须使用内联 style 属性**
-- **禁止使用 <style> 标签，不要生成任何 CSS 样式定义**
-- **禁止使用 overflow: visible，这会导致内容溢出**
-- 每个 div 必须有 `overflow: hidden` 或明确的 overflow 控制
-- 宽度和高度必须用具体数值（如 1160px, 100%）而不是 auto
-
-示例：
-```html
-<div class="creative-inner" style="width:1160px;height:530px;overflow:hidden;display:flex;">
-  <div style="flex:1;background:{colors['BG_CARD_LOW']};border:1px solid {colors['BORDER_LOW']};overflow:hidden;">内容...</div>
-</div>
-```"""
-
-    user_prompt = f"""请为内容区域生成创意布局。
-
-标题：{content.title}
-副标题/摘要：{content.summary}
-要点：
-{chr(10).join(f"- {b}" for b in content.bullet_points)}
-
-约束条件：
-1. 内容区域：1160px x 530px，禁止溢出
-2. 不要生成 page-title
-3. 字体 14-18px，保持内容简洁
-4. 不要使用统一的 4 宫格布局
-5. 使用创意、独特的布局
-6. **关键**：每个卡片/容器必须添加 `overflow: hidden` 防止内容溢出
-7. 避免文字重叠 - 使用适当的 padding、margin 和文字宽度控制"""
+    bullet_lines = "\n".join(f"- {b}" for b in content.bullet_points)
+    user_prompt = (
+        f"请为内容区域生成创意布局。\n\n"
+        f"标题：{content.title}\n"
+        f"副标题/摘要：{content.summary}\n"
+        f"要点：\n{bullet_lines}\n\n"
+        f"约束条件：\n"
+        f"1. 内容区域：1160px x 530px，禁止溢出\n"
+        f"2. 不要生成 page-title\n"
+        f"3. 字体 14-18px，保持内容简洁\n"
+        f"4. 不要使用统一的 4 宫格布局\n"
+        f"5. 使用创意、独特的布局\n"
+        f"6. **关键**：每个卡片/容器必须添加 `overflow: hidden` 防止内容溢出\n"
+        f"7. 避免文字重叠 - 使用适当的 padding、margin 和文字宽度控制"
+    )
 
     return system_prompt, user_prompt
 
@@ -223,6 +274,7 @@ def build_html_generation_prompt(
     layout_analysis: dict,
     colors: dict | None = None,
     css_variables: dict[str, str] | None = None,
+    template_info: dict | None = None,
 ) -> tuple[str, str]:
     """
     Build prompt for HTML generation based on layout expert analysis.
@@ -235,6 +287,7 @@ def build_html_generation_prompt(
         layout_analysis: Dict containing layout_type, design_suggestions, component_hints
         colors: Pre-generated color scheme (auto-generated if None)
         css_variables: Template CSS variables (used to generate colors if colors is None)
+        template_info: Template style metadata (name, description, tags, fonts, aesthetic)
 
     Returns:
         Tuple of (system_prompt, user_prompt)
@@ -248,84 +301,97 @@ def build_html_generation_prompt(
     design_suggestions = layout_analysis.get("design_suggestions", [])
     component_hints = layout_analysis.get("component_hints", [])
     reasoning = layout_analysis.get("reasoning", "")
+    theme_color = colors["THEME_COLOR"]
+    color_prompt = _build_color_prompt(colors)
 
-    system_prompt = f"""你是一位专业的前端开发工程师。
+    # 构建模板风格信息
+    style_parts = _extract_style_parts(template_info)
 
-【你的任务】
-根据布局专家的分析结果，严格按照专家建议生成创意HTML布局。
+    design_lines = "\n".join(f"- {s}" for s in design_suggestions)
+    component_lines = "\n".join(f"- {c}" for c in component_hints)
+    bullet_lines = "\n".join(f"- {b}" for b in page.bullet_points)
 
-重要规则：
-- 标题区域和页码、页脚都由模板自动生成，请勿包含
-- 你只需要生成内容区域的 HTML 代码片段
-- 主题色：{colors['THEME_COLOR']}
+    sys_parts = [
+        "你是一位专业的前端开发工程师。",
+        "",
+        "【你的任务】",
+        "根据布局专家的分析结果，严格按照专家建议生成创意HTML布局。",
+        "",
+    ]
 
-{_build_color_prompt(colors)}
+    if style_parts:
+        sys_parts.append("【模板风格信息 - 必须严格遵守】")
+        sys_parts.extend(style_parts)
+        sys_parts.append("请确保生成的内容页与该模板的整体风格完全一致。")
+        sys_parts.append("")
 
-【布局专家分析结果 - 必须严格遵循】
-推荐布局类型：{layout_type}
-选择理由：{reasoning}
+    sys_parts.extend([
+        "重要规则：",
+        "- 标题区域和页码、页脚都由模板自动生成，请勿包含",
+        "- 你只需要生成内容区域的 HTML 代码片段",
+        f"- 主题色：{theme_color}",
+        "",
+        color_prompt,
+        "",
+        "【布局专家分析结果 - 必须严格遵循】",
+        f"推荐布局类型：{layout_type}",
+        f"选择理由：{reasoning}",
+        "",
+        "专家设计建议（必须实现）：",
+        design_lines,
+        "",
+        "可用组件：",
+        component_lines,
+        "",
+        "尺寸约束：",
+        "- 内容区域：1160px 宽 x 530px 高",
+        "- 所有内容必须在这个区域内，禁止溢出",
+        "- 字体大小 14-18px",
+        "- 使用 flex/grid 布局",
+        "",
+        "【溢出控制 - 关键要求】",
+        "- **文字必须完整显示，禁止使用 text-overflow: ellipsis 截断文字**",
+        "- 每个容器 div 必须添加 `overflow: hidden` 防止内容溢出",
+        "- 对长文本使用 `word-wrap: break-word` 和多行文本",
+        "- **保持文字简短**，每行控制在10个中文字符以内，避免文字过长无法显示",
+        "- **禁止使用绝对定位(absolute/fixed)**，会导致内容被裁剪或溢出",
+        "- **必须使用 flex 或 grid 布局**，所有内容必须能完整显示在1160x530区域内",
+        "- **文字必须完整显示**，卡片宽度必须足够容纳所有文字内容",
+        "",
+        "输出格式：",
+        "- 用 ```html ... ``` 包裹",
+        "- 只输出 div 代码片段",
+        "- 不要使用 class=\"page-content\"",
+        "",
+        "【样式要求 - 最重要】",
+        "- **禁止使用自定义 class，所有样式必须使用内联 style 属性**",
+        "- **禁止使用 <style> 标签，不要生成任何 CSS 样式定义**",
+        "- **禁止使用 overflow: visible，这会导致内容溢出**",
+        "- 每个 div 必须有 `overflow: hidden` 或明确的 overflow 控制",
+        "- 宽度和高度必须用具体数值（如 1160px, 100%）而不是 auto",
+        "",
+        "现在开始按照专家建议生成：",
+    ])
 
-专家设计建议（必须实现）：
-{chr(10).join(f"- {s}" for s in design_suggestions)}
+    system_prompt = "\n".join(sys_parts)
 
-可用组件：
-{chr(10).join(f"- {c}" for c in component_hints)}
-
-尺寸约束：
-- 内容区域：1160px 宽 x 530px 高
-- 所有内容必须在这个区域内，禁止溢出
-- 字体大小 14-18px
-- 使用 flex/grid 布局
-
-【溢出控制 - 关键要求】
-- **文字必须完整显示，禁止使用 text-overflow: ellipsis 截断文字**
-- 每个容器 div 必须添加 `overflow: hidden` 防止内容溢出
-- 对长文本使用 `word-wrap: break-word` 和多行文本
-- **保持文字简短**，每行控制在10个中文字符以内，避免文字过长无法显示
-- **禁止使用绝对定位(absolute/fixed)**，会导致内容被裁剪或溢出
-- **必须使用 flex 或 grid 布局**，所有内容必须能完整显示在1160x530区域内
-- **文字必须完整显示**，卡片宽度必须足够容纳所有文字内容
-
-输出格式：
-- 用 ```html ... ``` 包裹
-- 只输出 div 代码片段
-- 不要使用 class="page-content"
-
-【样式要求 - 最重要】
-- **禁止使用自定义 class，所有样式必须使用内联 style 属性**
-- **禁止使用 <style> 标签，不要生成任何 CSS 样式定义**
-- **禁止使用 overflow: visible，这会导致内容溢出**
-- 每个 div 必须有 `overflow: hidden` 或明确的 overflow 控制
-- 宽度和高度必须用具体数值（如 1160px, 100%）而不是 auto
-
-现在开始按照专家建议生成："""
-
-    user_prompt = f"""请严格按照布局专家的设计建议生成HTML。
-
-【标题】
-{page.title}
-
-【副标题/摘要】
-{page.summary}
-
-【要点列表】
-{chr(10).join(f"- {b}" for b in page.bullet_points)}
-
-【推荐布局类型】
-{layout_type}
-
-【专家设计建议 - 必须遵循】
-{chr(10).join(f"- {s}" for s in design_suggestions)}
-
-约束条件（必须严格遵守）：
-1. 内容区域：1160px 宽 x 530px 高，**所有内容必须完整显示在此区域内**
-2. **禁止使用绝对定位**，使用 flex/grid 布局
-3. **禁止使用 text-overflow: ellipsis 截断文字**
-4. **文字必须简短**：
-   - 每行最多12个中文字符
-   - 每张卡片最多2行文字
-   - 总内容行数控制在4-6行以内
-5. **卡片高度必须自适应内容**，不要设置固定max-height
-6. **内容必须全部可见**，不允许任何溢出或裁剪"""
+    user_prompt = (
+        f"请严格按照布局专家的设计建议生成HTML。\n\n"
+        f"【标题】\n{page.title}\n\n"
+        f"【副标题/摘要】\n{page.summary}\n\n"
+        f"【要点列表】\n{bullet_lines}\n\n"
+        f"【推荐布局类型】\n{layout_type}\n\n"
+        f"【专家设计建议 - 必须遵循】\n{design_lines}\n\n"
+        f"约束条件（必须严格遵守）：\n"
+        f"1. 内容区域：1160px 宽 x 530px 高，**所有内容必须完整显示在此区域内**\n"
+        f"2. **禁止使用绝对定位**，使用 flex/grid 布局\n"
+        f"3. **禁止使用 text-overflow: ellipsis 截断文字**\n"
+        f"4. **文字必须简短**：\n"
+        f"   - 每行最多12个中文字符\n"
+        f"   - 每张卡片最多2行文字\n"
+        f"   - 总内容行数控制在4-6行以内\n"
+        f"5. **卡片高度必须自适应内容**，不要设置固定max-height\n"
+        f"6. **内容必须全部可见**，不允许任何溢出或裁剪"
+    )
 
     return system_prompt, user_prompt

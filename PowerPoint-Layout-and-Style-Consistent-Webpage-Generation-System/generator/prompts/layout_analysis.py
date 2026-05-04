@@ -6,28 +6,85 @@ and recommend appropriate layout designs before HTML generation.
 
 from __future__ import annotations
 
-import re
 import json
+import re
 from typing import Any
 
 from engine.types import SemanticPageInput
 
 
-def build_layout_analysis_prompt(page: SemanticPageInput) -> tuple[str, str]:
+def build_layout_analysis_prompt(
+    page: SemanticPageInput,
+    css_variables: dict[str, str] | None = None,
+    template_info: dict | None = None,
+) -> tuple[str, str]:
     """
     Build prompt for layout expert to analyze content and recommend layouts.
 
     Args:
         page: The semantic page input with title, summary, and bullet points
+        css_variables: Template CSS variables for color reference
+        template_info: Template style metadata (name, description, tags, font info, aesthetic description)
 
     Returns:
         Tuple of (system_prompt, user_prompt)
     """
-    system_prompt = """你是一位资深的前端布局专家，精通各种创意页面布局设计。
+    # 构建模板风格描述块
+    style_block = ""
+    if template_info:
+        name = template_info.get("name", "")
+        description = template_info.get("description", "")
+        tags = template_info.get("tags", [])
+        font_body = template_info.get("font_body", "")
+        font_heading = template_info.get("font_heading", "")
+        aesthetic = template_info.get("aesthetic", "")
+        layout_tendency = template_info.get("layout_tendency", "")
+
+        style_parts = []
+        if name:
+            style_parts.append(f"- 模板名称：{name}")
+        if description:
+            style_parts.append(f"- 风格描述：{description}")
+        if tags:
+            style_parts.append(f"- 风格标签：{'、'.join(tags)}")
+        if font_body:
+            style_parts.append(f"- 正文字体风格：{font_body}")
+        if font_heading:
+            style_parts.append(f"- 标题字体风格：{font_heading}")
+        if aesthetic:
+            style_parts.append(f"- 视觉美学：{aesthetic}")
+        if layout_tendency:
+            style_parts.append(f"- 布局倾向：{layout_tendency}")
+
+        if style_parts:
+            style_block = "【模板风格信息 - 必须严格遵守】\n" + "\n".join(style_parts) + "\n\n请在设计建议中充分体现该模板的风格特征，使内容页与模板整体风格保持一致。\n\n"
+
+    # 拼接CSS变量信息（避免f-string/.format中对花括号造成格式解析问题）
+    css_info_block = ""
+    if css_variables:
+        color_vars = [(k, v) for k, v in css_variables.items() if k.startswith("color-")]
+        if color_vars:
+            css_info_block = "".join(f"- {k}: {v}\n" for k, v in color_vars).rstrip()
+    if not css_info_block:
+        css_info_block = "（无）"
+
+    # 使用拼接字符串而非.format()，彻底避免JSON示例中的花括号被误解析为占位符
+    system_prompt = (
+        """你是一位资深的前端布局专家，精通各种创意页面布局设计。
 
 你的任务是根据给定的内容，分析并推荐最适合的布局方案。
 
-【布局类型库】
+【配色参考 - 必须严格遵守】
+模板CSS变量（直接使用变量名，不要硬编码颜色值）：
+"""
+        + css_info_block
+        + """
+- 如需描述颜色，统一使用语义名称：背景色用color-background，主色用color-primary，强调色用color-accent-xxx，文字色用color-text/color-text-muted
+- **禁止在design_suggestions中使用任何硬编码颜色值**（如 #0f0c29、#1a1a2e、#FFFBEB 等）
+
+"""
+        + style_block
+        + """【布局类型库】
 请选择最合适的布局类型也可以你自己创造或可组合多种类型，请充分发挥你的创作能力，以下布局供参考：
 1. 时间线布局 (timeline) - 展示历史演进、发展阶段、里程碑
 2. 卡片网格布局 (card_grid) - 展示多个并列的要点或项目
@@ -83,7 +140,9 @@ design_suggestions示例（卡片网格）：
   "卡片带圆角、主题色边框、悬停发光效果",
   "标题用强调色，描述用次要文字色"
 ]
-```"""
+```
+"""
+    )
 
     user_prompt = f"""请分析以下内容，推荐最适合的布局方案：
 
