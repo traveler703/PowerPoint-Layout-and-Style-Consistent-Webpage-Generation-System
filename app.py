@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import time
+from pathlib import Path
 from flask import Flask, render_template, request, jsonify, send_file
 from flask_cors import CORS
 from config import APP_HOST, APP_PORT, DEBUG
@@ -17,6 +18,11 @@ from scripts.template_generator import register_template_api_routes
 from engine.content import parse_user_document
 from engine.types import SemanticPageInput
 from pipeline import run_pipeline
+from parsers import (
+    parse_document_to_json,
+    parsed_json_to_outline,
+    parsed_json_to_frontend_pages,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,6 +35,7 @@ app.config['SECRET_KEY'] = 'landppt-demo-secret-key'
 CORS(app)
 
 MAX_LLM_INPUT_CHARS = 20000
+SUPPORTED_DOCUMENT_EXTENSIONS = {".docx", ".pptx", ".txt", ".md", ".pdf"}
 
 
 def _prepare_text_for_llm(text: str, max_chars: int = MAX_LLM_INPUT_CHARS) -> str:
@@ -107,6 +114,26 @@ def _build_outline_from_parse_result(parse_result: dict) -> dict:
     return {"title": title, "slides": slides}
 
 
+def _load_parsed_json_payload(data: dict) -> dict:
+    parsed_json = data.get("parsed_json")
+    if parsed_json:
+        return parsed_json
+    json_path = data.get("json_path") or data.get("output_json_path", "")
+    if not json_path:
+        raise ValueError("缺少 parsed_json 或 json_path / output_json_path")
+    candidates = []
+    if os.path.isabs(json_path):
+        candidates.append(json_path)
+    base = os.path.dirname(__file__)
+    candidates.append(os.path.normpath(os.path.join(base, json_path)))
+    candidates.append(os.path.join(base, "output", os.path.basename(json_path)))
+    for c in candidates:
+        if c and os.path.isfile(c):
+            with open(c, "r", encoding="utf-8") as f:
+                return json.load(f)
+    raise FileNotFoundError(f"找不到解析 JSON 文件: {json_path}")
+
+
 @app.route('/')
 def index():
     """首页"""
@@ -124,6 +151,20 @@ def parse_text():
         
         text = data.get('text', '')
         project_id = data.get('project_id')
+
+        head = text.lstrip()[:16]
+        if head.startswith("%PDF") or "\x00" in text[:8192]:
+            return jsonify(
+                {
+                    "error": "检测到 PDF 或其它二进制内容。请切换到「上传文件」并上传 PDF，由服务器解析；勿将 PDF 以文本方式粘贴。",
+                }
+            ), 400
+        if text.startswith("PK\x03\x04"):
+            return jsonify(
+                {
+                    "error": "检测到 Word/Office 压缩包格式（.docx 等）。请使用「上传文件」上传原文件，勿粘贴二进制内容。",
+                }
+            ), 400
         
         if not text or len(text.strip()) < 10:
             return jsonify({'error': '文本内容太少，至少需要10个字符'}), 400
@@ -181,6 +222,115 @@ def parse_text():
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/parse-document', methods=['POST'])
+def parse_document():
+    """上传并解析文档，输出结构化 JSON 到 output 目录。"""
+    try:
+        if "file" not in request.files:
+            return jsonify({"error": "缺少上传文件(file)"}), 400
+
+        upload = request.files["file"]
+        if not upload or not upload.filename:
+            return jsonify({"error": "文件名为空"}), 400
+
+        ext = Path(upload.filename).suffix.lower()
+        if ext not in SUPPORTED_DOCUMENT_EXTENSIONS:
+            return jsonify({"error": f"仅支持: {', '.join(sorted(SUPPORTED_DOCUMENT_EXTENSIONS))}"}), 400
+
+        upload_dir = os.path.join(os.path.dirname(__file__), "output", "uploads")
+        os.makedirs(upload_dir, exist_ok=True)
+        safe_name = f"{int(time.time())}_{os.path.basename(upload.filename)}"
+        uploaded_path = os.path.join(upload_dir, safe_name)
+        upload.save(uploaded_path)
+
+        output_dir = os.path.join(os.path.dirname(__file__), "output")
+        parsed_json, output_json_path = parse_document_to_json(uploaded_path, output_dir=output_dir)
+        outline = parsed_json_to_outline(parsed_json)
+        frontend_pages = parsed_json_to_frontend_pages(parsed_json)
+        rel_json = os.path.relpath(output_json_path, os.path.dirname(__file__))
+        rel_json = rel_json.replace("\\", "/")
+        meta = parsed_json.get("metadata", {})
+        result = {
+            "title": meta.get("title", "未命名文档"),
+            "subtitle": meta.get("source_filename", ""),
+            "pages": frontend_pages,
+            "output_json_path": rel_json,
+        }
+
+        logger.info(
+            f"文档解析完成: file={upload.filename}, chapters={len(parsed_json.get('chapters', []))}, json={output_json_path}"
+        )
+        return jsonify(
+            {
+                "success": True,
+                "result": result,
+                "outline": outline,
+                "meta": {
+                    "structured_parse": True,
+                    "output_json_path": rel_json,
+                    "output_json_abs": output_json_path,
+                },
+            }
+        )
+    except Exception as e:
+        logger.error(f"解析文档失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/outline-from-parsed-json', methods=['POST'])
+def outline_from_parsed_json():
+    """根据解析后的 JSON 构建生成引擎可用的大纲。"""
+    try:
+        data = request.get_json() or {}
+        parsed_json = _load_parsed_json_payload(data)
+        outline = parsed_json_to_outline(parsed_json)
+        return jsonify({"success": True, "outline": outline})
+    except Exception as e:
+        logger.error(f"构建大纲失败: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/generate-from-parsed-json', methods=['POST'])
+def generate_from_parsed_json():
+    """直接从解析 JSON 生成演示文稿。"""
+    try:
+        data = request.get_json() or {}
+        parsed_json = _load_parsed_json_payload(data)
+        template_name = data.get("template", "tech")
+        output_filename = data.get("output_filename", f"from_parsed_{int(time.time())}.html")
+        save_pages = bool(data.get("save_pages", True))
+
+        outline = parsed_json_to_outline(parsed_json)
+        from pipeline import PresentationGenerator
+        generator = PresentationGenerator(template_name=template_name)
+        result = asyncio.run(
+            generator.generate_presentation(
+                outline=outline,
+                output_filename=output_filename,
+                navigation=True,
+                save_pages=save_pages,
+            )
+        )
+
+        return jsonify(
+            {
+                "success": result.success,
+                "output_path": result.output_path,
+                "page_count": result.page_count,
+                "document_size": result.document_size,
+                "page_layouts": result.page_layouts,
+                "error": result.error,
+            }
+        )
+    except Exception as e:
+        logger.error(f"从解析JSON生成失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/api/save-parse-result', methods=['POST'])
@@ -337,6 +487,8 @@ def generate_ppt_parallel():
                 title = p.get('title', title)
                 subtitle = p.get('subtitle', '')
                 date_badge = p.get('date_badge', '')
+            elif page_type in ('toc', 'end'):
+                continue
             elif page_type == 'section':
                 current_section = {
                     'title': p.get('subtitle', p.get('title', '')),
@@ -347,14 +499,46 @@ def generate_ppt_parallel():
                 if not sections:
                     current_section = {'title': '默认章节', 'content_pages': []}
                     sections.append(current_section)
+                summary = p.get('summary') or p.get('subtitle', '')
+                bullets = p.get('bullets', []) or []
+                if not bullets and summary:
+                    bullets = [summary[:400]]
                 sections[-1]['content_pages'].append({
                     'title': p.get('title', ''),
-                    'summary': p.get('summary', ''),
-                    'bullets': p.get('bullets', [])
+                    'summary': summary,
+                    'bullets': bullets,
                 })
 
         if not sections:
-            return jsonify({'error': '没有找到任何章节内容'}), 400
+            flat_content = [p for p in pages_data if p.get('page_type') == 'content']
+            if flat_content:
+                sections = [
+                    {
+                        'title': '主要内容',
+                        'content_pages': [
+                            {
+                                'title': x.get('title', ''),
+                                'summary': x.get('summary') or x.get('subtitle', ''),
+                                'bullets': x.get('bullets', [])
+                                or ([(x.get('summary') or x.get('subtitle') or '')[:400]]),
+                            }
+                            for x in flat_content
+                        ],
+                    }
+                ]
+            else:
+                sections = [
+                    {
+                        'title': '主要内容',
+                        'content_pages': [
+                            {
+                                'title': title or '概述',
+                                'summary': subtitle,
+                                'bullets': [subtitle] if subtitle else ['请重新解析文档或上传有效文件以生成正文要点。'],
+                            }
+                        ],
+                    }
+                ]
 
         # 构建 outline
         outline = {

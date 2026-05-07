@@ -77,6 +77,10 @@ export const store = reactive({
 
   // 输入状态
   documentText: '',
+  /** 上传模式下待解析的原始文件（PDF/Office 等须走服务端解析） */
+  uploadedFile: null,
+  /** 最近一次结构化解析生成的 JSON 相对路径（如 output/parsed_xxx.json） */
+  lastOutputJsonPath: null,
   inputMode: 'paste',
   charCount: 0,
 
@@ -717,8 +721,9 @@ export const store = reactive({
 
   // 解析文档
   async parseDocument() {
-    if (!this.documentText || this.documentText.trim().length < 10) {
-      this.showToastMessage('请输入足够的文本内容')
+    const textOk = this.documentText && this.documentText.trim().length >= 10
+    if (!this.uploadedFile && !textOk) {
+      this.showToastMessage('请输入足够的文本内容，或在上传模式下选择文件')
       return null
     }
 
@@ -727,6 +732,31 @@ export const store = reactive({
     this.setProgress(0, '正在解析文档...')
 
     try {
+      if (this.uploadedFile) {
+        console.log('发送请求到 /api/parse-document', this.uploadedFile.name)
+        const fd = new FormData()
+        fd.append('file', this.uploadedFile)
+        const response = await fetch('/api/parse-document', {
+          method: 'POST',
+          body: fd
+        })
+
+        const data = await response.json()
+        console.log('parse-document 响应:', response.status, data)
+
+        if (data.success && data.result) {
+          this.parseResult = data.result
+          this.lastOutputJsonPath =
+            data.result.output_json_path || data.meta?.output_json_path || null
+          this.uploadedFile = null
+          this.setProgress(100, '解析完成')
+          this.showToastMessage('文档解析完成，请点击「开始应用」')
+          return data.result
+        }
+        this.showToastMessage(data.error || '解析失败')
+        return null
+      }
+
       console.log('发送请求到 /api/parse-text')
       const response = await fetch('/api/parse-text', {
         method: 'POST',
@@ -743,6 +773,7 @@ export const store = reactive({
 
       if (data.success) {
         this.parseResult = data.result
+        this.lastOutputJsonPath = null
         this.setProgress(50, '正在生成预览...')
 
         this.setProgress(100, '解析完成')
@@ -979,6 +1010,9 @@ export const store = reactive({
   // 输入
   setInputMode(mode) {
     this.inputMode = mode
+    if (mode === 'paste') {
+      this.uploadedFile = null
+    }
   },
 
   setDocumentText(text) {
@@ -1121,6 +1155,7 @@ export const store = reactive({
         page_type: p.type || 'content',
         title: p.title || '',
         subtitle: p.subtitle || p.summary || '',
+        summary: p.summary || p.subtitle || '',
         bullets: p.bullets || p.items || [],
       }))
 

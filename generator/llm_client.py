@@ -15,6 +15,8 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_CLIENT: LLMClient | None = None
+
 
 class LLMClient(ABC):
     @abstractmethod
@@ -115,9 +117,15 @@ class DeepSeekChatClient(LLMClient):
 
 def default_llm_client() -> LLMClient:
     """若存在 ``DEEPSEEK_API_KEY`` 则使用 DeepSeek；否则桩。"""
+    global _DEFAULT_CLIENT
+    if _DEFAULT_CLIENT is not None:
+        return _DEFAULT_CLIENT
     if os.getenv("PPT_USE_STUB", "").strip().lower() in ("1", "true", "yes"):
-        return StubLLMClient()
+        _DEFAULT_CLIENT = StubLLMClient()
+        return _DEFAULT_CLIENT
     c = DeepSeekChatClient()
     if c.configured:
-        return c
-    return StubLLMClient()
+        _DEFAULT_CLIENT = c
+        return _DEFAULT_CLIENT
+    _DEFAULT_CLIENT = StubLLMClient()
+    return _DEFAULT_CLIENT

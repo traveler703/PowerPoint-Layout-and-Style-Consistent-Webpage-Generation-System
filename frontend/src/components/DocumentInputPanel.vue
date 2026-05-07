@@ -32,9 +32,9 @@
           <div class="drop-zone" :class="{ dragover: isDragOver }">
             <div class="drop-zone-icon">📄</div>
             <div class="drop-zone-text">将文件拖拽到此处，或<span>点击选择文件</span></div>
-            <div class="drop-zone-formats">支持 .md .docx .pdf .txt 格式</div>
+            <div class="drop-zone-formats">支持 .md .docx .pptx .pdf .txt（将上传至服务器解析）</div>
           </div>
-          <input type="file" ref="fileInputRef" id="fileInput" accept=".md,.docx,.pdf,.txt" style="display: none;" @change="handleFileSelect">
+          <input type="file" ref="fileInputRef" id="fileInput" accept=".md,.docx,.pptx,.pdf,.txt" style="display: none;" @change="handleFileSelect">
         </div>
       </div>
       <div class="input-panel-footer">
@@ -42,7 +42,7 @@
         <button 
           class="btn btn-primary" 
           @click="handleParse"
-          :disabled="store.isParsing || !store.documentText.trim()"
+          :disabled="store.isParsing || parseDisabled"
         >
           <span v-if="store.isParsing" class="loading-spinner"></span>
           <svg v-else fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -207,6 +207,12 @@ watch(() => store.progressText, (newVal) => {
   progressText.value = newVal
 })
 
+const parseDisabled = computed(() => {
+  if (store.uploadedFile) return false
+  const t = (store.documentText || '').trim()
+  return !t || t.length < 10
+})
+
 const updateCharCount = () => {
   store.charCount = store.documentText.length
 }
@@ -239,18 +245,15 @@ const handleFileSelect = (e) => {
 }
 
 const handleFile = (file) => {
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    store.documentText = e.target.result
-    updateCharCount()
-    store.showToastMessage(`已加载：${file.name}`)
-  }
-  reader.readAsText(file)
+  store.uploadedFile = file
+  store.documentText = `【已选择文件：${file.name}】`
+  updateCharCount()
+  store.showToastMessage(`已选择文件：${file.name}，请点击「开始解析」`)
 }
 
 const handleParse = async () => {
   console.log('handleParse 被调用')
-  if (!store.documentText.trim()) {
+  if (!store.uploadedFile && !store.documentText.trim()) {
     console.log('文本为空')
     store.showToastMessage('请先输入或上传文档内容')
     return

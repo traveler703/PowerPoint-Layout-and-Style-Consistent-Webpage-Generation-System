@@ -25,6 +25,7 @@ venv/
 ENV/
 env/
 .venv
+.env
 
 # IDE
 .vscode/
@@ -43,3 +44,4 @@ Thumbs.db
 # Project specific
 *.pptx
 output/
+reference/
