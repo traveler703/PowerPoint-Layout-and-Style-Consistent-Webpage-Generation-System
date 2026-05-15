@@ -80,6 +80,7 @@ class GenerationResult:
     document_size: int = 0
     error: str | None = None
     page_layouts: list[dict[str, str]] = field(default_factory=list)
+    pages_html: list[str] = field(default_factory=list)
 
 
 # ============================================================
@@ -439,6 +440,7 @@ class PresentationGenerator:
                 page_count=len(pages),
                 document_size=len(document),
                 page_layouts=page_layouts,
+                pages_html=pages,
             )
 
         except Exception as e:

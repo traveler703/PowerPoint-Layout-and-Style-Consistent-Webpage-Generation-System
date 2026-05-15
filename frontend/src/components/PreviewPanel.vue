@@ -439,7 +439,7 @@ const downloadPPT = () => {
     <div class="slide-counter" id="slideCounter"></div>
     <script>
         let currentSlide = 1;
-        const slides = ${JSON.stringify(slideDocuments)};
+        const slides = ${JSON.stringify(slideDocuments).replace(/<\//g, '<\\/')};
         const totalSlides = slides.length;
         const frame = document.getElementById('slideFrame');
 
