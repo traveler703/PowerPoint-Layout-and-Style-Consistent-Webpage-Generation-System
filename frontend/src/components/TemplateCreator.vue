@@ -23,6 +23,12 @@
           </svg>
           重置对话
         </button>
+        <button class="btn btn-secondary" @click="downloadTemplateHtml" :disabled="!hasValidTemplate">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v12m0 0l4-4m-4 4l-4-4M4 19h16"/>
+          </svg>
+          下载模板
+        </button>
         <button class="btn btn-primary" @click="saveTemplate" :disabled="!hasValidTemplate">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/>
@@ -648,7 +654,7 @@ const previewSlides = computed(() => {
     slides.push({
       type: 'cover',
       title: config.value.template_name || '演示文稿',
-      subtitle: config.value.description || 'AI 生成的演示文稿',
+      subtitle: '模板预览',
       skeleton: pt.cover.skeleton,
       pageNum: slides.length + 1
     })
@@ -694,6 +700,35 @@ const previewSlides = computed(() => {
     })
   }
 
+  const builtInTypes = new Set(['cover', 'content', 'toc', 'section', 'ending'])
+  Object.entries(pt).forEach(([type, pageConfig]) => {
+    if (builtInTypes.has(type)) return
+    slides.push({
+      type,
+      title: getPreviewTitle(type),
+      content: '这里展示该版式的正文说明区域。',
+      left: '左侧观点或方案 A',
+      right: '右侧观点或方案 B',
+      col1: '第一项要点',
+      col2: '第二项要点',
+      col3: '第三项要点',
+      media: '<div class="preview-media">图片 / 媒体区域</div>',
+      chart: '<div class="preview-chart">图表区域</div>',
+      table: '<div class="preview-table">表格区域</div>',
+      quote: '重要观点值得被突出展示',
+      attribution: '来源 / 作者',
+      timeline_items: '<div class="preview-timeline">阶段一 → 阶段二 → 阶段三</div>',
+      left_title: '方案 A',
+      right_title: '方案 B',
+      stat1: '86%',
+      stat2: '24K',
+      stat3: '3.8x',
+      subtitle: '副标题',
+      skeleton: pageConfig.skeleton,
+      pageNum: slides.length + 1
+    })
+  })
+
   return slides.length > 0 ? slides : [
     { type: 'cover', title: config.value.template_name || '演示文稿', subtitle: 'AI 生成的演示文稿', pageNum: 1 },
     { type: 'content', title: '内容页', content: '内容区域', pageNum: 2 },
@@ -719,6 +754,24 @@ function goBack() {
 function getPageTypeIcon(key) {
   const icons = { cover: '📄', content: '📝', toc: '📋', section: '🏷️', ending: '🏁', compare: '⚖️', chart: '📊', timeline: '📅', qa: '❓' }
   return icons[key] || '📄'
+}
+
+function getPreviewTitle(type) {
+  const titles = {
+    'hero-title-body': '标题正文版式',
+    'two-column': '双栏要点版式',
+    'three-column': '三栏要点版式',
+    'image-text-left': '左图右文版式',
+    'image-text-top': '上图下文版式',
+    'chart-focus': '图表强调版式',
+    'table-focus': '表格版式',
+    'title-only': '纯标题版式',
+    'quote-highlight': '引言金句版式',
+    timeline: '时间线版式',
+    comparison: '对比版式',
+    statistics: '数据统计版式'
+  }
+  return titles[type] || `${type} 版式`
 }
 
 function isBuiltinPageType(key) {
@@ -854,6 +907,29 @@ function openFullscreen() {
   win.document.close()
 }
 
+function downloadTemplateHtml() {
+  const html = config.value.raw_html || previewHtml.value
+  const filenameBase = sanitizeFilename(config.value.template_name || config.value.template_id || 'template')
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${filenameBase}.html`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+  store.showToastMessage('HTML 模板已开始下载')
+}
+
+function sanitizeFilename(value) {
+  return String(value)
+    .trim()
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/\s+/g, '_')
+    .slice(0, 80) || 'template'
+}
+
 function resetAll() {
   if (confirm('确定要重置所有对话和配置吗？')) {
     messages.value = []
@@ -906,6 +982,7 @@ function confirmSave() {
       ? saveConfig.value.tags.split(',').map(t => t.trim()).filter(Boolean)
       : config.value.tags || [],
     viewport: config.value.viewport || { width: 1280, height: 720 },
+    raw_html: config.value.raw_html || '',
     template_type: 'user'
   }
 
@@ -935,44 +1012,7 @@ function getPreviewTextColor() {
 
 // --- LLM Integration ---
 
-const SYSTEM_PROMPT = `你是一个专业的 PPT 模板设计师。用户会描述他们想要的模板风格，你需要生成完整的模板 JSON 配置。
-
-请按照以下格式回复（可以是纯 JSON 或带解释的 Markdown，然后是 JSON 代码块）：
-
-{
-  "template_id": "模板唯一ID（小写字母+下划线）",
-  "template_name": "模板名称",
-  "description": "模板描述",
-  "css_variables": {
-    "color-primary": "#主色调",
-    "color-secondary": "#次色调",
-    "color-background": "#背景色",
-    "color-surface": "#卡片/表面色",
-    "color-text": "#主文字色",
-    "color-text-muted": "#次要文字色",
-    "color-card": "#卡片背景色",
-    "font-body": "正文字体",
-    "font-heading": "标题字体",
-    "color-accent-*": "#点缀色"
-  },
-  "page_types": {
-    "cover": { "skeleton": "HTML骨架", "placeholders": ["占位符列表"] },
-    "content": { "skeleton": "HTML骨架", "placeholders": ["占位符列表"] },
-    "toc": { "skeleton": "HTML骨架", "placeholders": ["占位符列表"] },
-    "section": { "skeleton": "HTML骨架", "placeholders": ["占位符列表"] },
-    "ending": { "skeleton": "HTML骨架", "placeholders": ["占位符列表"] }
-  },
-  "tags": ["标签1", "标签2"],
-  "viewport": { "width": 1280, "height": 720 }
-}
-
-注意：
-1. 只回复 JSON，不要回复其他内容
-2. 颜色使用有效的十六进制颜色码
-3. HTML 骨架要简洁、可复用
-4. 字体使用系统自带或 Google Fonts
-5. 尽量包含所有常见页面类型
-`
+const TEMPLATE_GENERATION_PROTOCOL = `后端会生成完整 HTML 模板，并从 HTML 中解析 css_variables、page_types、raw_html 等模板配置。`
 
 async function sendMessage() {
   const text = userInput.value.trim()
@@ -1036,11 +1076,12 @@ async function callLLM(message, history = []) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'system', content: TEMPLATE_GENERATION_PROTOCOL },
           ...history,
           { role: 'user', content: message }
         ],
-        mode: 'template'
+        mode: 'template',
+        current_template: config.value
       })
     })
     if (res.ok) {
@@ -1092,6 +1133,7 @@ function mergeConfig(parsed) {
   }
   if (parsed.tags) config.value.tags = parsed.tags
   if (parsed.viewport) config.value.viewport = parsed.viewport
+  if (parsed.raw_html) config.value.raw_html = parsed.raw_html
 }
 
 function extractTextFromResponse(response) {
@@ -1146,6 +1188,98 @@ function sendQuickPrompt(prompt) {
 }
 
 // --- Build Preview HTML ---
+function fillPreviewPlaceholders(markup, slide, ctx) {
+  return String(markup || '')
+    .replace(/\{\{title\}\}/g, escapeHtml(slide.title || ''))
+    .replace(/\{\{subtitle\}\}/g, escapeHtml(slide.subtitle || slide.content || ''))
+    .replace(/\{\{content\}\}/g, escapeHtml(slide.content || ''))
+    .replace(/\{\{message\}\}/g, escapeHtml(slide.message || ''))
+    .replace(/\{\{toc_items\}\}/g, buildTocItems(slide.items || [], ctx.primary, ctx.text, ctx.surface, ctx.isDark))
+    .replace(/\{\{date_badge\}\}/g, escapeHtml(new Date().toLocaleDateString('zh-CN')))
+    .replace(/\{\{page_number\}\}/g, String(slide.pageNum))
+    .replace(/\{\{total_pages\}\}/g, String(ctx.totalPages))
+    .replace(/\{\{(\w+)\}\}/g, (_, key) => getPreviewPlaceholderValue(slide, key))
+}
+
+function getPreviewPlaceholderValue(slide, key) {
+  const rawHtmlKeys = new Set(['media', 'chart', 'table', 'timeline_items'])
+  const value = slide[key]
+  if (value == null) return ''
+  return rawHtmlKeys.has(key) ? String(value) : escapeHtml(value)
+}
+
+function buildRawPreviewSlide(slide, idx, ctx) {
+  if (slide.skeleton) {
+    const filled = fillPreviewPlaceholders(slide.skeleton, slide, ctx)
+    if (/class=["'][^"']*\bslide\b/i.test(filled)) {
+      return filled
+    }
+    return `<div class="slide ${slide.type}" data-slide="${idx}">${filled}</div>`
+  }
+
+  let body = ''
+  if (slide.type === 'cover') {
+    body = buildCoverSlide(slide, ctx.primary, ctx.secondary, ctx.bg, ctx.onPrimary, ctx.fontHeading, ctx.isDark)
+  } else if (slide.type === 'content') {
+    body = buildContentSlide(slide, ctx.primary, ctx.bg, ctx.surface, ctx.text, ctx.textMuted, ctx.card, ctx.fontBody, ctx.fontHeading, ctx.onBg, ctx.onBgMuted)
+  } else if (slide.type === 'toc') {
+    body = buildTocSlide(slide, ctx.primary, ctx.bg, ctx.surface, ctx.text, ctx.fontBody, ctx.fontHeading, ctx.onBg, ctx.onBgMuted, ctx.isDark)
+  } else if (slide.type === 'section') {
+    body = buildSectionSlide(slide, ctx.primary, ctx.secondary, ctx.bg, ctx.onPrimary, ctx.fontHeading, ctx.isDark)
+  } else if (slide.type === 'ending') {
+    body = buildEndingSlide(slide, ctx.primary, ctx.secondary, ctx.bg, ctx.onPrimary, ctx.fontHeading, ctx.isDark)
+  }
+  return `<div class="slide ${slide.type}" data-slide="${idx}">${body}</div>`
+}
+
+function buildRawHtmlPreview(rawHtml, slides, ctx) {
+  const slidesHtml = slides.map((slide, idx) => buildRawPreviewSlide(slide, idx, ctx)).join('')
+  let html = rawHtml
+    .replace(/\{\{SLIDES_CONTENT\}\}/g, slidesHtml)
+    .replace(/\{SLIDES_CONTENT\}/g, slidesHtml)
+    .replace(/\{\{TOTAL_PAGES\}\}/g, String(slides.length))
+    .replace(/\{TOTAL_PAGES\}/g, String(slides.length))
+
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    const track = doc.querySelector('.slides-track')
+    if (track && !rawHtml.includes('{{SLIDES_CONTENT}}') && !rawHtml.includes('{SLIDES_CONTENT}')) {
+      track.innerHTML = slidesHtml
+    }
+    const script = doc.createElement('script')
+    script.textContent = `
+      (function() {
+        const W = 1280;
+        function previewGo(idx) {
+          if (typeof window.goToSlide === 'function') {
+            window.goToSlide(idx);
+            return;
+          }
+          const track = document.querySelector('.slides-track');
+          if (track) track.style.transform = 'translateX(-' + (idx * W) + 'px)';
+        }
+        window.addEventListener('message', function(e) {
+          if (e.data && e.data.type === 'preview-nav') previewGo(e.data.slide || 0);
+        });
+        previewGo(${activeSlide.value});
+      })();
+    `
+    doc.body.appendChild(script)
+    html = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML
+  } catch (e) {
+    html += `<script>
+      window.addEventListener('message', function(e) {
+        if (e.data && e.data.type === 'preview-nav') {
+          var track = document.querySelector('.slides-track');
+          if (track) track.style.transform = 'translateX(-' + ((e.data.slide || 0) * 1280) + 'px)';
+        }
+      });
+    <\/script>`
+  }
+
+  return html
+}
+
 function buildPreviewHtml() {
   const css = config.value.css_variables || {}
   const primary = css['color-primary'] || '#6366f1'
@@ -1167,6 +1301,15 @@ function buildPreviewHtml() {
   const onBgMuted = isDark ? '#a0a0a0' : textMuted
 
   const slides = previewSlides.value
+  const ctx = {
+    primary, secondary, bg, surface, text, textMuted, card,
+    fontBody, fontHeading, onPrimary, onBg, onBgMuted, isDark,
+    totalPages: slides.length
+  }
+
+  if (config.value.raw_html && config.value.raw_html.toLowerCase().includes('<html')) {
+    return buildRawHtmlPreview(config.value.raw_html, slides, ctx)
+  }
 
   // Build per-slide HTML using skeleton or fallback
   const slidesHtml = slides.map((s, i) => {

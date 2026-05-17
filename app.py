@@ -1013,26 +1013,36 @@ def get_templates():
         import os
         templates_dir = os.path.join(os.path.dirname(__file__), 'templates', 'data')
         templates = []
+        seen_template_ids = set()
 
-        if os.path.exists(templates_dir):
-            for filename in os.listdir(templates_dir):
+        def load_template_summaries(directory, default_type):
+            if not os.path.exists(directory):
+                return
+            for filename in os.listdir(directory):
                 if filename.endswith('.json'):
-                    filepath = os.path.join(templates_dir, filename)
+                    filepath = os.path.join(directory, filename)
                     try:
                         with open(filepath, 'r', encoding='utf-8') as f:
                             template_data = json.load(f)
+                            template_id = template_data.get('template_id') or os.path.splitext(filename)[0]
+                            if template_id in seen_template_ids:
+                                continue
+                            seen_template_ids.add(template_id)
                             templates.append({
-                                'template_id': template_data.get('template_id'),
+                                'template_id': template_id,
                                 'template_name': template_data.get('template_name'),
                                 'description': template_data.get('description'),
                                 'css_variables': template_data.get('css_variables'),
                                 'tags': template_data.get('tags', []),
                                 'is_default': template_data.get('is_default', False),
                                 'page_types': list(template_data.get('page_types', {}).keys()),
-                                'template_type': template_data.get('template_type', 'preset')
+                                'template_type': template_data.get('template_type', default_type)
                             })
                     except Exception as e:
-                        logger.error(f"加载模板文件 {filename} 失败: {e}")
+                        logger.error(f"加载模板文件 {filepath} 失败: {e}")
+
+        load_template_summaries(templates_dir, 'preset')
+        load_template_summaries(os.path.join(templates_dir, 'user_generated'), 'user')
 
         return jsonify({
             'success': True,

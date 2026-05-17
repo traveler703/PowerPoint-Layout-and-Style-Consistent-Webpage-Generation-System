@@ -21,6 +21,17 @@ class PageType(str, Enum):
     QA = "qa"           # Q&A page
     ENDING = "ending"   # Ending/thank you page
     SECTION = "section"  # Section divider page
+    HERO_TITLE_BODY = "hero-title-body"
+    TWO_COLUMN = "two-column"
+    THREE_COLUMN = "three-column"
+    IMAGE_TEXT_LEFT = "image-text-left"
+    IMAGE_TEXT_TOP = "image-text-top"
+    CHART_FOCUS = "chart-focus"
+    TABLE_FOCUS = "table-focus"
+    TITLE_ONLY = "title-only"
+    QUOTE_HIGHLIGHT = "quote-highlight"
+    COMPARISON = "comparison"
+    STATISTICS = "statistics"
     UNKNOWN = "unknown"  # Auto-detected or fallback
 
 

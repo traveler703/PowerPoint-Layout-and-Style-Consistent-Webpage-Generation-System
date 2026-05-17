@@ -134,11 +134,12 @@ export async function parseText(data) {
 // 模板生成 API (LLM 驱动)
 // ----------------------------------------
 
-// LLM 对话生成模板
-export async function llmGenerateTemplate(messages, mode = 'template') {
+// LLM 对话生成模板：后端生成 HTML，并解析为模板配置
+export async function llmGenerateTemplate(messages, mode = 'template', currentTemplate = null) {
   const response = await apiClient.post('/llm/chat', {
     messages: messages,
-    mode: mode
+    mode: mode,
+    current_template: currentTemplate
   })
   return response.data
 }
