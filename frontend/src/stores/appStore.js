@@ -104,7 +104,8 @@ export const store = reactive({
   generatedSlides: [],  // 存储生成的幻灯片HTML
   currentGeneratingPage: 0,  // 当前正在生成的页码
   totalPagesToGenerate: 0,   // 总共要生成的页数
-  directSlideHtml: null,      // 实验性：直接加载的HTML
+  directSlideHtml: null,      // 后端生成并保存到 output 目录的完整演示文稿HTML
+  presentationOutputPath: null,
 
   // 大纲状态
   currentOutlineId: null,  // 当前大纲ID
@@ -148,15 +149,6 @@ export const store = reactive({
         console.log('获取统计数据失败')
       }
 
-      // 实验性：加载slide_1.html
-      try {
-        const res = await fetch('/output/slide_1.html')
-        if (res.ok) {
-          this.directSlideHtml = await res.text()
-        }
-      } catch (e) {
-        console.log('slide_1.html not found')
-      }
     } catch (err) {
       this.error = '加载项目失败'
       console.error('Load projects error:', err)
@@ -1127,6 +1119,8 @@ export const store = reactive({
 
     this.isGenerating = true
     this.generatedSlides = []
+    this.directSlideHtml = null
+    this.presentationOutputPath = null
     this.currentGeneratingPage = 0
     this.currentStep = 'preview'
 
@@ -1174,8 +1168,9 @@ export const store = reactive({
         throw new Error(result.error || '生成失败')
       }
 
-      // 直接使用返回的HTML
+      // 直接使用后端保存到 output 目录的完整HTML，保证预览/下载与生成文件一致
       this.directSlideHtml = result.html
+      this.presentationOutputPath = result.output_path || null
 
       // 解析页面信息
       if (result.slides) {
