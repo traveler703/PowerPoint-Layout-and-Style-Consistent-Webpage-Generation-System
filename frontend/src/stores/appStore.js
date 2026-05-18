@@ -1,4 +1,5 @@
 import { reactive, computed } from 'vue'
+import { io } from 'socket.io-client'
 import { getProjects, createProject, updateProject, deleteProject, createOutline, getOutline, updateOutline, getProjectOutlines, getProjectPPTs, getPPT, generatePPTParallel, getTemplates, updateTemplate, deleteTemplate, setDefaultTemplate, llmGenerateOnce, saveTemplateToFile } from '@/services/api'
 
 // 项目类型图标映射
@@ -29,6 +30,9 @@ const stepTitles = {
   style: '应用模板',
   preview: '预览导出'
 }
+
+let progressSocket = null
+let progressSocketInitialized = false
 
 // 全局状态
 export const store = reactive({
@@ -115,6 +119,13 @@ export const store = reactive({
   // 加载状态
   loading: false,
   error: null,
+
+  // 进度条状态
+  showProgressBar: false,
+  progressCurrent: 0,
+  progressTotal: 0,
+  progressStatus: '',
+  progressPageTitle: '',
 
   // 初始化 - 从数据库加载数据
   async init() {
@@ -1084,6 +1095,71 @@ export const store = reactive({
     if (text) this.progressText = text
   },
 
+  initProgressSocket() {
+    if (progressSocketInitialized) return
+    progressSocketInitialized = true
+
+    progressSocket = io('/', {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 5
+    })
+
+    progressSocket.on('ppt_generation_progress', (payload = {}) => {
+      const total = Number(payload.total) || this.progressTotal || 0
+      const current = Math.min(Number(payload.current) || 0, total || Number(payload.current) || 0)
+      const page = payload.page || {}
+
+      if (total > 0) {
+        this.progressTotal = total
+        this.progressCurrent = current
+        this.progressStatus = page.status || 'generating'
+        this.progressPageTitle = page.title || ''
+        this.progressPercent = Math.round((current / total) * 100)
+        this.progressText = current >= total ? 'PPT生成完成' : `正在生成PPT：${current}/${total}`
+        this.showProgressBar = true
+      }
+    })
+  },
+
+  startGenerationProgress(total) {
+    this.initProgressSocket()
+    this.progressCurrent = 0
+    this.progressTotal = total || 0
+    this.progressStatus = 'started'
+    this.progressPageTitle = ''
+    this.showProgressBar = total > 0
+  },
+
+  updateGenerationProgress(current, total, title = '') {
+    if (!total) return
+    this.progressCurrent = Math.min(current, total)
+    this.progressTotal = total
+    this.progressPageTitle = title
+    this.progressPercent = Math.round((this.progressCurrent / total) * 100)
+    this.progressText = this.progressCurrent >= total ? 'PPT生成完成' : `正在生成PPT：${this.progressCurrent}/${total}`
+    this.showProgressBar = true
+  },
+
+  finishGenerationProgress() {
+    if (this.progressTotal > 0) {
+      this.updateGenerationProgress(this.progressTotal, this.progressTotal)
+    }
+    setTimeout(() => {
+      if (!this.isGenerating) {
+        this.showProgressBar = false
+      }
+    }, 1200)
+  },
+
+  resetGenerationProgress() {
+    this.showProgressBar = false
+    this.progressCurrent = 0
+    this.progressTotal = 0
+    this.progressStatus = ''
+    this.progressPageTitle = ''
+  },
+
   // 设置页面数据（用于打开项目时加载）
   setPages(pages) {
     this.pages = pages
@@ -1130,9 +1206,8 @@ export const store = reactive({
     this.currentGeneratingPage = 0
     this.currentStep = 'preview'
 
-    let outlineId = this.currentOutlineId
-    if (!outlineId) {
-      outlineId = await this.saveOutline()
+    if (!this.currentOutlineId) {
+      await this.saveOutline()
     }
 
     try {
@@ -1159,15 +1234,18 @@ export const store = reactive({
         bullets: p.bullets || p.items || [],
       }))
 
+      const progressTotal = Math.max(pages.length, 1)
       this.totalPagesToGenerate = pages.length
       this.setProgress(0, '正在并行生成所有页面...')
+      this.startGenerationProgress(progressTotal)
 
       // 调用并行生成接口
       const result = await generatePPTParallel({
         pages: pages,
         topic: this.parseResult.title || 'PPT演示文稿',
         template: this.selectedStyle || 'tech',
-        save_pages: true
+        save_pages: true,
+        progress_total: progressTotal
       })
 
       if (!result.success) {
@@ -1191,15 +1269,18 @@ export const store = reactive({
         }
       }
 
+      this.updateGenerationProgress(progressTotal, progressTotal)
       this.setProgress(100, '生成完成')
       this.showToastMessage('PPT生成完成！')
       this.isGenerating = false
+      this.finishGenerationProgress()
       return true
 
     } catch (err) {
       console.error('并行生成PPT失败:', err)
       this.showToastMessage('生成PPT失败: ' + err.message)
       this.isGenerating = false
+      this.resetGenerationProgress()
       return false
     }
   }

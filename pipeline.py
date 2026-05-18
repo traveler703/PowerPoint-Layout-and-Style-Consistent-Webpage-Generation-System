@@ -25,7 +25,7 @@ import logging
 import os
 import traceback
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -241,6 +241,7 @@ class PresentationGenerator:
         self,
         content_pages: list[tuple[int, ContentPageInput]],
         total_pages: int,
+        progress_callback: Callable[[int, int, dict[str, Any]], None] | None = None,
     ) -> list[tuple[int, str, dict]]:
         """
         并行生成多个内容页 HTML
@@ -248,6 +249,7 @@ class PresentationGenerator:
         Args:
             content_pages: [(page_number, ContentPageInput), ...]
             total_pages: 总页数
+            progress_callback: 页面完成时回调，参数为 (current, total, page_info)
 
         Returns:
             [(page_number, html_content, layout_info), ...]
@@ -263,8 +265,21 @@ class PresentationGenerator:
             html, layout_info = await self.generate_content_page_html(semantic_page)
             return page_num, html, layout_info
 
-        tasks = [generate_one(pn, cp) for pn, cp in content_pages]
-        results = await asyncio.gather(*tasks)
+        tasks = [asyncio.create_task(generate_one(pn, cp)) for pn, cp in content_pages]
+        results: list[tuple[int, str, dict]] = []
+        for task in asyncio.as_completed(tasks):
+            page_num, html, layout_info = await task
+            results.append((page_num, html, layout_info))
+            if progress_callback:
+                progress_callback(
+                    page_num,
+                    total_pages,
+                    {
+                        "page_number": page_num,
+                        "page_type": "content",
+                        "title": next((cp.title for pn, cp in content_pages if pn == page_num), ""),
+                    },
+                )
         return results
 
     async def generate_presentation(
@@ -273,6 +288,7 @@ class PresentationGenerator:
         output_filename: str = "presentation.html",
         navigation: bool = True,
         save_pages: bool = False,
+        progress_callback: Callable[[int, int, dict[str, Any]], None] | None = None,
     ) -> GenerationResult:
         """
         生成完整演示文稿
@@ -282,6 +298,7 @@ class PresentationGenerator:
             output_filename: 输出文件名
             navigation: 是否启用导航
             save_pages: 是否保存单页文件
+            progress_callback: 页面完成时回调，参数为 (current, total, page_info)
 
         Returns:
             GenerationResult: 生成结果
@@ -314,6 +331,12 @@ class PresentationGenerator:
                 total_pages=total_pages,
             )
             pages_list.append((current_page_number, "cover", cover_page, {"type": "cover", "title": outline.title}))
+            if progress_callback:
+                progress_callback(current_page_number, total_pages, {
+                    "page_number": current_page_number,
+                    "page_type": "cover",
+                    "title": outline.title,
+                })
             current_page_number += 1
 
             # Page 2: TOC
@@ -328,6 +351,12 @@ class PresentationGenerator:
                 total_pages=total_pages,
             )
             pages_list.append((current_page_number, "toc", toc_page, {"type": "toc", "title": "目录"}))
+            if progress_callback:
+                progress_callback(current_page_number, total_pages, {
+                    "page_number": current_page_number,
+                    "page_type": "toc",
+                    "title": "目录",
+                })
             current_page_number += 1
 
             # 收集所有需要生成的内容页信息
@@ -344,6 +373,12 @@ class PresentationGenerator:
                     extra={"chapter_tag": f"第{_roman_numeral(section_idx)}章"},
                 )
                 pages_list.append((current_page_number, "section", section_page, {"type": "section", "title": section.title}))
+                if progress_callback:
+                    progress_callback(current_page_number, total_pages, {
+                        "page_number": current_page_number,
+                        "page_type": "section",
+                        "title": section.title,
+                    })
                 current_page_number += 1
 
                 # Content Pages - 收集到并行队列
@@ -358,7 +393,9 @@ class PresentationGenerator:
             # ============================================================
             if content_pages_for_parallel:
                 results = await self.generate_content_pages_parallel(
-                    content_pages_for_parallel, total_pages
+                    content_pages_for_parallel,
+                    total_pages,
+                    progress_callback=progress_callback,
                 )
 
                 # 创建 page_number -> (html, layout_info) 的映射
@@ -398,6 +435,12 @@ class PresentationGenerator:
                 "type": "ending",
                 "title": outline.ending_title,
             }))
+            if progress_callback:
+                progress_callback(current_page_number, total_pages, {
+                    "page_number": current_page_number,
+                    "page_type": "ending",
+                    "title": outline.ending_title,
+                })
 
             # 提取最终的 pages 和 page_layouts
             pages = [page_html for _, _, page_html, _ in pages_list]

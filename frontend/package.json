@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "vue": "^3.4.21",
-    "axios": "^1.6.7"
+    "axios": "^1.6.7",
+    "socket.io-client": "^4.7.5"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.4",

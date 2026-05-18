@@ -23,6 +23,8 @@ from parsers import (
     parsed_json_to_outline,
     parsed_json_to_frontend_pages,
 )
+from flask_socketio import SocketIO
+from threading import Lock
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,6 +39,16 @@ CORS(app)
 MAX_LLM_INPUT_CHARS = 20000
 SUPPORTED_DOCUMENT_EXTENSIONS = {".docx", ".pptx", ".txt", ".md", ".pdf"}
 
+# 初始化 SocketIO
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+
+@socketio.on('connect')
+def handle_connect():
+    logger.info('客户端已连接')
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    logger.info('客户端已断开连接')
 
 def _prepare_text_for_llm(text: str, max_chars: int = MAX_LLM_INPUT_CHARS) -> str:
     """压缩超长文本，避免触发模型上下文长度限制。"""
@@ -468,6 +480,7 @@ def generate_ppt_parallel():
         topic = data.get('topic', 'PPT演示文稿')
         template_name = data.get('template', 'tech')
         save_pages = data.get('save_pages', False)
+        requested_progress_total = data.get('progress_total')
 
         if not pages_data:
             return jsonify({'error': 'pages 数组不能为空'}), 400
@@ -553,11 +566,35 @@ def generate_ppt_parallel():
         generator = PresentationGenerator(template_name=template_name)
         output_filename = f"parallel_{int(time.time())}.html"
 
+        progress_total = int(requested_progress_total or len(pages_data) or 1)
+        progress_total = max(progress_total, 1)
+        progress_lock = Lock()
+        completed_pages = 0
+
+        def emit_generation_progress(current, total, page_info=None):
+            nonlocal completed_pages
+            page_info = page_info or {}
+            if page_info.get('status') == 'started':
+                display_current = 0
+            elif page_info.get('status') == 'completed':
+                display_current = progress_total
+            else:
+                with progress_lock:
+                    completed_pages += 1
+                    display_current = min(completed_pages, progress_total)
+            socketio.emit('ppt_generation_progress', {
+                'current': display_current,
+                'total': progress_total,
+                'page': page_info,
+            })
+
+        emit_generation_progress(0, progress_total, {'status': 'started'})
         result = asyncio.run(generator.generate_presentation(
             outline=outline,
             output_filename=output_filename,
             navigation=True,
             save_pages=save_pages,
+            progress_callback=emit_generation_progress,
         ))
 
         # 读取生成的 HTML
@@ -573,8 +610,6 @@ def generate_ppt_parallel():
         slides = []
         for i, layout in enumerate(result.page_layouts):
             page_num = layout.get('page_number', i + 1)
-            page_type = layout.get('type', 'content')
-            title = layout.get('title', '')
 
             # 读取页面HTML内容
             page_html = ""
@@ -589,14 +624,15 @@ def generate_ppt_parallel():
                         break
 
             slides.append({
-                'page_type': page_type,
-                'title': title,
+                'page_type': layout.get('type', ''),
+                'title': layout.get('title', ''),
                 'layout_type': layout.get('layout_type', ''),
                 'page_number': page_num,
                 'page_url': page_file_path,  # 页面文件路径
                 'html': page_html,  # 页面HTML内容
             })
 
+        emit_generation_progress(progress_total, progress_total, {'status': 'completed'})
         logger.info(f"[Parallel] 生成完成: {result.page_count} 页, {result.document_size} chars")
 
         return jsonify({
@@ -1110,7 +1146,7 @@ def main():
     # 注册模板生成 API
     register_template_api_routes(app)
     logger.info(f"启动LandPPT Demo服务: http://{APP_HOST}:{APP_PORT}")
-    app.run(host=APP_HOST, port=APP_PORT, debug=DEBUG)
+    socketio.run(app, host=APP_HOST, port=APP_PORT, debug=DEBUG)
 
 
 if __name__ == '__main__':
