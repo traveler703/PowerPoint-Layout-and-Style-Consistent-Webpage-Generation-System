@@ -16,12 +16,11 @@
         >
           <div class="preview-page-thumb-preview" :class="{ 'layout-content': page.layout === 'content' }" :ref="el => setThumbRef(el, page.id)">
             <!-- 如果有生成的HTML，显示缩略图预览 -->
-            <div v-if="getThumbnailSlideHtml(page.pageNumber || page.id)" class="thumb-html-preview">
+            <div v-if="getSlideHtml(page.pageNumber || page.id)" class="thumb-html-preview">
               <iframe
-                :srcdoc="getThumbnailSlideHtml(page.pageNumber || page.id)"
+                :srcdoc="getSlideHtml(page.pageNumber || page.id)"
                 class="thumb-iframe"
-                sandbox="allow-same-origin allow-scripts"
-                @load="syncThumbnailFrame($event, index)"
+                sandbox="allow-same-origin"
               ></iframe>
             </div>
             <img v-else-if="page.image" :src="page.image" alt="">
@@ -122,8 +121,7 @@
               :key="iframeKey"
               :srcdoc="currentSlideHtml"
               class="preview-slide-frame"
-              sandbox="allow-same-origin allow-scripts"
-              @load="syncPresentationFrame"
+              sandbox="allow-same-origin"
             ></iframe>
           </div>
         </div>
@@ -213,15 +211,8 @@ onMounted(() => {
   })
 })
 
-const currentSlidePage = computed(() => store.pages.find(p => p.id === store.currentSlide))
-const currentSlideIndex = computed(() => store.pages.findIndex(p => p.id === store.currentSlide))
-
 // 当前幻灯片的HTML内容
 const currentSlideHtml = computed(() => {
-  if (store.directSlideHtml) {
-    return store.directSlideHtml
-  }
-
   const currentPage = currentSlidePage.value
   if (!currentPage) return null
   const pageNum = currentPage.pageNumber || currentPage.id
@@ -231,21 +222,12 @@ const currentSlideHtml = computed(() => {
 
 // 当切换幻灯片时刷新iframe
 watch(() => store.currentSlide, () => {
-  if (store.directSlideHtml) {
-    syncPresentationFrame()
-  } else {
-    iframeKey.value++
-  }
+  iframeKey.value++
   setTimeout(calculateMainScale, 50)
 }, { immediate: true })
 
-watch(() => store.directSlideHtml, () => {
-  iframeKey.value++
-  setTimeout(() => {
-    calculateMainScale()
-    syncPresentationFrame()
-  }, 50)
-})
+const currentSlidePage = computed(() => store.pages.find(p => p.id === store.currentSlide))
+const currentSlideIndex = computed(() => store.pages.findIndex(p => p.id === store.currentSlide))
 
 // 获取当前幻灯片的页面URL
 const currentSlideUrl = computed(() => {
@@ -259,7 +241,7 @@ const currentSlideUrl = computed(() => {
 })
 
 // 检查是否有任何生成的幻灯片
-const hasGeneratedSlides = computed(() => store.generatedSlides.length > 0 || Boolean(store.directSlideHtml))
+const hasGeneratedSlides = computed(() => store.generatedSlides.length > 0)
 
 const currentSlideEvaluation = computed(() => {
   const currentPage = currentSlidePage.value
@@ -296,13 +278,6 @@ const getSlideHtml = (pageId) => {
   return injectOverflowLock(html)
 }
 
-const getThumbnailSlideHtml = (pageId) => {
-  if (store.directSlideHtml) {
-    return store.directSlideHtml
-  }
-  return getSlideHtml(pageId)
-}
-
 // 注入样式强制禁止内部滚动
 function injectOverflowLock(html) {
   const overflowCss = '*{overflow:hidden!important}html,body{overflow:hidden!important;height:100%!important;margin:0!important;padding:0!important}'
@@ -315,29 +290,6 @@ function injectOverflowLock(html) {
     html = `<style>${overflowCss}</style>` + html
   }
   return html
-}
-
-function syncPresentationFrame() {
-  if (!store.directSlideHtml) return
-
-  setTimeout(() => {
-    const frameWindow = slideIframe.value?.contentWindow
-    const slideIndex = Math.max(currentSlideIndex.value, 0)
-    if (frameWindow && typeof frameWindow.goToSlide === 'function') {
-      frameWindow.goToSlide(slideIndex)
-    }
-  }, 0)
-}
-
-function syncThumbnailFrame(event, slideIndex) {
-  if (!store.directSlideHtml) return
-
-  setTimeout(() => {
-    const frameWindow = event.target?.contentWindow
-    if (frameWindow && typeof frameWindow.goToSlide === 'function') {
-      frameWindow.goToSlide(slideIndex)
-    }
-  }, 0)
 }
 
 // 清理HTML内联样式中的固定尺寸，使其能正确缩放
@@ -425,19 +377,13 @@ const savePPT = async () => {
 
 // 下载合并后的PPT
 const downloadPPT = () => {
-  if (store.generatedSlides.length === 0 && !store.directSlideHtml) {
+  if (store.generatedSlides.length === 0) {
     store.showToastMessage('请先生成PPT')
     return
   }
 
   try {
     const title = store.parseResult?.title || 'PPT演示文稿'
-    if (store.directSlideHtml) {
-      downloadHtml(store.directSlideHtml, getDownloadFilename(title))
-      store.showToastMessage('PPT下载成功！')
-      return
-    }
-
     const slideDocuments = store.generatedSlides.map((slide) => {
       const raw = String(slide.html || '')
       if (/<\s*!doctype|<\s*html/i.test(raw)) {
@@ -493,7 +439,7 @@ const downloadPPT = () => {
     <div class="slide-counter" id="slideCounter"></div>
     <script>
         let currentSlide = 1;
-        const slides = ${JSON.stringify(slideDocuments).replace(/<\//g, '<\\/')};
+        const slides = ${JSON.stringify(slideDocuments)};
         const totalSlides = slides.length;
         const frame = document.getElementById('slideFrame');
 
@@ -522,34 +468,22 @@ const downloadPPT = () => {
 </body>
 </html>`
 
-    downloadHtml(fullHtml, getDownloadFilename(title))
+    // 创建Blob并下载
+    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${title}.html`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
 
     store.showToastMessage('PPT下载成功！')
   } catch (err) {
     console.error('下载PPT失败:', err)
     store.showToastMessage('下载PPT失败')
   }
-}
-
-function downloadHtml(html, filename) {
-  const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
-}
-
-function getDownloadFilename(fallbackTitle) {
-  const outputPath = store.presentationOutputPath || ''
-  const outputName = outputPath.split(/[\\/]/).filter(Boolean).pop()
-  if (outputName && outputName.toLowerCase().endsWith('.html')) {
-    return outputName
-  }
-  return `${fallbackTitle}.html`
 }
 
 const slideStyle = computed(() => {
