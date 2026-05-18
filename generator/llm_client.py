@@ -16,6 +16,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 _DEFAULT_CLIENT: LLMClient | None = None
+DEFAULT_TIMEOUT_S = 180.0
 
 
 class LLMClient(ABC):
@@ -43,7 +44,7 @@ class DeepSeekChatClient(LLMClient):
         api_key: str | None = None,
         base_url: str | None = None,
         model: str | None = None,
-        timeout_s: float = 60.0,
+        timeout_s: float | None = None,
     ) -> None:
         self._api_key = api_key or os.getenv("DEEPSEEK_API_KEY", "").strip()
         raw = (
@@ -55,7 +56,13 @@ class DeepSeekChatClient(LLMClient):
             raw = raw[:-3].rstrip("/")
         self._api_root = raw
         self._model = model or os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
-        self._timeout = timeout_s
+        env_timeout = os.getenv("DEEPSEEK_TIMEOUT_S", "").strip()
+        try:
+            configured_timeout = float(env_timeout) if env_timeout else DEFAULT_TIMEOUT_S
+        except ValueError:
+            logger.warning(f"[DeepSeek] DEEPSEEK_TIMEOUT_S 无效，使用默认 {DEFAULT_TIMEOUT_S}s")
+            configured_timeout = DEFAULT_TIMEOUT_S
+        self._timeout = timeout_s or configured_timeout
 
         # 诊断日志：打印网络环境
         proxy_keys = ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY"]
