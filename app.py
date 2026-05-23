@@ -587,6 +587,8 @@ def generate_ppt_parallel():
                 'total': progress_total,
                 'page': page_info,
             })
+            # 让 Socket.IO 在线程模式下立即处理本次 emit，避免请求结束后前端才收到最终进度。
+            socketio.sleep(0)
 
         emit_generation_progress(0, progress_total, {'status': 'started'})
         result = asyncio.run(generator.generate_presentation(

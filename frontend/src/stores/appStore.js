@@ -1100,6 +1100,7 @@ export const store = reactive({
     progressSocketInitialized = true
 
     progressSocket = io('/', {
+      path: '/socket.io',
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 5
