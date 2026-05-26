@@ -92,6 +92,12 @@ export async function generatePreview(data) {
   return response.data
 }
 
+// 重写当前页面
+export async function rewriteSlide(data) {
+  const response = await apiClient.post('/rewrite-slide', data)
+  return response.data
+}
+
 // 并行生成PPT（一次性返回所有页面）
 export async function generatePPTParallel(data) {
   const response = await apiClient.post('/generate-ppt-parallel', data)
@@ -222,6 +228,7 @@ export default {
   // PPT生成
   generateOutline,
   generatePreview,
+  rewriteSlide,
   generatePPTParallel,
   // PPT管理
   savePPT,

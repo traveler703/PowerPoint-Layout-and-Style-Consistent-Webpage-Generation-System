@@ -43,7 +43,7 @@ class DeepSeekChatClient(LLMClient):
         api_key: str | None = None,
         base_url: str | None = None,
         model: str | None = None,
-        timeout_s: float = 60.0,
+        timeout_s: float = 90.0,
     ) -> None:
         self._api_key = api_key or os.getenv("DEEPSEEK_API_KEY", "").strip()
         raw = (
@@ -106,7 +106,7 @@ class DeepSeekChatClient(LLMClient):
             return content if isinstance(content, str) else ""
         except httpx.TimeoutException:
             logger.error("[DeepSeek] 请求超时")
-            return "<!-- LLM 调用超时，请检查网络后重试 -->"
+            return "__TIMEOUT__:模型响应超时，请重试"
         except httpx.HTTPStatusError as e:
             logger.error(f"[DeepSeek] HTTP 错误 {e.response.status_code}: {e.response.text[:200]}")
             return f"<!-- LLM HTTP 错误 {e.response.status_code}: {e.response.text[:200]} -->"

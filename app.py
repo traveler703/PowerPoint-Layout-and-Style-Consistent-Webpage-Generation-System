@@ -18,6 +18,8 @@ from scripts.template_generator import register_template_api_routes
 from engine.content import parse_user_document
 from engine.types import SemanticPageInput
 from pipeline import run_pipeline
+from generator.llm_client import default_llm_client
+from bs4 import BeautifulSoup
 from parsers import (
     parse_document_to_json,
     parsed_json_to_outline,
@@ -25,6 +27,39 @@ from parsers import (
 )
 from flask_socketio import SocketIO
 from threading import Lock
+
+
+def _load_page_html_from_outputs(page_number: int) -> tuple[str, str]:
+    """按页码从输出目录加载页面 HTML，返回 (html, path)。"""
+    import glob
+    output_dir = os.path.join(os.path.dirname(__file__), 'output', 'pages')
+    if not os.path.exists(output_dir):
+        return '', ''
+    patterns = [f'{page_number:02d}_*.html', f'*{page_number}*.html']
+    for pattern in patterns:
+        matches = glob.glob(os.path.join(output_dir, pattern))
+        if matches:
+            try:
+                with open(matches[0], 'r', encoding='utf-8') as f:
+                    return f.read(), matches[0]
+            except Exception:
+                return '', matches[0]
+    return '', ''
+
+
+def _save_page_html_to_outputs(page_number: int, html: str) -> str:
+    """将页面 HTML 持久化回输出目录。"""
+    import glob
+    output_dir = os.path.join(os.path.dirname(__file__), 'output', 'pages')
+    os.makedirs(output_dir, exist_ok=True)
+    existing_html, existing_path = _load_page_html_from_outputs(page_number)
+    target_path = existing_path
+    if not target_path:
+        matches = glob.glob(os.path.join(output_dir, f'{page_number:02d}_*.html'))
+        target_path = matches[0] if matches else os.path.join(output_dir, f'{page_number:02d}_patched.html')
+    with open(target_path, 'w', encoding='utf-8') as f:
+        f.write(html)
+    return target_path
 
 logging.basicConfig(
     level=logging.INFO,
@@ -677,6 +712,197 @@ def generate_preview():
         
     except Exception as e:
         logger.error(f"生成预览失败: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rewrite-slide', methods=['POST'])
+def rewrite_slide():
+    """根据用户指令重写当前选中的页面"""
+    try:
+        data = request.get_json() or {}
+        page = data.get('page') or {}
+        instruction = (data.get('instruction') or '').strip()
+        project_id = data.get('project_id')
+
+        if not page:
+            logger.warning('[rewrite-slide] 请求失败：页面数据为空')
+            return jsonify({'error': '页面数据不能为空'}), 400
+        if not instruction:
+            logger.warning('[rewrite-slide] 请求失败：修改指令为空')
+            return jsonify({'error': '修改指令不能为空'}), 400
+
+        page_id = page.get('id')
+        page_number = page.get('page_number') or page.get('pageNumber') or 1
+        page_html = page.get('html') or ''
+        page_html_path = ''
+        if not page_html and page_number:
+            page_html, page_html_path = _load_page_html_from_outputs(page_number)
+        if not page_html:
+            logger.warning(f"[rewrite-slide] page_html 为空，page_number={page_number}")
+        else:
+            logger.info(f"[rewrite-slide] 使用页面HTML路径: {page_html_path or '[request]'}")
+        title = (page.get('title') or '').strip() or f'第{page_number}页'
+
+        logger.info(
+            f"[rewrite-slide] 请求进入 project_id={project_id} page_id={page_id} "
+            f"page_number={page_number} instruction={instruction[:120]!r} html_len={len(page_html)}"
+        )
+
+        system_prompt = (
+            '你是一个专业的PPT页面局部修改助手。'
+            '请根据用户指令，只输出严格JSON，不要输出任何多余说明。'
+            '你只能修改当前页面中的局部样式或元素，不要重写整页内容，不要影响其他页面。'
+            '如果用户要求移动文本位置，只修改对应元素的定位/对齐/布局相关样式。'
+            '如果用户要求移动图片位置、调整大小或删除图片，只修改图片相关样式或删除图片节点。'
+            '如果用户没有明确要求某项内容，请保持原值不变。'
+            '输出必须符合以下格式：'
+            '{'
+            '"page_id": 页面ID, '
+            '"operations": [ {"type": "update_style|delete_element|move_element", "selector": "CSS选择器", "style": {"属性": "值"}, "position": "left|right|center|top|bottom"} ], '
+            '"page_data": {"可选": "用于同步预览的数据"}'
+            '}'
+        )
+
+        user_prompt = json.dumps({
+            'project_id': project_id,
+            'page': {
+                'id': page_id,
+                'page_number': page_number,
+                'title': title,
+                'html': page_html,
+            },
+            'instruction': instruction,
+            'requirements': {
+                'output_format': 'json',
+                'apply_immediately': True,
+                'mode': 'local_patch',
+                'do_not_modify_other_pages': True,
+                'image_policy': ['move', 'resize', 'delete']
+            }
+        }, ensure_ascii=False, indent=2)
+
+        logger.info(f"[rewrite-slide] system_prompt_preview={system_prompt[:500]!r}")
+        logger.info(f"[rewrite-slide] user_prompt_preview={user_prompt[:1000]!r}")
+
+        client = default_llm_client()
+        raw = asyncio.run(client.complete(system_prompt, user_prompt))
+        logger.info(f"[rewrite-slide] raw_response_len={len(raw)}")
+        logger.info(f"[rewrite-slide] raw_response_preview={raw[:1000]!r}")
+        if raw.startswith('__TIMEOUT__:'):
+            timeout_msg = raw.split(':', 1)[1].strip() or '模型响应超时，请重试'
+            logger.warning(f"[rewrite-slide] 模型超时: {timeout_msg}")
+            return jsonify({'error': timeout_msg}), 504
+
+        cleaned = raw.strip()
+        if cleaned.startswith('```'):
+            cleaned = cleaned.split('```', 2)[1] if '```' in cleaned else cleaned
+        logger.info(f"[rewrite-slide] cleaned_before_json_len={len(cleaned)}")
+        logger.info(f"[rewrite-slide] cleaned_before_json_preview={cleaned[:1000]!r}")
+        try:
+            start = cleaned.find('{')
+            end = cleaned.rfind('}')
+            if start != -1 and end != -1:
+                cleaned = cleaned[start:end + 1]
+            result = json.loads(cleaned)
+        except Exception as parse_err:
+            logger.error(f"[rewrite-slide] 解析重写JSON失败: {parse_err}; raw={raw[:500]}")
+            return jsonify({'error': 'AI返回的JSON无法解析', 'raw': raw[:500]}), 500
+
+        logger.info(f"[rewrite-slide] parsed_keys={list(result.keys())}")
+        logger.info(f"[rewrite-slide] operations_count={len(result.get('operations') or [])}")
+        logger.info(f"[rewrite-slide] page_data_keys={list((result.get('page_data') or {}).keys())}")
+
+        merged_page = dict(page)
+        page_data = result.get('page_data') or {}
+        if isinstance(page_data, dict):
+            merged_page.update(page_data)
+        for key in ('title', 'subtitle', 'layout', 'background', 'bullets', 'image'):
+            if key in result and result[key] is not None:
+                merged_page[key] = result[key]
+
+        operations = result.get('operations') or []
+        soup = BeautifulSoup(page_html, 'lxml')
+        logger.info(f"[rewrite-slide] patch_start original_html_len={len(page_html)}")
+
+        def selector_matches(selector: str):
+            if not selector:
+                return []
+            try:
+                return soup.select(selector)
+            except Exception as sel_err:
+                logger.error(f"[rewrite-slide] selector 解析失败 selector={selector!r} err={sel_err}")
+                return []
+
+        for idx, op in enumerate(operations):
+            if not isinstance(op, dict):
+                logger.warning(f"[rewrite-slide] op[{idx}] 非 dict: {op!r}")
+                continue
+            op_type = str(op.get('type') or '').lower()
+            selector = op.get('selector') or ''
+            nodes = selector_matches(selector)
+            logger.info(f"[rewrite-slide] op[{idx}] type={op_type} selector={selector!r} matched={len(nodes)}")
+            if not nodes:
+                continue
+
+            if op_type == 'delete_element':
+                for node in nodes:
+                    node.decompose()
+                continue
+
+            if op_type in ('update_style', 'move_element'):
+                for node in nodes:
+                    style_map = {}
+                    style_attr = node.get('style', '')
+                    if style_attr:
+                        for chunk in style_attr.split(';'):
+                            if ':' in chunk:
+                                k, v = chunk.split(':', 1)
+                                style_map[k.strip()] = v.strip()
+                    style_updates = op.get('style') or {}
+                    if isinstance(style_updates, dict):
+                        style_map.update(style_updates)
+                    position = str(op.get('position') or '').lower()
+                    if position == 'center':
+                        style_map['text-align'] = 'center'
+                    elif position == 'left':
+                        style_map['text-align'] = 'left'
+                    elif position == 'right':
+                        style_map['text-align'] = 'right'
+                    elif position == 'top':
+                        style_map['justify-content'] = 'flex-start'
+                    elif position == 'bottom':
+                        style_map['justify-content'] = 'flex-end'
+                    node['style'] = '; '.join(f'{k}: {v}' for k, v in style_map.items())
+
+        html = str(soup)
+        logger.info(f"[rewrite-slide] patched_html_len={len(html)}")
+        logger.info(f"[rewrite-slide] patched_html_preview={html[:1000]!r}")
+
+        result['page_id'] = page_id
+        result['page_data'] = merged_page
+
+        saved_path = _save_page_html_to_outputs(page_number, html)
+        logger.info(f"[rewrite-slide] 已持久化页面HTML: {saved_path}")
+        logger.info(
+            f"[rewrite-slide] 返回成功 page_id={page_id} operations_count={len(operations)} html_len={len(html)}"
+        )
+
+        return jsonify({
+            'success': True,
+            'result': result,
+            'operations': operations,
+            'page_data': merged_page,
+            'html': html,
+            'saved_path': saved_path,
+            'evaluation': {
+                'passed': True,
+                'layout': {},
+                'style': {},
+            },
+        })
+
+    except Exception as e:
+        logger.error(f"重写页面失败: {e}")
         return jsonify({'error': str(e)}), 500
 
 

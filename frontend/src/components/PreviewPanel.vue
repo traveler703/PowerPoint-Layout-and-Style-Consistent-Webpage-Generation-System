@@ -39,106 +39,126 @@
       </div>
     </div>
 
-    <!-- Right: Main Preview -->
-    <div class="preview-main-panel">
-      <div class="preview-main-header">
-        <span style="font-size: 14px; font-weight: 600;">
-          第 {{ currentSlideIndex + 1 }} 页 / {{ store.pages.length }} 页
-        </span>
-        <div style="display: flex; gap: 8px;">
-          <button class="btn btn-ghost" style="padding: 6px 12px; font-size: 12px;" @click="prevSlide" :disabled="currentSlideIndex === 0">
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-            </svg>
-            上一页
-          </button>
-          <button class="btn btn-ghost" style="padding: 6px 12px; font-size: 12px;" @click="nextSlide" :disabled="currentSlideIndex === store.pages.length - 1">
-            下一页
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-            </svg>
-          </button>
-          <button
-            class="btn btn-primary"
-            style="padding: 6px 12px; font-size: 12px;"
-            @click="downloadPPT"
-            :disabled="!hasGeneratedSlides || store.isGenerating"
-          >
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-            </svg>
-            下载PPT
-          </button>
-          <button
-            class="btn btn-primary"
-            style="padding: 6px 12px; font-size: 12px;"
-            @click="savePPT"
-            :disabled="!hasGeneratedSlides || store.isGenerating"
-          >
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/>
-            </svg>
-            保存PPT
-          </button>
-        </div>
-      </div>
-      <div v-if="hasGeneratedSlides" class="evaluation-bar">
-        <div class="evaluation-item">
-          <span class="evaluation-label">当前页评估</span>
-          <span class="evaluation-value" :class="{ pass: currentSlideEvaluation?.passed, fail: currentSlideEvaluation && !currentSlideEvaluation.passed }">
-            {{ currentSlideEvaluation ? (currentSlideEvaluation.passed ? '通过' : '警告') : '暂无' }}
+    <div class="preview-workspace">
+      <!-- Center: Main Preview -->
+      <div class="preview-main-panel">
+        <div class="preview-main-header">
+          <span style="font-size: 14px; font-weight: 600;">
+            第 {{ currentSlideIndex + 1 }} 页 / {{ store.pages.length }} 页
           </span>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-ghost" style="padding: 6px 12px; font-size: 12px;" @click="prevSlide" :disabled="currentSlideIndex === 0">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+              </svg>
+              上一页
+            </button>
+            <button class="btn btn-ghost" style="padding: 6px 12px; font-size: 12px;" @click="nextSlide" :disabled="currentSlideIndex === store.pages.length - 1">
+              下一页
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+              </svg>
+            </button>
+            <button
+              class="btn btn-primary"
+              style="padding: 6px 12px; font-size: 12px;"
+              @click="downloadPPT"
+              :disabled="!hasGeneratedSlides || store.isGenerating"
+            >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+              </svg>
+              下载PPT
+            </button>
+            <button
+              class="btn btn-primary"
+              style="padding: 6px 12px; font-size: 12px;"
+              @click="savePPT"
+              :disabled="!hasGeneratedSlides || store.isGenerating"
+            >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/>
+              </svg>
+              保存PPT
+            </button>
+          </div>
         </div>
-        <div class="evaluation-item">
-          <span class="evaluation-label">重叠率</span>
-          <span class="evaluation-value">{{ currentOverlapText }}</span>
-        </div>
-        <div class="evaluation-item">
-          <span class="evaluation-label">颜色偏差</span>
-          <span class="evaluation-value">{{ currentColorDeviationText }}</span>
-        </div>
-        <div class="evaluation-item">
-          <span class="evaluation-label">全局通过率</span>
-          <span class="evaluation-value">{{ evaluationPassRate }}</span>
-        </div>
-      </div>
-      <div class="preview-main-body">
-        <!-- 生成进度显示 -->
-        <div v-if="store.isGenerating" class="generating-overlay">
-          <div class="generating-progress">
-            <div class="progress-text">正在生成第 {{ store.currentGeneratingPage }} / {{ store.totalPagesToGenerate }} 页</div>
-            <div class="progress-bar">
-              <div class="progress-fill" :style="{ width: store.progressPercent + '%' }"></div>
+        <div class="preview-main-body">
+          <!-- 生成进度显示 -->
+          <div v-if="store.isGenerating" class="generating-overlay">
+            <div class="generating-progress">
+              <div class="progress-text">正在生成第 {{ store.currentGeneratingPage }} / {{ store.totalPagesToGenerate }} 页</div>
+              <div class="progress-bar">
+                <div class="progress-fill" :style="{ width: store.progressPercent + '%' }"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 如果有生成的HTML，使用iframe显示 -->
+          <div v-if="currentSlideHtml" class="preview-slide-frame-container">
+            <div class="preview-slide-frame-wrapper">
+              <iframe
+                ref="slideIframe"
+                :key="iframeKey"
+                :srcdoc="currentSlideHtml"
+                class="preview-slide-frame"
+                sandbox="allow-same-origin"
+              ></iframe>
+            </div>
+          </div>
+
+          <!-- 否则显示默认预览 -->
+          <div
+            v-else
+            class="preview-slide-display"
+            :style="slideStyle"
+          >
+            <h1>{{ currentSlidePage?.title }}</h1>
+            <p>{{ currentSlidePage?.subtitle }}</p>
+            <div class="preview-slide-bullets" v-if="currentSlidePage?.bullets?.length > 0">
+              <span v-for="(bullet, index) in currentSlidePage?.bullets?.slice(0, 4)" :key="index">• {{ bullet }}</span>
             </div>
           </div>
         </div>
-
-        <!-- 如果有生成的HTML，使用iframe显示 -->
-        <div v-if="currentSlideHtml" class="preview-slide-frame-container">
-          <div class="preview-slide-frame-wrapper">
-            <iframe
-              ref="slideIframe"
-              :key="iframeKey"
-              :srcdoc="currentSlideHtml"
-              class="preview-slide-frame"
-              sandbox="allow-same-origin"
-            ></iframe>
-          </div>
-        </div>
-
-        <!-- 否则显示默认预览 -->
-        <div
-          v-else
-          class="preview-slide-display"
-          :style="slideStyle"
-        >
-          <h1>{{ currentSlidePage?.title }}</h1>
-          <p>{{ currentSlidePage?.subtitle }}</p>
-          <div class="preview-slide-bullets" v-if="currentSlidePage?.bullets?.length > 0">
-            <span v-for="(bullet, index) in currentSlidePage?.bullets?.slice(0, 4)" :key="index">• {{ bullet }}</span>
-          </div>
-        </div>
       </div>
+
+      <!-- Right: Layout-only AI revision panel placeholder -->
+      <aside class="preview-revision-panel">
+        <div class="preview-revision-content">
+          <div
+            v-for="message in revisionMessages"
+            :key="message.id"
+            class="revision-message"
+          >
+            {{ message.text }}
+          </div>
+        </div>
+        <div class="preview-revision-chat-box">
+          <select v-model="revisionTargetPageId" class="revision-page-select">
+            <option value="">选择要修改的页面</option>
+            <option
+              v-for="(page, index) in store.pages"
+              :key="page.id"
+              :value="page.id"
+            >
+              第 {{ index + 1 }} 页：{{ page.title || '未命名页面' }}
+            </option>
+          </select>
+          <textarea
+            v-model="revisionInput"
+            class="revision-input"
+            placeholder="输入修改要求，例如：把当前页标题放大"
+            @keydown.enter.exact.prevent="sendRevisionMessage"
+          ></textarea>
+          <button
+            class="revision-send-btn"
+            :disabled="!revisionInput.trim() || isRewriting"
+            @click="sendRevisionMessage"
+          >
+            {{ isRewriting ? '修改中...' : '发送' }}
+          </button>
+        </div>
+      </aside>
     </div>
   </div>
 </template>
@@ -146,9 +166,131 @@
 <script setup>
 import { computed, ref, watch, onMounted, nextTick } from 'vue'
 import { store, getPageIcon } from '../stores/appStore'
+import { rewriteSlide } from '../services/api'
 
 const slideIframe = ref(null)
 const iframeKey = ref(0)
+const revisionInput = ref('')
+const revisionTargetPageId = ref('')
+const revisionMessages = ref([])
+const isRewriting = ref(false)
+const rewrittenSlideHtmlMap = ref({})
+
+watch(revisionTargetPageId, () => {
+  syncPreviewToTargetPage()
+})
+
+const syncPreviewToTargetPage = () => {
+  const targetPage = store.pages.find(page => String(page.id) === String(revisionTargetPageId.value))
+  if (!targetPage) return
+  store.goToSlide(targetPage.id)
+}
+
+const buildPagePayload = (page) => {
+  if (!page) return null
+  const pageNumber = page.pageNumber || page.id
+  const generatedSlide = store.generatedSlides.find(s => s.pageNumber === pageNumber)
+  const slideHtml = getSlideHtml(pageNumber) || generatedSlide?.html || ''
+  return {
+    id: page.id,
+    page_number: pageNumber,
+    title: page.title || '',
+    subtitle: page.subtitle || '',
+    layout: page.layout || page.page_type || '',
+    background: page.background || '',
+    bullets: page.bullets || [],
+    image: page.image || '',
+    html: slideHtml,
+    raw: page
+  }
+}
+
+const applyRewriteResult = (response) => {
+  if (!response) return
+  const result = response.result || response
+  const pageId = result.page_id ?? result.pageId ?? revisionTargetPageId.value
+  const idx = store.pages.findIndex(page => String(page.id) === String(pageId))
+  if (idx === -1) return
+
+  const page = { ...store.pages[idx] }
+  const pageData = response.page_data && typeof response.page_data === 'object'
+    ? response.page_data
+    : (result.page_data && typeof result.page_data === 'object' ? result.page_data : {})
+  if (pageData.title !== undefined || result.title !== undefined) page.title = pageData.title ?? result.title
+  if (pageData.subtitle !== undefined || result.subtitle !== undefined) page.subtitle = pageData.subtitle ?? result.subtitle
+  if (pageData.layout !== undefined || result.layout !== undefined) page.layout = pageData.layout ?? result.layout
+  if (pageData.background !== undefined || result.background !== undefined) page.background = pageData.background ?? result.background
+  if (Array.isArray(pageData.bullets) || Array.isArray(result.bullets)) page.bullets = pageData.bullets ?? result.bullets
+  if (pageData.image !== undefined || result.image !== undefined) page.image = pageData.image ?? result.image
+
+  Object.assign(page, pageData)
+  store.pages.splice(idx, 1, page)
+
+  const pageNumber = page.pageNumber || page.id
+  if (response.html) {
+    rewrittenSlideHtmlMap.value[pageNumber] = response.html
+    const slideIndex = store.generatedSlides.findIndex(s => s.pageNumber === pageNumber)
+    if (slideIndex !== -1) {
+      store.generatedSlides.splice(slideIndex, 1, {
+        ...store.generatedSlides[slideIndex],
+        title: page.title || '',
+        pageType: page.layout || store.generatedSlides[slideIndex].pageType,
+        html: response.html,
+        evaluation: response.evaluation || store.generatedSlides[slideIndex].evaluation || null
+      })
+    } else {
+      store.generatedSlides.push({
+        pageNumber,
+        pageType: page.layout || 'content',
+        title: page.title || '',
+        html: response.html,
+        evaluation: response.evaluation || null
+      })
+    }
+  }
+
+  refreshCurrentSlidePreview()
+}
+
+const sendRevisionMessage = async () => {
+  const text = revisionInput.value.trim()
+  if (!text || isRewriting.value) return
+
+  const targetPage = store.pages.find(page => String(page.id) === String(revisionTargetPageId.value))
+  if (!targetPage) {
+    store.showToastMessage('请先选择要修改的页面')
+    return
+  }
+
+  store.goToSlide(targetPage.id)
+  revisionMessages.value.push({
+    id: Date.now(),
+    text: `第 ${store.pages.indexOf(targetPage) + 1} 页：${text}`
+  })
+
+  isRewriting.value = true
+  try {
+    const response = await rewriteSlide({
+      project_id: store.currentProject?.id || null,
+      page: buildPagePayload(targetPage),
+      instruction: text
+    })
+
+    if (response?.success && (response?.result || response?.html)) {
+      applyRewriteResult(response)
+      store.showToastMessage('页面已更新')
+    } else {
+      store.showToastMessage(response?.error || '页面修改失败')
+    }
+  } catch (err) {
+    console.error('修改页面失败:', err)
+    const message = err?.response?.data?.error || '模型响应超时，请重试'
+    store.showToastMessage(message)
+  } finally {
+    isRewriting.value = false
+    revisionInput.value = ''
+  }
+}
 
 // 缩略图缩放计算
 const thumbRefs = ref({})
@@ -190,8 +332,8 @@ const calculateMainScale = () => {
     const wrapper = document.querySelector('.preview-slide-frame-wrapper')
     if (wrapper) {
       const parent = wrapper.parentElement
-      const parentWidth = parent.clientWidth
-      const parentHeight = parent.clientHeight
+      const parentWidth = Math.max(parent.clientWidth - 16, 0)
+      const parentHeight = Math.max(parent.clientHeight - 16, 0)
 
       const scaleX = parentWidth / 1280
       const scaleY = parentHeight / 720
@@ -216,9 +358,17 @@ const currentSlideHtml = computed(() => {
   const currentPage = currentSlidePage.value
   if (!currentPage) return null
   const pageNum = currentPage.pageNumber || currentPage.id
+  if (rewrittenSlideHtmlMap.value[pageNum]) {
+    return rewrittenSlideHtmlMap.value[pageNum]
+  }
   // 使用 getSlideHtml 函数，会自动清理内联固定尺寸
   return getSlideHtml(pageNum)
 })
+
+const refreshCurrentSlidePreview = () => {
+  iframeKey.value++
+  nextTick(calculateMainScale)
+}
 
 // 当切换幻灯片时刷新iframe
 watch(() => store.currentSlide, () => {
