@@ -754,11 +754,12 @@ def rewrite_slide():
             '你只能修改当前页面中的局部样式或元素，不要重写整页内容，不要影响其他页面。'
             '如果用户要求移动文本位置，只修改对应元素的定位/对齐/布局相关样式。'
             '如果用户要求移动图片位置、调整大小或删除图片，只修改图片相关样式或删除图片节点。'
+            '如果用户要求替换文本内容，请输出 update_text 或 replace_text 操作，不要改成 update_style。'
             '如果用户没有明确要求某项内容，请保持原值不变。'
             '输出必须符合以下格式：'
             '{'
             '"page_id": 页面ID, '
-            '"operations": [ {"type": "update_style|delete_element|move_element", "selector": "CSS选择器", "style": {"属性": "值"}, "position": "left|right|center|top|bottom"} ], '
+            '"operations": [ {"type": "update_style|delete_element|move_element|update_text|replace_text", "selector": "CSS选择器", "style": {"属性": "值"}, "position": "left|right|center|top|bottom", "text": "新文本", "find": "旧文本", "replace": "新文本"} ], '
             '"page_data": {"可选": "用于同步预览的数据"}'
             '}'
         )
@@ -847,6 +848,34 @@ def rewrite_slide():
             if op_type == 'delete_element':
                 for node in nodes:
                     node.decompose()
+                continue
+
+            if op_type == 'update_text':
+                new_text = op.get('text')
+                if new_text is None:
+                    continue
+                for node in nodes:
+                    for child in list(node.children):
+                        if getattr(child, 'extract', None):
+                            child.extract()
+                    node.string = str(new_text)
+                continue
+
+            if op_type == 'replace_text':
+                new_text = op.get('replace') if op.get('replace') is not None else op.get('text')
+                if new_text is None:
+                    continue
+                find_text = op.get('find')
+                for node in nodes:
+                    if find_text:
+                        current_text = node.get_text(" ", strip=True)
+                        if str(find_text) not in current_text:
+                            continue
+                    if len(node.contents) == 1 and getattr(node.contents[0], 'replace_with', None):
+                        node.contents[0].replace_with(str(new_text))
+                    else:
+                        node.clear()
+                        node.append(str(new_text))
                 continue
 
             if op_type in ('update_style', 'move_element'):

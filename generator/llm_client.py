@@ -43,7 +43,7 @@ class DeepSeekChatClient(LLMClient):
         api_key: str | None = None,
         base_url: str | None = None,
         model: str | None = None,
-        timeout_s: float = 90.0,
+        timeout_s: float = 900.0,
     ) -> None:
         self._api_key = api_key or os.getenv("DEEPSEEK_API_KEY", "").strip()
         raw = (
