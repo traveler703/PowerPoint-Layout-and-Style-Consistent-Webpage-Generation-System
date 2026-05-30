@@ -24,6 +24,7 @@ from parsers import (
     parse_document_to_json,
     parsed_json_to_outline,
     parsed_json_to_frontend_pages,
+    extract_text_from_file,
 )
 from flask_socketio import SocketIO
 from threading import Lock
@@ -273,7 +274,7 @@ def parse_text():
 
 @app.route('/api/parse-document', methods=['POST'])
 def parse_document():
-    """上传并解析文档，输出结构化 JSON 到 output 目录。"""
+    """上传文件，提取文本后用 LLM 解析为结构化大纲。"""
     try:
         if "file" not in request.files:
             return jsonify({"error": "缺少上传文件(file)"}), 400
@@ -292,40 +293,60 @@ def parse_document():
         uploaded_path = os.path.join(upload_dir, safe_name)
         upload.save(uploaded_path)
 
-        output_dir = os.path.join(os.path.dirname(__file__), "output")
-        parsed_json, output_json_path = parse_document_to_json(uploaded_path, output_dir=output_dir)
-        outline = parsed_json_to_outline(parsed_json)
-        frontend_pages = parsed_json_to_frontend_pages(parsed_json)
-        rel_json = os.path.relpath(output_json_path, os.path.dirname(__file__))
-        rel_json = rel_json.replace("\\", "/")
-        meta = parsed_json.get("metadata", {})
-        result = {
-            "title": meta.get("title", "未命名文档"),
-            "subtitle": meta.get("source_filename", ""),
-            "pages": frontend_pages,
-            "output_json_path": rel_json,
-        }
+        # 提取纯文本
+        raw_text = extract_text_from_file(uploaded_path)
+
+        if not raw_text or len(raw_text.strip()) < 10:
+            return jsonify({'error': '文件内容太少，至少需要10个字符'}), 400
 
         logger.info(
-            f"文档解析完成: file={upload.filename}, chapters={len(parsed_json.get('chapters', []))}, json={output_json_path}"
+            f"上传文件解析: file={upload.filename}, text_len={len(raw_text)}"
         )
-        return jsonify(
-            {
-                "success": True,
-                "result": result,
-                "outline": outline,
-                "meta": {
-                    "structured_parse": True,
-                    "output_json_path": rel_json,
-                    "output_json_abs": output_json_path,
-                },
+
+        # 用 LLM 解析文档结构
+        from generator.prompts import (
+            build_document_parsing_prompt,
+            parse_document_parsing_response,
+        )
+
+        llm_client = default_llm_client()
+        system_prompt, user_prompt = build_document_parsing_prompt(raw_text)
+
+        logger.info("调用 LLM 解析文档结构...")
+        response = asyncio.run(llm_client.complete(system_prompt, user_prompt))
+
+        parse_result = parse_document_parsing_response(response)
+        pages = parse_result.get('pages', [])
+
+        if not pages:
+            pages = [
+                {"type": "cover", "title": parse_result.get('title', 'PPT演示文稿'), "subtitle": parse_result.get('subtitle', '')},
+                {"type": "end", "title": "谢谢观看", "subtitle": ""}
+            ]
+
+        result = {
+            'title': parse_result.get('title', '未命名文档'),
+            'subtitle': parse_result.get('subtitle', ''),
+            'pages': pages
+        }
+
+        logger.info(f"LLM解析完成: title={result.get('title')}, pages={len(pages)}")
+
+        return jsonify({
+            'success': True,
+            'result': result,
+            'meta': {
+                'original_text_length': len(raw_text),
+                'llm_parsed': True,
+                'source_file': upload.filename,
             }
-        )
+        })
+
     except Exception as e:
         logger.error(f"解析文档失败: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/outline-from-parsed-json', methods=['POST'])
