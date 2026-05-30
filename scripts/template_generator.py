@@ -205,6 +205,98 @@ HTML 要求：
 
 
 # ============================================================
+# Stage 0: 设计文档扩展 prompt
+# ============================================================
+
+DESIGN_DOC_EXPANSION_PROMPT = """你是一位资深的PPT视觉设计师。请将用户的简短描述扩展为一份详细的设计规范文档。
+
+输出格式（纯文本，不要JSON）：
+```
+配色方案：
+- 主色调：(具体色值，如 #FF6B35)
+- 辅助色：(2-3个)
+- 背景色：
+- 文字色：
+- 强调色：
+
+字体选择：
+- 标题字体：(推荐Google Fonts中的具体字体名)
+- 正文字体：
+
+装饰元素：
+- (描述2-3种具体装饰，如"右上角几何三角形"、"底部波浪线")
+
+布局风格：
+- (描述整体布局倾向，如"左对齐、大留白"或"居中对称")
+
+氛围感受：
+- (描述整体氛围，如"温暖专业、现代简约")
+```
+
+只输出以上格式的设计文档，不要多余内容。"""
+
+
+# ============================================================
+# Stage 1: 配色方案 prompt
+# ============================================================
+
+COLOR_SCHEME_GENERATION_PROMPT = """你是一位前端CSS专家。根据设计文档生成CSS变量块。
+
+只输出一个 :root {} 代码块，包含以下变量（必须全部填写，不得省略任何一项）：
+- --color-background: (页面背景色)
+- --color-text: (正文文字色)
+- --color-text-muted: (次要文字色)
+- --color-primary: (主色调)
+- --color-secondary: (辅助色)
+- --color-accent: (强调色)
+- --color-card: (卡片背景色)
+- --color-surface: (表面/面板背景色)
+- --font-body: (正文字体，含 fallback)
+- --font-heading: (标题字体，含 fallback)
+
+示例：
+```css
+:root {
+  --color-background: #0d0805;
+  --color-text: #f0e6d3;
+  --color-text-muted: #a09080;
+  --color-primary: #E8742A;
+  --color-secondary: #C85A2B;
+  --color-accent: #F4A460;
+  --color-card: #1a1008;
+  --color-surface: #150d06;
+  --font-body: 'Noto Sans SC', sans-serif;
+  --font-heading: 'Noto Serif SC', serif;
+}
+```
+
+只输出 :root {} 代码块，不要其他内容。"""
+
+
+# ============================================================
+# Stage 2: 骨架生成 prompt（基于设计文档和配色）
+# ============================================================
+
+SKELETON_GENERATION_PROMPT_TEMPLATE = """你是一位极具创意的前端设计师。请根据以下设计规范生成PPT模板的完整HTML。
+
+## 设计规范
+
+{design_doc}
+
+## 配色变量（必须嵌入 :root 中）
+
+```css
+{color_scheme}
+```
+
+## HTML 输出要求
+
+{html_requirements}
+
+现在开始生成！"""
+
+
+# ============================================================
 # 从 HTML 提取模板信息的核心逻辑
 # ============================================================
 
@@ -1141,6 +1233,143 @@ def validate_template(template: dict[str, Any]) -> tuple[bool, list[str]]:
 
 
 # ============================================================
+# 自动修复
+# ============================================================
+
+def _auto_fix_template(parsed: dict[str, Any], errors: list[str]) -> tuple[dict[str, Any], list[str]]:
+    """尝试自动修复常见校验错误，返回 (fixed_template, remaining_errors)。"""
+    fixed = dict(parsed)
+    remaining = list(errors)
+    raw_html = fixed.get("raw_html", "")
+    page_types = fixed.get("page_types", {})
+
+    # 1. 修复 content 页缺少 {{title}}
+    content_sk = page_types.get("content", {}).get("skeleton", "")
+    if content_sk and "{{title}}" not in content_sk:
+        content_sk = content_sk.replace("{{content}}", '<div class="page-title">{{title}}</div>\n{{content}}')
+        page_types["content"]["skeleton"] = content_sk
+        page_types["content"]["placeholders"] = list(page_types["content"].get("placeholders", [])) + ["title"]
+        fixed["page_types"] = page_types
+        remaining = [e for e in remaining if "content 页缺少" not in e]
+        if raw_html:
+            raw_html = raw_html.replace("{{content}}", '<div class="page-title">{{title}}</div>\n{{content}}', 1)
+            fixed["raw_html"] = raw_html
+
+    # 2. 修复 section 页缺少 {{title}}
+    section_sk = page_types.get("section", {}).get("skeleton", "")
+    if section_sk and "{{title}}" not in section_sk:
+        # 在 {{chapter_tag}} 或 {{subtitle}} 或 .section-title 前插入
+        if "{{subtitle}}" in section_sk:
+            section_sk = section_sk.replace("{{subtitle}}", "{{title}}\n{{subtitle}}")
+        elif "{{chapter_tag}}" in section_sk:
+            section_sk = section_sk.replace("{{chapter_tag}}", "{{chapter_tag}}\n<h1 class=\"section-title\">{{title}}</h1>")
+        else:
+            section_sk = '<h1 class="section-title">{{title}}</h1>\n' + section_sk
+        page_types["section"]["skeleton"] = section_sk
+        page_types["section"]["placeholders"] = list(page_types["section"].get("placeholders", [])) + ["title"]
+        fixed["page_types"] = page_types
+        remaining = [e for e in remaining if "section 页缺少" not in e]
+
+    # 3. 修复 .nav-dots 硬编码导航点
+    if raw_html:
+        nav_dots_pattern = re.compile(r'<div[^>]*class="[^"]*nav-dots[^"]*"[^>]*>.*?</div>', re.DOTALL)
+        match = nav_dots_pattern.search(raw_html)
+        if match:
+            old_nav = match.group()
+            inner = re.sub(r'<div[^>]*class="[^"]*nav-dot[^"]*"[^>]*>.*?</div>', '', old_nav, flags=re.DOTALL)
+            inner = re.sub(r'<button[^>]*>.*?</button>', '', inner, flags=re.DOTALL)
+            if old_nav != inner:
+                fixed["raw_html"] = raw_html.replace(old_nav, inner)
+                remaining = [e for e in remaining if "nav-dots" not in e]
+
+    # 4. 修复 .page-content 内部装饰污染
+    for ptype in ["content", "toc"]:
+        sk = page_types.get(ptype, {}).get("skeleton", "")
+        if sk:
+            clean_sk = _strip_content_decorations(sk)
+            if clean_sk != sk:
+                page_types[ptype]["skeleton"] = clean_sk
+                fixed["page_types"] = page_types
+                remaining = [e for e in remaining if "装饰" not in e and ptype not in e]
+
+    # 5. 修复缺少 slide-footer
+    for ptype, pconfig in page_types.items():
+        sk = pconfig.get("skeleton", "")
+        if sk and "slide-footer" not in sk:
+            sk += '\n<div class="slide-footer"><span class="page-num">{{page_number}}</span></div>'
+            page_types[ptype]["skeleton"] = sk
+            fixed["page_types"] = page_types
+            remaining = [e for e in remaining if f"{ptype}" not in e or "slide-footer" not in e]
+
+    # 6. 修复缺少 CSS 变量
+    css = fixed.get("css_variables", {})
+    required_defaults = {
+        "color-background": "#0a0a0a",
+        "color-text": "#e0e0e0",
+        "color-text-muted": "#888888",
+        "color-primary": "#6366f1",
+        "color-secondary": "#818cf8",
+        "color-accent": "#22c55e",
+        "color-card": "#1a1a1a",
+        "color-surface": "#111111",
+        "font-body": "'Inter', sans-serif",
+        "font-heading": "'Inter', sans-serif",
+    }
+    for key, default in required_defaults.items():
+        if not css.get(key) or len(str(css.get(key, ""))) < 3:
+            css[key] = default
+            remaining = [e for e in remaining if key not in e]
+    fixed["css_variables"] = css
+
+    # 7. 修复 .slide 使用 min-width 而非固定 width
+    if raw_html:
+        # 替换 .slide 相关的 min-width/min-height 为固定值
+        fixed_html = re.sub(
+            r'(\.slide\s*\{[^}]*?)(min-width\s*:\s*[^;]+;)',
+            r'\1width: 1280px;',
+            raw_html, flags=re.DOTALL
+        )
+        fixed_html = re.sub(
+            r'(\.slide\s*\{[^}]*?)(min-height\s*:\s*[^;]+;)',
+            r'\1height: 720px;',
+            fixed_html, flags=re.DOTALL
+        )
+        # 如果没有 width: 1280px，添加
+        if 'width: 1280px' not in fixed_html[:fixed_html.find('.slide-container') if '.slide-container' in fixed_html else len(fixed_html)]:
+            # 在 .slide 的第一个 CSS 规则中确保有固定宽高
+            slide_rule = re.search(r'(\.slide\s*\{[^}]*?\})', fixed_html, re.DOTALL)
+            if slide_rule:
+                old_rule = slide_rule.group(1)
+                if 'width:' not in old_rule:
+                    new_rule = old_rule.replace('{', '{ width: 1280px; height: 720px;')
+                    fixed_html = fixed_html.replace(old_rule, new_rule)
+        if fixed_html != raw_html:
+            fixed["raw_html"] = fixed_html
+            raw_html = fixed_html
+            remaining = [e for e in remaining if "min-width" not in e.lower()]
+
+    # Re-validate after fixes
+    if fixed != parsed:
+        _, new_errors = validate_template(fixed)
+        remaining = new_errors
+
+    return fixed, remaining
+
+
+def _strip_content_decorations(skeleton: str) -> str:
+    """移除 .page-content 标签内部的装饰内容（注释、空div、额外HTML）。"""
+    # 只保留 {{content}} 或 {{toc_items}} 占位符
+    pc_match = re.search(r'(<div[^>]*class="[^"]*page-content[^"]*"[^>]*>)(.*?)(</div>)', skeleton, re.DOTALL)
+    if not pc_match:
+        return skeleton
+    prefix, inner, suffix = pc_match.groups()
+    # 提取占位符
+    placeholders = re.findall(r'\{\{[^}]+\}\}', inner)
+    clean_inner = "".join(placeholders) if placeholders else "{{content}}"
+    return skeleton[:pc_match.start()] + prefix + clean_inner + suffix + skeleton[pc_match.end():]
+
+
+# ============================================================
 # 核心生成器
 # ============================================================
 
@@ -1159,76 +1388,126 @@ class TemplateGenerator:
         self.llm = llm_client or default_llm_client()
 
     async def generate(self, user_description: str) -> dict[str, Any]:
-        prompt = (
-            TEMPLATE_GENERATION_SYSTEM_PROMPT
-            + f"\n\n## 用户需求\n\n{user_description}\n\n"
-            + "请只输出 HTML 代码块，不要有任何解释文字。"
-        )
+        logger.info(f"[TemplateGenerator] 三阶段生成，描述: {user_description[:50]}")
 
-        logger.info(f"[TemplateGenerator] 调用 LLM 生成模板，描述: {user_description[:50]}")
+        # ============================================================
+        # Stage 0: 扩展设计文档 (~10s)
+        # ============================================================
+        logger.info("[TemplateGenerator] Stage 0: 扩展设计文档...")
+        stage0_prompt = DESIGN_DOC_EXPANSION_PROMPT + f"\n\n用户需求：{user_description}"
+        design_doc = await self.llm.complete(stage0_prompt, "")
+        logger.info(f"[TemplateGenerator] Stage 0 完成 ({len(design_doc)} chars)")
 
-        MAX_RETRIES = 3
+        # ============================================================
+        # Stage 1: 生成配色方案 (~10s)
+        # ============================================================
+        logger.info("[TemplateGenerator] Stage 1: 生成配色方案...")
+        stage1_prompt = COLOR_SCHEME_GENERATION_PROMPT + f"\n\n设计文档：\n{design_doc}"
+        color_response = await self.llm.complete(stage1_prompt, "")
+        # 提取 :root 块中的 CSS 变量
+        color_vars = _extract_css_variables(color_response)
+        logger.info(f"[TemplateGenerator] Stage 1 完成 ({len(color_vars)} variables)")
+
+        # ============================================================
+        # Stage 2: 生成完整骨架（最多 2 次重试 + 自动修复）
+        # ============================================================
+        logger.info("[TemplateGenerator] Stage 2: 生成HTML骨架...")
+        stage2_prompt = SKELETON_GENERATION_PROMPT_TEMPLATE.format(
+            design_doc=design_doc,
+            color_scheme=color_response.strip(),
+            html_requirements=TEMPLATE_GENERATION_SYSTEM_PROMPT.split("## 输出要求")[1] if "## 输出要求" in TEMPLATE_GENERATION_SYSTEM_PROMPT else TEMPLATE_GENERATION_SYSTEM_PROMPT,
+        ) + f"\n\n## 用户需求\n\n{user_description}\n\n请只输出 HTML 代码块，不要有任何解释文字。"
+
+        MAX_RETRIES = 2
         last_error = ""
         last_response = ""
+        last_parsed = None
 
         for attempt in range(MAX_RETRIES):
             if attempt > 0:
-                retry_prompt = prompt + (
-                    "\n\n## 重试提示\n"
-                    "上一次生成存在以下问题之一：\n"
-                    "1. 内容页缺少 `{{title}}` 占位符，或章节页标题硬编码了文字\n"
-                    "2. `.nav-dots` 内硬编码了导航点元素（应为空，由 JS 动态生成）\n"
-                    "3. 缺少 `.slides-wrapper` + `.slides-track` 外层结构\n"
-                    "4. 导航箭头使用了 `<button>` 而非 `<div onclick=...>`\n"
-                    "5. `.page-content` 内部填充了装饰性 div/svg/注释（必须完全空白，只有 {{content}}）\n"
-                    "6. `.slide` CSS 使用了 `min-width` 而非固定的 `width: 1280px; height: 720px`\n"
-                    "**再次强调**（违反会被系统拒绝）：\n"
-                    "- `{{title}}` 和 `{{content}}` 是内容页的**两个不同占位符**，必须同时存在且 `{{title}}` 在前\n"
-                    "- 章节页的 `{{title}}` 也必须存在，不可省略\n"
-                    "- `.page-content` 内部必须**完全空白**，只能有 `{{content}}` 这一个占位符，禁止放任何装饰元素、注释、svg、div\n"
-                    "- `.nav-dots` 容器必须留空，导航点由 JS 动态生成\n"
-                    "- `.slide` 必须用固定的 `width: 1280px; height: 720px`，禁止 `min-width`\n"
-                    "- 布局必须用 absolute 绝对定位，禁止 flex column 布局\n"
-                    "- 页面切换必须用 `transform: translateX()` 滑动，不许用 opacity 切换"
+                retry_prompt = stage2_prompt + (
+                    f"\n\n## 重试提示（第 {attempt + 1} 次）\n"
+                    f"上一次校验失败原因：{last_error}\n"
+                    "请修正上述问题后重新生成完整HTML。"
                 )
-                logger.info(f"[TemplateGenerator] 重试第 {attempt + 1} 次")
                 response = await self.llm.complete(retry_prompt, "")
             else:
-                response = await self.llm.complete(prompt, "")
+                response = await self.llm.complete(stage2_prompt, "")
 
             last_response = response
 
             try:
                 parsed = extract_template_from_response(response, user_description)
+                # 强制使用 Stage 1 的配色
+                parsed["css_variables"] = color_vars
+                last_parsed = parsed
+
                 is_valid, errors = validate_template(parsed)
 
                 if is_valid:
+                    logger.info("[TemplateGenerator] Stage 2 校验通过")
                     return {
                         "success": True,
                         "response": {"html": response},
                         "parsed": parsed,
-                        "validation": (is_valid, errors),
+                        "validation": (True, []),
                         "model": getattr(self.llm, "_model", "unknown"),
+                        "design_doc": design_doc,
                     }
-                else:
-                    last_error = "; ".join(errors)
-                    logger.warning(f"[TemplateGenerator] 第 {attempt + 1} 次尝试校验失败: {last_error}")
+
+                # 尝试自动修复
+                logger.warning(f"[TemplateGenerator] 第 {attempt + 1} 次校验失败: {len(errors)} 个错误，尝试自动修复...")
+                fixed, remaining = _auto_fix_template(parsed, errors)
+
+                if not remaining:
+                    logger.info("[TemplateGenerator] 自动修复成功！")
+                    return {
+                        "success": True,
+                        "response": {"html": response},
+                        "parsed": fixed,
+                        "validation": (True, []),
+                        "model": getattr(self.llm, "_model", "unknown"),
+                        "design_doc": design_doc,
+                        "auto_fixed": True,
+                    }
+
+                fixed_count = len(errors) - len(remaining)
+                if fixed_count > 0:
+                    logger.info(f"[TemplateGenerator] 自动修复了 {fixed_count} 个错误，剩余 {len(remaining)} 个")
+                last_error = "; ".join(remaining) if remaining else "; ".join(errors)
 
             except ValueError as e:
                 last_error = str(e)
-                logger.warning(f"[TemplateGenerator] 第 {attempt + 1} 次尝试提取失败: {last_error}")
 
             if attempt < MAX_RETRIES - 1:
                 await asyncio.sleep(1)
 
-        # 所有重试都失败
-        logger.error(f"[TemplateGenerator] 模板生成失败（已重试 {MAX_RETRIES} 次）: {last_error}")
+        # 最后一次尝试：对已提取的模板直接自动修复（无需 LLM）
+        if last_parsed:
+            logger.info("[TemplateGenerator] 使用自动修复模板（无需 LLM）...")
+            _, errors = validate_template(last_parsed)
+            fixed, remaining = _auto_fix_template(last_parsed, errors)
+            _, final_errors = validate_template(fixed)
+            if not final_errors:
+                logger.info("[TemplateGenerator] 离线自动修复成功！")
+                return {
+                    "success": True,
+                    "response": {"html": last_response},
+                    "parsed": fixed,
+                    "validation": (True, []),
+                    "model": getattr(self.llm, "_model", "unknown"),
+                    "design_doc": design_doc,
+                    "auto_fixed": True,
+                }
+
+        logger.error(f"[TemplateGenerator] 模板生成失败: {last_error}")
         return {
             "success": False,
             "response": {"html": last_response},
-            "parsed": None,
-            "validation": (False, [f"重试 {MAX_RETRIES} 次后失败: {last_error}"]),
+            "parsed": last_parsed,
+            "validation": (False, [last_error]),
             "model": getattr(self.llm, "_model", "unknown"),
+            "design_doc": design_doc,
         }
 
     def generate_sync(self, user_description: str) -> dict[str, Any]:

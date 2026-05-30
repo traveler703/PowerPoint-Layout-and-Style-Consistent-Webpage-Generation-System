@@ -1488,6 +1488,11 @@ def create_template():
 
         logger.info(f"模板已保存: {output_path}")
 
+        # 刷新模板加载器缓存，使新模板立即可用
+        from templates.template_loader import get_loader
+        get_loader().reload()
+        logger.info("模板加载器已刷新")
+
         return jsonify({
             'success': True,
             'message': '模板保存成功',

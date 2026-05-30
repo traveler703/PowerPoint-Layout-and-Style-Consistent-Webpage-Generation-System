@@ -244,6 +244,11 @@ class TemplateLoader:
         </div>
         """
 
+    def reload(self) -> None:
+        """重新扫描模板目录，加载新增的模板。"""
+        self._registry.clear()
+        self._load_all_templates()
+
     def get(self, template_id: str) -> Template | None:
         """Get a template by ID."""
         return self._registry.get(template_id)
