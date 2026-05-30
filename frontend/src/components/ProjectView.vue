@@ -67,6 +67,7 @@
       <main class="project-main">
         <div class="project-main-header">
           <h2 class="project-main-title">{{ store.stepTitles[store.currentStep] }}</h2>
+          <ProgressBar v-if="store.showProgressBar" :current="store.progressCurrent" :total="store.progressTotal" style="flex:1;margin:0 16px;" />
           <div style="display: flex; gap: 8px;">
             <button class="btn btn-ghost" v-if="currentStepIndex > 0" @click="store.prevStep()">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -128,6 +129,7 @@ import DocumentInputPanel from './DocumentInputPanel.vue'
 import OutlineEditorPanel from './OutlineEditorPanel.vue'
 import StyleSelectorPanel from './StyleSelectorPanel.vue'
 import PreviewPanel from './PreviewPanel.vue'
+import ProgressBar from './ProgressBar.vue'
 
 const stepDescriptions = {
   input: '粘贴或上传文档',

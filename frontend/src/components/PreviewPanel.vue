@@ -60,6 +60,32 @@
               </svg>
             </button>
             <button
+              class="btn btn-ghost"
+              style="padding: 6px 12px; font-size: 12px;"
+              @click="regenerateCurrentPage"
+              :disabled="regenerating || store.isGenerating || !currentSlidePage || currentSlidePage.layout !== 'content'"
+              title="重新生成当前内容页"
+            >
+              <svg v-if="!regenerating" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+              <svg v-else class="spin-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/>
+              </svg>
+              {{ regenerating ? '生成中...' : '重新生成' }}
+            </button>
+            <template v-if="regeneratedHtml">
+              <button class="btn btn-ghost" style="padding:6px 12px;font-size:12px;" @click="showRegenerated = !showRegenerated">
+                {{ showRegenerated ? '查看之前' : '查看新版' }}
+              </button>
+              <button class="btn btn-ghost" style="padding:6px 12px;font-size:12px;color:#ef4444;" @click="discardRegenerated">
+                放弃
+              </button>
+              <button class="btn btn-primary" style="padding:6px 12px;font-size:12px;background:#22c55e;" @click="keepRegenerated">
+                保留
+              </button>
+            </template>
+            <button
               class="btn btn-primary"
               style="padding: 6px 12px; font-size: 12px;"
               @click="downloadPPT"
@@ -84,14 +110,6 @@
           </div>
         </div>
         <div class="preview-main-body">
-          <!-- 轻量进度条（不阻塞交互） -->
-          <div v-if="store.isGenerating" style="position:absolute;top:0;left:0;right:0;z-index:10;background:rgba(0,0,0,0.8);padding:6px 16px;display:flex;align-items:center;gap:12px;">
-            <span style="font-size:12px;color:#00ffff;white-space:nowrap;">生成中 {{ store.progressCurrent }}/{{ store.progressTotal }}</span>
-            <div style="flex:1;height:4px;background:rgba(0,255,255,0.15);border-radius:2px;overflow:hidden;">
-              <div :style="{ width: store.progressPercent + '%', height:'100%', background: '#00ffff', borderRadius:'2px', transition:'width 0.3s' }"></div>
-            </div>
-          </div>
-
           <!-- 如果有生成的HTML，使用iframe显示（每页即时显示） -->
           <div v-if="currentSlideHtml" class="preview-slide-frame-container">
             <div class="preview-slide-frame-wrapper">
@@ -386,13 +404,17 @@ onMounted(() => {
 
 // 当前幻灯片的HTML内容
 const currentSlideHtml = computed(() => {
+  // 重新生成预览优先
+  if (showRegenerated.value && regeneratedHtml.value) {
+    const wrapped = regeneratedHtml.value.replace(/<head>/i, `<head>${overrideStyle}`)
+    return injectOverflowLock(wrapped)
+  }
   const currentPage = currentSlidePage.value
   if (!currentPage) return null
   const pageNum = currentPage.pageNumber || currentPage.id
   if (rewrittenSlideHtmlMap.value[pageNum]) {
     return rewrittenSlideHtmlMap.value[pageNum]
   }
-  // 使用 getSlideHtml 函数，会自动清理内联固定尺寸
   return getSlideHtml(pageNum)
 })
 
@@ -557,6 +579,97 @@ const savePPT = async () => {
 }
 
 // 下载合并后的PPT
+const regenerating = ref(false)
+const regeneratedHtml = ref(null)
+const regeneratedLayoutType = ref('')
+const showRegenerated = ref(true)
+const prevPageNumber = ref(0)
+
+const overrideStyle = `<style>
+  .slide { width: 1280px !important; height: 720px !important; min-width: 1280px !important; min-height: 720px !important; max-width: 1280px !important; max-height: 720px !important; transform-origin: top left !important; }
+  .slides-wrapper { width: 1280px !important; height: 720px !important; overflow: hidden !important; }
+  .slides-track { width: 1280px !important; height: 720px !important; }
+  .slide-container { width: 1280px !important; height: 720px !important; }
+  .slide-wrapper { width: 1280px !important; height: 720px !important; }
+  body { width: 1280px !important; height: 720px !important; overflow: hidden !important; }
+</style>`
+
+const regenerateCurrentPage = async () => {
+  const page = currentSlidePage.value
+  if (!page || page.layout !== 'content') return
+  if (regenerating.value || store.isGenerating) return
+
+  regenerating.value = true
+  regeneratedHtml.value = null
+  try {
+    const resp = await fetch('/api/regenerate-page', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        page: {
+          title: page.title,
+          subtitle: page.subtitle,
+          summary: page.subtitle,
+          bullets: page.bullets || [],
+          description: page.description || '',
+          highlights: page.highlights || null,
+          steps: page.steps || null,
+          compare: page.compare || null,
+        },
+        page_number: page.pageNumber || 1,
+        total_pages: store.pages.length,
+        template: store.selectedStyle || 'tech',
+      }),
+    })
+    const data = await resp.json()
+    if (data.success) {
+      prevPageNumber.value = page.pageNumber || 1
+      regeneratedHtml.value = data.html
+      regeneratedLayoutType.value = data.layout_type
+      showRegenerated.value = true
+      iframeKey.value++
+      store.showToastMessage('重新生成完成，请预览后选择保留或放弃')
+    } else {
+      store.showToastMessage(data.error || '重新生成失败')
+    }
+  } catch (e) {
+    store.showToastMessage('重新生成失败: ' + e.message)
+  } finally {
+    regenerating.value = false
+  }
+}
+
+const discardRegenerated = () => {
+  regeneratedHtml.value = null
+  showRegenerated.value = false
+  iframeKey.value++
+  store.showToastMessage('已放弃新版本')
+}
+
+const keepRegenerated = () => {
+  if (!regeneratedHtml.value) return
+  const idx = store.generatedSlides.findIndex(s => s.pageNumber === prevPageNumber.value)
+  if (idx >= 0) {
+    store.generatedSlides[idx] = {
+      ...store.generatedSlides[idx],
+      html: regeneratedHtml.value,
+      layoutType: regeneratedLayoutType.value,
+    }
+  } else {
+    store.generatedSlides.push({
+      pageNumber: prevPageNumber.value,
+      pageType: 'content',
+      title: currentSlidePage.value?.title || '',
+      html: regeneratedHtml.value,
+      layoutType: regeneratedLayoutType.value,
+    })
+  }
+  regeneratedHtml.value = null
+  showRegenerated.value = false
+  iframeKey.value++
+  store.showToastMessage('已保留新版本')
+}
+
 const downloadPPT = () => {
   if (store.generatedSlides.length === 0) {
     store.showToastMessage('请先生成PPT')
@@ -842,5 +955,13 @@ const nextSlide = () => {
 
 .evaluation-value.fail {
   color: #d97706;
+}
+
+.spin-icon {
+  animation: spin 1.2s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 </style>

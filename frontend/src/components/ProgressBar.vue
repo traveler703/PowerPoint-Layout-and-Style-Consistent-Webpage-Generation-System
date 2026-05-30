@@ -1,8 +1,8 @@
 <template>
-  <div class="progress-strip">
-    <span class="progress-strip-label">生成中 {{ safeCurrent }}/{{ safeTotal }}</span>
-    <div class="progress-strip-bar" role="progressbar" :aria-valuenow="safeCurrent" aria-valuemin="0" :aria-valuemax="safeTotal">
-      <div class="progress-strip-fill" :style="{ width: `${progressPercentage}%` }"></div>
+  <div class="progress-inline">
+    <span class="progress-inline-label">{{ safeCurrent }}/{{ safeTotal }}</span>
+    <div class="progress-inline-bar" role="progressbar" :aria-valuenow="safeCurrent" aria-valuemin="0" :aria-valuemax="safeTotal">
+      <div class="progress-inline-fill" :style="{ width: `${progressPercentage}%` }"></div>
     </div>
   </div>
 </template>
@@ -30,33 +30,31 @@ const progressPercentage = computed(() => {
 </script>
 
 <style scoped>
-.progress-strip {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 9999;
+.progress-inline {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 6px 20px;
-  background: rgba(9, 9, 11, 0.92);
-  border-bottom: 1px solid rgba(99, 102, 241, 0.3);
-  pointer-events: none;
+  gap: 10px;
+  padding: 4px 12px;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 6px;
+  min-width: 160px;
 }
-.progress-strip-label {
-  font-size: 12px;
+.progress-inline-label {
+  font-size: 11px;
   color: #a1a1aa;
   white-space: nowrap;
+  font-weight: 600;
 }
-.progress-strip-bar {
+.progress-inline-bar {
   flex: 1;
   height: 4px;
-  background: rgba(99, 102, 241, 0.15);
+  background: rgba(99, 102, 241, 0.12);
   border-radius: 2px;
   overflow: hidden;
+  min-width: 60px;
 }
-.progress-strip-fill {
+.progress-inline-fill {
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, #6366f1, #a855f7);

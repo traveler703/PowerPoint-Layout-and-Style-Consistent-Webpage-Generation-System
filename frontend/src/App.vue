@@ -23,9 +23,6 @@
 
     <!-- Import Modal -->
     <ImportModal v-if="store.showImportModal" />
-
-    <!-- Progress Bar -->
-    <ProgressBar v-if="store.showProgressBar" :current="store.progressCurrent" :total="store.progressTotal" />
   </div>
 </template>
 
@@ -40,7 +37,7 @@ import ContextMenu from './components/ContextMenu.vue'
 import Toast from './components/Toast.vue'
 import NewProjectModal from './components/NewProjectModal.vue'
 import ImportModal from './components/ImportModal.vue'
-import ProgressBar from './components/ProgressBar.vue'
+
 
 // Global keyboard shortcuts
 const handleKeydown = (e) => {

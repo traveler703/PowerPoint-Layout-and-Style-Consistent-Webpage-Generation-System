@@ -957,6 +957,96 @@ def rewrite_slide():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/regenerate-page', methods=['POST'])
+def regenerate_page():
+    """重新生成单个内容页"""
+    try:
+        data = request.get_json() or {}
+        page_data = data.get('page') or {}
+        page_number = data.get('page_number', 1)
+        template_name = data.get('template', 'tech')
+
+        if not page_data:
+            return jsonify({'error': '页面数据不能为空'}), 400
+
+        logger.info(f"重新生成页面: page={page_number}, title={page_data.get('title', '')}")
+
+        # 构建 SemanticPageInput
+        from engine.types import SemanticPageInput
+        from pipeline import PresentationGenerator
+        from generator.prompts.content_html import generate_color_scheme_from_template
+        from templates.template_loader import load_template as _load_template
+
+        sem_page = SemanticPageInput(
+            page_index=page_number - 1,
+            title=page_data.get('title', ''),
+            summary=page_data.get('summary') or page_data.get('subtitle', ''),
+            page_type='content',
+            bullet_points=page_data.get('bullets', []) or [],
+            description=page_data.get('description') or None,
+            highlights=page_data.get('highlights'),
+            steps=page_data.get('steps'),
+            compare=page_data.get('compare'),
+        )
+
+        # 用 pipeline 重新生成内容页 HTML
+        gen = PresentationGenerator(template_name=template_name)
+        await_gen = asyncio.run(gen.initialize())
+
+        # 单页生成（两阶段）
+        html_fragment, layout_info = asyncio.run(gen.generate_content_page_html(sem_page))
+
+        # 包装为完整页面（与 _save_individual_pages 一致）
+        skeleton = gen.renderer.render_content_page(
+            title=page_data.get('title', ''),
+            content=html_fragment,
+            bullets=None,
+            page_number=page_number,
+            total_pages=data.get('total_pages', page_number),
+        )
+        standalone_html = gen.render_standalone_page(skeleton, page_number)
+
+        # 与 _save_individual_pages 保持一致的后处理
+        standalone_html = standalone_html.replace("{{TOTAL_PAGES}}", str(data.get('total_pages', page_number)))
+        standalone_html = standalone_html.replace('<div class="nav-dots"', '<div class="nav-dots" style="display:none"')
+        standalone_html = standalone_html.replace('<div class="nav-arrows">', '<div class="nav-arrows" style="display:none">')
+        standalone_html = standalone_html.replace('<div class="page-indicator"', '<div class="page-indicator" style="display:none"')
+
+        # 替换 output/pages 中的旧文件
+        pages_dir = os.path.join(os.path.dirname(__file__), 'output', 'pages')
+        if os.path.exists(pages_dir):
+            import re as _re
+            prefix = f"{page_number:02d}_"
+            for fname in os.listdir(pages_dir):
+                if fname.startswith(prefix):
+                    old_path = os.path.join(pages_dir, fname)
+                    os.remove(old_path)
+                    logger.info(f"删除旧页面文件: {fname}")
+
+        # 写入新文件
+        os.makedirs(pages_dir, exist_ok=True)
+        safe_title = _re.sub(r'[<>:"/\\|?*]', '_', page_data.get('title', '')[:20])
+        new_filename = f"{page_number:02d}_{template_name}_content_{safe_title}.html"
+        new_path = os.path.join(pages_dir, new_filename)
+        with open(new_path, 'w', encoding='utf-8') as f:
+            f.write(standalone_html)
+
+        logger.info(f"重新生成完成: page={page_number}, layout={layout_info.get('layout_type', '?')}")
+
+        return jsonify({
+            'success': True,
+            'page_number': page_number,
+            'html': standalone_html,
+            'layout_type': layout_info.get('layout_type', ''),
+        })
+
+    except Exception as e:
+        logger.error(f"重新生成页面失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/output/<path:filename>')
 def serve_output(filename):
     """实验性：提供output文件夹的静态文件访问"""
