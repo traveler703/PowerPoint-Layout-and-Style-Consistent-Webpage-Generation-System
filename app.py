@@ -662,33 +662,18 @@ def generate_ppt_parallel():
             with open(result.output_path, "r", encoding="utf-8") as f:
                 html_content = f.read()
 
-        # 获取页面文件目录
-        pages_dir = os.path.join(os.path.dirname(result.output_path), "pages") if result.output_path else ""
-        
-        # 构建 slides 数组 - 返回页面HTML内容
+        # 构建 slides 数组 - 直接使用 pipeline 返回的页面 HTML（无需文件 I/O）
         slides = []
         for i, layout in enumerate(result.page_layouts):
             page_num = layout.get('page_number', i + 1)
-
-            # 读取页面HTML内容
-            page_html = ""
-            page_file_path = None
-            if os.path.exists(pages_dir):
-                for fname in os.listdir(pages_dir):
-                    if fname.startswith(f"{page_num:02d}_"):
-                        page_file_path = f"/output/pages/{fname}"
-                        page_file_full = os.path.join(pages_dir, fname)
-                        with open(page_file_full, "r", encoding="utf-8") as pf:
-                            page_html = pf.read()
-                        break
+            page_html = result.pages_html[i] if i < len(result.pages_html) else ""
 
             slides.append({
                 'page_type': layout.get('type', ''),
                 'title': layout.get('title', ''),
                 'layout_type': layout.get('layout_type', ''),
                 'page_number': page_num,
-                'page_url': page_file_path,  # 页面文件路径
-                'html': page_html,  # 页面HTML内容
+                'html': page_html,
             })
 
         emit_generation_progress(progress_total, progress_total, {'status': 'completed'})
