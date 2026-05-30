@@ -313,7 +313,11 @@ const handleApply = async () => {
           subtitle: page.subtitle || page.summary || '',
           content_points: page.bullets || page.items || [],
           // 保持 page.type 原样传递（cover, toc, section, content, end）
-          slide_type: page.type || 'content'
+          slide_type: page.type || 'content',
+          description: page.description || '',
+          highlights: page.highlights || null,
+          steps: page.steps || null,
+          compare: page.compare || null,
         }))
         
         const outlineData = {

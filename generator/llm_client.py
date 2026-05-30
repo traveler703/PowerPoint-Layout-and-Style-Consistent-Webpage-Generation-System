@@ -115,14 +115,68 @@ class DeepSeekChatClient(LLMClient):
             return f"<!-- LLM 调用失败: {type(e).__name__}: {e} -->"
 
 
+class MultiKeyLLMClient(LLMClient):
+    """多 API Key 客户端池，每个 Key 独立限流，轮询分配请求。"""
+
+    def __init__(self, api_keys: list[str], base_url: str = "", model: str = "", timeout_s: float = 90.0, max_per_key: int = 3):
+        import threading as _threading
+        self._clients = []
+        self._semaphores = []
+        self._idx = 0
+        self._idx_lock = _threading.Lock()
+        for key in api_keys:
+            key = key.strip()
+            if not key:
+                continue
+            self._clients.append(DeepSeekChatClient(
+                api_key=key, base_url=base_url, model=model, timeout_s=timeout_s,
+            ))
+            self._semaphores.append(_threading.Semaphore(max_per_key))
+        if not self._clients:
+            self._clients.append(StubLLMClient())
+            self._semaphores.append(_threading.Semaphore(1))
+
+    async def complete(self, system: str, user: str) -> str:
+        import asyncio as _asyncio
+        n = len(self._clients)
+        # 轮询选 Key
+        with self._idx_lock:
+            self._idx = (self._idx + 1) % n
+            i = self._idx
+        # threading.Semaphore 不绑定 event loop，用 run_in_executor 避免阻塞事件循环
+        loop = _asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._semaphores[i].acquire)
+        try:
+            return await self._clients[i].complete(system, user)
+        finally:
+            self._semaphores[i].release()
+
+
+def _parse_api_keys() -> list[str]:
+    """从环境变量解析多个 API Key（逗号或换行分隔）。"""
+    raw = os.getenv("DEEPSEEK_API_KEY", "")
+    if not raw:
+        return []
+    # 支持逗号或换行分隔
+    import re
+    return [k.strip() for k in re.split(r'[,\n]', raw) if k.strip()]
+
+
 def default_llm_client() -> LLMClient:
-    """若存在 ``DEEPSEEK_API_KEY`` 则使用 DeepSeek；否则桩。"""
+    """若存在 ``DEEPSEEK_API_KEY`` 则使用 DeepSeek；否则桩。多 Key 时自动启用池。"""
     global _DEFAULT_CLIENT
     if _DEFAULT_CLIENT is not None:
         return _DEFAULT_CLIENT
     if os.getenv("PPT_USE_STUB", "").strip().lower() in ("1", "true", "yes"):
         _DEFAULT_CLIENT = StubLLMClient()
         return _DEFAULT_CLIENT
+
+    keys = _parse_api_keys()
+    if len(keys) > 1:
+        _DEFAULT_CLIENT = MultiKeyLLMClient(keys)
+        logger.info(f"[MultiKey] 启用多 Key 池: {len(keys)} 个 Key，每个最多 3 并发")
+        return _DEFAULT_CLIENT
+
     c = DeepSeekChatClient()
     if c.configured:
         _DEFAULT_CLIENT = c

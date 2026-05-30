@@ -119,6 +119,10 @@ def build_content_html_prompt(
     content: SemanticPageInput,
     css_variables: dict[str, str] | None = None,
     template_info: dict | None = None,
+    description: str = "",
+    highlights: dict[str, str] | None = None,
+    steps: list[str] | None = None,
+    compare: dict | None = None,
 ) -> tuple[str, str]:
     """
     Build a prompt for generating creative HTML layout for content pages.
@@ -273,6 +277,13 @@ def parse_html_response(response: str) -> str:
         flags=re.IGNORECASE,
     )
 
+    # Strip LLM commentary text before/after the actual HTML div
+    # Extract content from first <div to last </div>
+    div_start = response.find("<div")
+    div_end = response.rfind("</div>")
+    if div_start != -1 and div_end != -1:
+        response = response[div_start:div_end + len("</div>")]
+
     # Strip leading/trailing whitespace but preserve structure
     response = response.strip()
 
@@ -289,6 +300,10 @@ def build_html_generation_prompt(
     colors: dict | None = None,
     css_variables: dict[str, str] | None = None,
     template_info: dict | None = None,
+    description: str = "",
+    highlights: dict[str, str] | None = None,
+    steps: list[str] | None = None,
+    compare: dict | None = None,
 ) -> tuple[str, str]:
     """
     Build prompt for HTML generation based on layout expert analysis.
@@ -394,11 +409,32 @@ def build_html_generation_prompt(
 
     system_prompt = "\n".join(sys_parts)
 
+    # 构建富内容字段（仅在有数据时提供）
+    extra_sections = []
+    if description:
+        extra_sections.append(f"【详细描述 - 用于生成正文段落】\n{description}")
+    if highlights:
+        hl_lines = "\n".join(f"- {k}: {v}" for k, v in highlights.items())
+        extra_sections.append(f"【数据亮点 - 用于生成数字卡片/指标展示】\n{hl_lines}")
+    if steps:
+        st_lines = "\n".join(f"{i+1}. {s}" for i, s in enumerate(steps))
+        extra_sections.append(f"【步骤流程 - 用于生成步骤图/流程图】\n{st_lines}")
+    if compare:
+        left = compare.get("left", {})
+        right = compare.get("right", {})
+        cp_lines = [
+            f"左列 - {left.get('title', '')}: {'; '.join(left.get('points', []))}",
+            f"右列 - {right.get('title', '')}: {'; '.join(right.get('points', []))}",
+        ]
+        extra_sections.append(f"【左右对比 - 用于生成对比表格/双栏布局】\n" + "\n".join(cp_lines))
+    extra_text = "\n\n" + "\n\n".join(extra_sections) if extra_sections else ""
+
     user_prompt = (
         f"请严格按照布局专家的设计建议生成HTML。\n\n"
         f"（参考）页面标题（模板已显示，内容区请勿重复）：{page.title}\n"
         f"【副标题/摘要】\n{page.summary}\n\n"
-        f"【要点列表】\n{bullet_lines}\n\n"
+        f"【要点列表】\n{bullet_lines}"
+        f"{extra_text}\n\n"
         f"【推荐布局类型】\n{layout_type}\n\n"
         f"【专家设计建议 - 必须遵循】\n{design_lines}\n\n"
         f"约束条件（必须严格遵守）：\n"
@@ -406,12 +442,11 @@ def build_html_generation_prompt(
         f"2. **模板已显示标题，内容区不要重复生成标题文字**\n"
         f"3. **禁止使用绝对定位**，使用 flex/grid 布局\n"
         f"4. **禁止使用 text-overflow: ellipsis 截断文字**\n"
-        f"5. **文字必须简短**：\n"
-        f"   - 每行最多12个中文字符\n"
-        f"   - 每张卡片最多2行文字\n"
-        f"   - 总内容行数控制在4-6行以内\n"
+        f"5. **文字简洁**：内容区必须有丰富的正文内容，但不能溢出\n"
         f"6. **卡片高度必须自适应内容**，不要设置固定max-height\n"
-        f"7. **内容必须全部可见**，不允许任何溢出或裁剪"
+        f"7. **内容必须全部可见**，不允许任何溢出或裁剪\n"
+        f"8. **重要**：仅使用提供的数据，不要编造不存在的内容\n"
+        f"9. **重要**：只展示有数据提供的组件（有highlights才用数字卡片，有steps才用流程图，有compare才用对比，没有就不用）"
     )
 
     return system_prompt, user_prompt

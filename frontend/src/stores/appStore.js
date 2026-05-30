@@ -603,6 +603,10 @@ export const store = reactive({
       // 页面类型映射：支持 cover, toc, section, content, end
       layout: slide.slide_type || 'content',
       bullets: slide.content_points || slide.bullets || [],
+      description: slide.description || '',
+      highlights: slide.highlights || null,
+      steps: slide.steps || null,
+      compare: slide.compare || null,
       image: null,
       background: null,
       logo: null,
@@ -657,7 +661,11 @@ export const store = reactive({
       image: null,
       background: null,
       logo: null,
-      bullets: ['新内容']
+      bullets: ['新内容'],
+      description: '',
+      highlights: null,
+      steps: null,
+      compare: null,
     }
     this.pages.push(newPage)
     this.currentPageId = newPage.id
@@ -827,6 +835,10 @@ export const store = reactive({
           background: null,
           logo: null,
           bullets: p.bullets || p.items || [],
+          description: p.description || '',
+          highlights: p.highlights || null,
+          steps: p.steps || null,
+          compare: p.compare || null,
           generatedHtml: null
         })
       }
@@ -1113,11 +1125,14 @@ export const store = reactive({
 
       if (total > 0) {
         this.progressTotal = total
-        this.progressCurrent = current
+        // 防止 SocketIO 乱序导致进度条倒退
+        if (current >= this.progressCurrent || page.status === 'completed' || page.status === 'started') {
+          this.progressCurrent = current
+        }
         this.progressStatus = page.status || 'generating'
         this.progressPageTitle = page.title || ''
-        this.progressPercent = Math.round((current / total) * 100)
-        this.progressText = current >= total ? 'PPT生成完成' : `正在生成PPT：${current}/${total}`
+        this.progressPercent = Math.round((this.progressCurrent / total) * 100)
+        this.progressText = this.progressCurrent >= total ? 'PPT生成完成' : `正在生成PPT：${this.progressCurrent}/${total}`
         this.showProgressBar = true
       }
     })
@@ -1219,7 +1234,12 @@ export const store = reactive({
           type: p.layout || 'content',
           title: p.title || '',
           subtitle: p.subtitle || '',
-          bullets: p.bullets || []
+          summary: p.subtitle || '',
+          bullets: p.bullets || [],
+          description: p.description || '',
+          highlights: p.highlights || null,
+          steps: p.steps || null,
+          compare: p.compare || null,
         }))
       }
 
@@ -1233,6 +1253,10 @@ export const store = reactive({
         subtitle: p.subtitle || p.summary || '',
         summary: p.summary || p.subtitle || '',
         bullets: p.bullets || p.items || [],
+        description: p.description || '',
+        highlights: p.highlights || null,
+        steps: p.steps || null,
+        compare: p.compare || null,
       }))
 
       const progressTotal = Math.max(pages.length, 1)

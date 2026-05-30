@@ -114,7 +114,40 @@
             :style="slideStyle"
           >
             <h1>{{ currentSlidePage?.title }}</h1>
-            <p>{{ currentSlidePage?.subtitle }}</p>
+            <p class="preview-subtitle">{{ currentSlidePage?.subtitle }}</p>
+
+            <!-- Description -->
+            <p class="preview-desc" v-if="currentSlidePage?.description" style="font-size:14px;opacity:0.8;max-width:700px;line-height:1.7;text-align:left;">
+              {{ currentSlidePage?.description?.slice(0, 200) }}{{ currentSlidePage?.description?.length > 200 ? '...' : '' }}
+            </p>
+
+            <!-- Highlights -->
+            <div class="preview-highlights" v-if="currentSlidePage?.highlights && Object.keys(currentSlidePage.highlights).length > 0" style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;">
+              <span v-for="(val, key) in currentSlidePage.highlights" :key="key" style="background:rgba(0,255,255,0.1);border:1px solid rgba(0,255,255,0.3);border-radius:6px;padding:4px 12px;font-size:12px;">
+                <strong>{{ key }}</strong>: {{ val }}
+              </span>
+            </div>
+
+            <!-- Steps -->
+            <div class="preview-steps" v-if="currentSlidePage?.steps?.length > 0" style="margin-top:8px;text-align:left;">
+              <div v-for="(s, i) in currentSlidePage.steps.slice(0, 5)" :key="i" style="font-size:13px;opacity:0.8;padding:2px 0;">
+                <span style="color:var(--accent);font-weight:600;margin-right:8px;">{{ i + 1 }}.</span>{{ s }}
+              </div>
+            </div>
+
+            <!-- Compare -->
+            <div class="preview-compare" v-if="currentSlidePage?.compare" style="display:flex;gap:20px;margin-top:8px;">
+              <div style="flex:1;text-align:left;background:rgba(0,255,255,0.05);border:1px solid rgba(0,255,255,0.2);border-radius:6px;padding:10px;">
+                <strong style="color:var(--accent);font-size:13px;">{{ currentSlidePage.compare.left?.title }}</strong>
+                <div v-for="(pt, i) in currentSlidePage.compare.left?.points?.slice(0,3)" :key="i" style="font-size:12px;opacity:0.8;margin-top:4px;">• {{ pt }}</div>
+              </div>
+              <div style="flex:1;text-align:left;background:rgba(0,255,255,0.05);border:1px solid rgba(0,255,255,0.2);border-radius:6px;padding:10px;">
+                <strong style="color:var(--accent);font-size:13px;">{{ currentSlidePage.compare.right?.title }}</strong>
+                <div v-for="(pt, i) in currentSlidePage.compare.right?.points?.slice(0,3)" :key="i" style="font-size:12px;opacity:0.8;margin-top:4px;">• {{ pt }}</div>
+              </div>
+            </div>
+
+            <!-- Bullets -->
             <div class="preview-slide-bullets" v-if="currentSlidePage?.bullets?.length > 0">
               <span v-for="(bullet, index) in currentSlidePage?.bullets?.slice(0, 4)" :key="index">• {{ bullet }}</span>
             </div>

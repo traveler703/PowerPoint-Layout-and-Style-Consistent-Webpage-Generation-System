@@ -577,6 +577,10 @@ def generate_ppt_parallel():
                     'title': p.get('title', ''),
                     'summary': summary,
                     'bullets': bullets,
+                    'description': p.get('description', ''),
+                    'highlights': p.get('highlights'),
+                    'steps': p.get('steps'),
+                    'compare': p.get('compare'),
                 })
 
         if not sections:

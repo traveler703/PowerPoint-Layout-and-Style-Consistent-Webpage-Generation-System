@@ -51,6 +51,10 @@ class ContentPageInput:
     title: str
     summary: str
     bullet_points: list[str]
+    description: str = ""
+    highlights: dict | None = None
+    steps: list[str] | None = None
+    compare: dict | None = None
 
 
 @dataclass
@@ -220,12 +224,16 @@ class PresentationGenerator:
 
         logger.info(f"[Pipeline] 内容页生成 - 主题: {page.title}, 模板: {self.template_name}")
 
-        # Stage 2: HTML 生成（传入CSS变量和模板风格信息）
+        # Stage 2: HTML 生成（传入CSS变量、模板风格信息和富内容字段）
         sys_prompt, user_prompt = build_html_generation_prompt(
             page=page,
             layout_analysis=layout_analysis,
             css_variables=self.template.css_variables,
             template_info=self._build_template_info(),
+            description=page.description,
+            highlights=page.highlights,
+            steps=page.steps,
+            compare=page.compare,
         )
         logger.info(f"[Pipeline] [Stage2] ===== HTML生成 =====")
         logger.info(f"[Pipeline] [Stage2] 主题: {page.title}")
@@ -263,6 +271,10 @@ class PresentationGenerator:
                 summary=cp.summary,
                 page_type="content",
                 bullet_points=cp.bullet_points,
+                description=cp.description or None,
+                highlights=cp.highlights,
+                steps=cp.steps,
+                compare=cp.compare,
             )
             html, layout_info = await self.generate_content_page_html(semantic_page)
             return page_num, html, layout_info
@@ -313,6 +325,14 @@ class PresentationGenerator:
             await self.initialize()
 
         try:
+            # 清理旧页面文件，避免残留文件干扰本轮结果
+            output_dir = os.path.join(os.path.dirname(__file__), "output")
+            pages_dir = os.path.join(output_dir, "pages")
+            if os.path.exists(pages_dir):
+                import shutil as _shutil
+                _shutil.rmtree(pages_dir)
+                logger.info("[Pipeline] 已清理旧页面文件")
+
             # 计算总页数 (cover + toc + sections + content + ending)
             total_sections = len(outline.sections)
             total_content_pages = sum(len(s.content_pages) for s in outline.sections)
@@ -531,6 +551,8 @@ class PresentationGenerator:
 
             # 保存文件 - 加入模板名称前缀，避免不同模板的页面混淆
             safe_title = title.replace("/", "_")[:20] if title else ""
+            import re as _re
+            safe_title = _re.sub(r'[<>:"/\\|?*]', '_', safe_title)
             # 文件名格式: {页码}_{模板名}_{类型}_{标题}.html
             filename = f"{page_num:02d}_{self.template_name}_{ptype}_{safe_title}.html"
             filepath = os.path.join(pages_dir, filename)
@@ -573,6 +595,10 @@ def outline_from_dict(data: dict) -> PresentationOutline:
                 title=cp_data["title"],
                 summary=cp_data.get("summary", ""),
                 bullet_points=cp_data.get("bullets", []),
+                description=cp_data.get("description", ""),
+                highlights=cp_data.get("highlights"),
+                steps=cp_data.get("steps"),
+                compare=cp_data.get("compare"),
             ))
         sections.append(SectionInput(
             title=section_data["title"],

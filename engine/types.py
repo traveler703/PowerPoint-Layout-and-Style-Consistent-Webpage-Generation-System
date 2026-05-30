@@ -53,6 +53,12 @@ class SemanticPageInput(BaseModel):
     timeline_items: list[dict[str, str]] = Field(default_factory=list, description="时间轴项目列表")
     qa_items: list[dict[str, str]] = Field(default_factory=list, description="问答对列表")
 
+    # 富内容字段：由 LLM 解析生成，供内容页 HTML 生成使用
+    description: str | None = Field(default=None, description="详细描述段落 50-300字")
+    highlights: dict[str, str] | None = Field(default=None, description="数据亮点键值对")
+    steps: list[str] | None = Field(default=None, description="步骤流程列表")
+    compare: dict[str, Any] | None = Field(default=None, description="左右对比 {left: {title, points}, right: {title, points}}")
+
     def effective_bullet_count(self) -> int:
         if self.bullet_items:
             return len(self.bullet_items)

@@ -116,8 +116,8 @@
             <label class="text-input-label">页面标题</label>
             <input type="text" class="text-input" v-model="currentPage.title" @change="autoSave">
           </div>
-          <!-- 副标题：内容页和封面页显示 -->
-          <div class="text-input-group" v-if="currentPage.layout === 'content' || currentPage.layout === 'image-text' || currentPage.layout === 'cover'">
+          <!-- 副标题：内容页、封面页、章节页显示 -->
+          <div class="text-input-group" v-if="currentPage.layout === 'content' || currentPage.layout === 'image-text' || currentPage.layout === 'cover' || currentPage.layout === 'section'">
             <label class="text-input-label">副标题</label>
             <input type="text" class="text-input" v-model="currentPage.subtitle" @change="autoSave">
           </div>
@@ -221,6 +221,110 @@
               添加要点
             </button>
           </div>
+        </div>
+
+        <!-- Rich description -->
+        <div class="editor-section" v-if="currentPage.layout === 'content'">
+          <div class="editor-section-header">
+            <span class="editor-section-title">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/>
+              </svg>
+              详细描述
+            </span>
+          </div>
+          <div class="text-input-group">
+            <textarea class="text-input text-area" v-model="currentPage.description" @change="autoSave" placeholder="页面正文描述，50-300字..." style="min-height:100px;"></textarea>
+          </div>
+        </div>
+
+        <!-- Highlights editor -->
+        <div class="editor-section" v-if="currentPage.layout === 'content'">
+          <div class="editor-section-header">
+            <span class="editor-section-title">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+              </svg>
+              数据亮点
+            </span>
+            <button class="toolbar-btn" @click="addHighlight" title="Add highlight">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              </svg>
+            </button>
+          </div>
+          <div class="bullet-editor" v-if="currentPage.highlights && Object.keys(currentPage.highlights).length > 0">
+            <div v-for="(value, key) in currentPage.highlights" :key="key" class="bullet-item">
+              <input type="text" class="text-input" :value="key" @change="updateHighlightKey(key, $event.target.value)" placeholder="Key" style="flex:1">
+              <input type="text" class="text-input" :value="value" @change="updateHighlightValue(key, $event.target.value)" placeholder="Value" style="flex:2">
+              <button class="bullet-remove" @click="removeHighlight(key)">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </div>
+          </div>
+          <div v-else style="padding:8px 0;color:var(--text-muted);font-size:12px;">No highlights</div>
+        </div>
+
+        <!-- Steps editor -->
+        <div class="editor-section" v-if="currentPage.layout === 'content'">
+          <div class="editor-section-header">
+            <span class="editor-section-title">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+              </svg>
+              步骤流程
+            </span>
+            <button class="toolbar-btn" @click="addStep" title="Add step">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            </button>
+          </div>
+          <div class="bullet-editor" v-if="currentPage.steps && currentPage.steps.length > 0">
+            <div v-for="(step, index) in currentPage.steps" :key="index" class="bullet-item">
+              <span class="bullet-handle" style="color:var(--accent);font-weight:600;min-width:20px;">{{ index + 1 }}</span>
+              <input type="text" class="text-input" v-model="currentPage.steps[index]" @change="autoSave">
+              <button class="bullet-remove" @click="removeStep(index)">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </div>
+          </div>
+          <div v-else style="padding:8px 0;color:var(--text-muted);font-size:12px;">No steps</div>
+        </div>
+
+        <!-- Compare editor -->
+        <div class="editor-section" v-if="currentPage.layout === 'content'">
+          <div class="editor-section-header">
+            <span class="editor-section-title">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/>
+              </svg>
+              左右对比
+            </span>
+          </div>
+          <div v-if="currentPage.compare" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label class="text-input-label">Left title</label>
+              <input type="text" class="text-input" v-model="currentPage.compare.left.title" @change="autoSave">
+              <div class="bullet-editor" style="margin-top:8px;">
+                <div v-for="(pt, idx) in currentPage.compare.left.points" :key="idx" class="bullet-item">
+                  <input type="text" class="text-input" v-model="currentPage.compare.left.points[idx]" @change="autoSave">
+                  <button class="bullet-remove" @click="removeComparePoint('left', idx)">x</button>
+                </div>
+                <button class="add-bullet-btn" @click="addComparePoint('left')">Add</button>
+              </div>
+            </div>
+            <div>
+              <label class="text-input-label">Right title</label>
+              <input type="text" class="text-input" v-model="currentPage.compare.right.title" @change="autoSave">
+              <div class="bullet-editor" style="margin-top:8px;">
+                <div v-for="(pt, idx) in currentPage.compare.right.points" :key="idx" class="bullet-item">
+                  <input type="text" class="text-input" v-model="currentPage.compare.right.points[idx]" @change="autoSave">
+                  <button class="bullet-remove" @click="removeComparePoint('right', idx)">x</button>
+                </div>
+                <button class="add-bullet-btn" @click="addComparePoint('right')">Add</button>
+              </div>
+            </div>
+          </div>
+          <button v-else class="add-bullet-btn" @click="initCompare">+ Add compare data</button>
         </div>
       </div>
       <div class="page-editor-body empty-state" v-else>
@@ -367,6 +471,60 @@ const addBullet = () => {
 const removeBullet = (index) => {
   if (!currentPage.value || !currentPage.value.bullets) return
   currentPage.value.bullets.splice(index, 1)
+}
+
+// Rich field methods
+const addHighlight = () => {
+  if (!currentPage.value) return
+  if (!currentPage.value.highlights) currentPage.value.highlights = {}
+  currentPage.value.highlights['新指标'] = '数值'
+  autoSave()
+}
+const removeHighlight = (key) => {
+  if (!currentPage.value?.highlights) return
+  delete currentPage.value.highlights[key]
+  autoSave()
+}
+const updateHighlightKey = (oldKey, newKey) => {
+  if (!currentPage.value?.highlights || oldKey === newKey) return
+  const val = currentPage.value.highlights[oldKey]
+  delete currentPage.value.highlights[oldKey]
+  currentPage.value.highlights[newKey] = val
+  autoSave()
+}
+const updateHighlightValue = (key, value) => {
+  if (!currentPage.value?.highlights) return
+  currentPage.value.highlights[key] = value
+  autoSave()
+}
+const addStep = () => {
+  if (!currentPage.value) return
+  if (!currentPage.value.steps) currentPage.value.steps = []
+  currentPage.value.steps.push('新步骤')
+  autoSave()
+}
+const removeStep = (index) => {
+  if (!currentPage.value?.steps) return
+  currentPage.value.steps.splice(index, 1)
+  autoSave()
+}
+const initCompare = () => {
+  if (!currentPage.value) return
+  currentPage.value.compare = {
+    left: { title: '左列', points: ['特点1'] },
+    right: { title: '右列', points: ['特点1'] }
+  }
+  autoSave()
+}
+const addComparePoint = (side) => {
+  if (!currentPage.value?.compare) return
+  currentPage.value.compare[side].points.push('新要点')
+  autoSave()
+}
+const removeComparePoint = (side, index) => {
+  if (!currentPage.value?.compare) return
+  currentPage.value.compare[side].points.splice(index, 1)
+  autoSave()
 }
 
 const triggerImageUpload = () => pageImageRef.value?.click()
