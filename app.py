@@ -6,9 +6,12 @@ import asyncio
 import json
 import logging
 import os
+import queue
+import re
+import threading
 import time
 from pathlib import Path
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, Response, stream_with_context
 from flask_cors import CORS
 from config import APP_HOST, APP_PORT, DEBUG
 from services.project_service import (
@@ -18,49 +21,16 @@ from scripts.template_generator import register_template_api_routes
 from engine.content import parse_user_document
 from engine.types import SemanticPageInput
 from pipeline import run_pipeline
-from generator.llm_client import default_llm_client
 from bs4 import BeautifulSoup
+from evaluator.layout_metrics import overlap_ratio_from_html
+from evaluator.style_metrics import aggregate_color_deviation, color_consistency_from_html, extract_colors_from_html
+from generator.llm_client import default_llm_client
 from parsers import (
+    extract_text_from_file,
     parse_document_to_json,
     parsed_json_to_outline,
     parsed_json_to_frontend_pages,
-    extract_text_from_file,
 )
-from flask_socketio import SocketIO
-from threading import Lock
-
-
-def _load_page_html_from_outputs(page_number: int) -> tuple[str, str]:
-    """按页码从输出目录加载页面 HTML，返回 (html, path)。"""
-    import glob
-    output_dir = os.path.join(os.path.dirname(__file__), 'output', 'pages')
-    if not os.path.exists(output_dir):
-        return '', ''
-    patterns = [f'{page_number:02d}_*.html', f'*{page_number}*.html']
-    for pattern in patterns:
-        matches = glob.glob(os.path.join(output_dir, pattern))
-        if matches:
-            try:
-                with open(matches[0], 'r', encoding='utf-8') as f:
-                    return f.read(), matches[0]
-            except Exception:
-                return '', matches[0]
-    return '', ''
-
-
-def _save_page_html_to_outputs(page_number: int, html: str) -> str:
-    """将页面 HTML 持久化回输出目录。"""
-    import glob
-    output_dir = os.path.join(os.path.dirname(__file__), 'output', 'pages')
-    os.makedirs(output_dir, exist_ok=True)
-    existing_html, existing_path = _load_page_html_from_outputs(page_number)
-    target_path = existing_path
-    if not target_path:
-        matches = glob.glob(os.path.join(output_dir, f'{page_number:02d}_*.html'))
-        target_path = matches[0] if matches else os.path.join(output_dir, f'{page_number:02d}_patched.html')
-    with open(target_path, 'w', encoding='utf-8') as f:
-        f.write(html)
-    return target_path
 
 logging.basicConfig(
     level=logging.INFO,
@@ -75,16 +45,6 @@ CORS(app)
 MAX_LLM_INPUT_CHARS = 20000
 SUPPORTED_DOCUMENT_EXTENSIONS = {".docx", ".pptx", ".txt", ".md", ".pdf"}
 
-# 初始化 SocketIO
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
-
-@socketio.on('connect')
-def handle_connect():
-    logger.info('客户端已连接')
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    logger.info('客户端已断开连接')
 
 def _prepare_text_for_llm(text: str, max_chars: int = MAX_LLM_INPUT_CHARS) -> str:
     """压缩超长文本，避免触发模型上下文长度限制。"""
@@ -182,6 +142,330 @@ def _load_parsed_json_payload(data: dict) -> dict:
     raise FileNotFoundError(f"找不到解析 JSON 文件: {json_path}")
 
 
+def _load_page_html_from_outputs(page_number: int) -> tuple[str, str]:
+    """按页码从 output/pages 加载页面 HTML，返回 (html, path)。"""
+    import glob
+
+    output_dir = os.path.join(os.path.dirname(__file__), "output", "pages")
+    if not os.path.exists(output_dir):
+        return "", ""
+    for pattern in (f"{page_number:02d}_*.html", f"*{page_number}*.html"):
+        for path in glob.glob(os.path.join(output_dir, pattern)):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return f.read(), path
+            except OSError:
+                return "", path
+    return "", ""
+
+
+def _ensure_single_page_canvas_css(html: str) -> str:
+    """Ensure saved per-page HTML keeps its 1280x720 slide canvas."""
+    if not html or "landppt-single-page-canvas" in html:
+        return html
+    css = """
+<style id="landppt-single-page-canvas">
+.slides-track > .slide-container,
+.slides-track > .slide-container > .slide-wrapper{width:1280px!important;height:720px!important;min-width:1280px!important;min-height:720px!important;flex:0 0 1280px!important;}
+.slides-track > .slide-container > .slide-wrapper > .slide{width:1280px!important;height:720px!important;min-width:1280px!important;min-height:720px!important;}
+</style>
+"""
+    if "</head>" in html:
+        return html.replace("</head>", css + "\n</head>", 1)
+    return css + html
+
+
+def _resolve_output_html_path(output_path: str | None) -> str:
+    """Resolve a user-provided output path inside the local output directory."""
+    if not output_path:
+        return ""
+    base_output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "output"))
+    candidate = output_path
+    if not os.path.isabs(candidate):
+        candidate = os.path.join(os.path.dirname(__file__), candidate)
+    candidate = os.path.abspath(candidate)
+    if not candidate.startswith(base_output_dir + os.sep):
+        return ""
+    if not candidate.lower().endswith(".html") or not os.path.isfile(candidate):
+        return ""
+    return candidate
+
+
+def _extract_slide_from_html(html: str):
+    """Extract the actual .slide node from a full page document or a slide fragment."""
+    soup = BeautifulSoup(html or "", "html.parser")
+    slide = soup.select_one(".slide-wrapper > .slide") or soup.select_one(".slides-track > .slide") or soup.select_one(".slide")
+    return slide
+
+
+def _update_presentation_file(output_path: str | None, page_number: int, page_html: str) -> tuple[str, str]:
+    """Replace the selected slide inside the generated full presentation HTML file."""
+    resolved_path = _resolve_output_html_path(output_path)
+    if not resolved_path:
+        return "", ""
+
+    new_slide = _extract_slide_from_html(page_html)
+    if not new_slide:
+        return "", resolved_path
+
+    with open(resolved_path, "r", encoding="utf-8") as f:
+        presentation_html = f.read()
+
+    soup = BeautifulSoup(presentation_html, "html.parser")
+    track = soup.select_one("#slidesTrack, .slides-track")
+    if not track:
+        return "", resolved_path
+
+    slide_nodes = [
+        child for child in track.find_all(recursive=False)
+        if getattr(child, "get", None)
+        and (
+            "slide" in (child.get("class") or [])
+            or "slide-container" in (child.get("class") or [])
+        )
+    ]
+    if page_number < 1 or page_number > len(slide_nodes):
+        return "", resolved_path
+
+    replacement = BeautifulSoup(str(new_slide), "html.parser")
+    replacement_slide = replacement.select_one(".slide")
+    if not replacement_slide:
+        return "", resolved_path
+    target = slide_nodes[page_number - 1]
+    if "slide" in (target.get("class") or []):
+        target.replace_with(replacement_slide)
+    else:
+        target_slide = target.select_one(".slide")
+        if target_slide:
+            target_slide.replace_with(replacement_slide)
+        else:
+            target.clear()
+            target.append(replacement_slide)
+
+    updated_html = str(soup)
+    with open(resolved_path, "w", encoding="utf-8") as f:
+        f.write(updated_html)
+    return updated_html, resolved_path
+
+
+def _save_page_html_to_outputs(page_number: int, html: str) -> str:
+    """将单页 HTML 写回 output/pages。"""
+    output_dir = os.path.join(os.path.dirname(__file__), "output", "pages")
+    os.makedirs(output_dir, exist_ok=True)
+    _, existing_path = _load_page_html_from_outputs(page_number)
+    target_path = existing_path or os.path.join(output_dir, f"{page_number:02d}_patched.html")
+    html = _ensure_single_page_canvas_css(html)
+    with open(target_path, "w", encoding="utf-8") as f:
+        f.write(html)
+    return target_path
+
+
+def _bump_font_size_in_style(style: str, *, max_px: int = 18, step_px: int = 3) -> tuple[str, bool]:
+    match = re.search(r"font-size\s*:\s*(\d+(?:\.\d+)?)px", style or "", flags=re.I)
+    if not match:
+        return style, False
+    current = float(match.group(1))
+    next_size = min(current + step_px, max_px)
+    if next_size <= current:
+        return style, False
+    next_value = f"{int(next_size) if next_size.is_integer() else next_size:g}px"
+    next_style = style[:match.start(1)] + next_value[:-2] + style[match.end(1):]
+    return next_style, True
+
+
+def _try_apply_common_font_resize(soup: BeautifulSoup, instruction: str) -> list[dict]:
+    """Handle simple local font-size requests with narrow selectors before asking the LLM."""
+    normalized = instruction.replace(" ", "")
+    wants_bigger_font = (
+        ("字号" in normalized or "字体大小" in normalized or "font-size" in normalized.lower())
+        and any(word in normalized for word in ("调大", "变大", "放大", "大一点", "增大"))
+    )
+    wants_top_bottom = any(word in normalized for word in ("上下", "上、下", "上和下", "顶部和底部"))
+    if not (wants_bigger_font and wants_top_bottom):
+        return []
+
+    page_content = soup.select_one(".page-content")
+    if not page_content:
+        return []
+
+    candidates = []
+    for node in page_content.find_all(["div", "span", "p"]):
+        text = node.get_text(" ", strip=True)
+        style = node.get("style") or ""
+        if len(text) >= 16 and re.search(r"font-size\s*:\s*\d", style, flags=re.I):
+            candidates.append((node, text))
+
+    if not candidates:
+        return []
+
+    targets = []
+    for node, _ in (candidates[0], candidates[-1]):
+        if node not in targets:
+            targets.append(node)
+
+    operations = []
+    for node in targets:
+        next_style, changed = _bump_font_size_in_style(node.get("style") or "")
+        if not changed:
+            continue
+        node["style"] = next_style
+        operations.append(
+            {
+                "type": "update_style",
+                "selector": "matched .page-content long text block",
+                "style": {"font-size": re.search(r"font-size\s*:\s*([^;]+)", next_style, flags=re.I).group(1).strip()},
+            }
+        )
+    return operations
+
+
+def _json_line(payload: dict) -> str:
+    return json.dumps(payload, ensure_ascii=False) + "\n"
+
+
+def _build_outline_from_pages_data(pages_data: list[dict], topic: str) -> dict:
+    """把前端扁平页面列表转换为 pipeline outline。"""
+    title = topic
+    subtitle = ""
+    date_badge = ""
+    toc_items = []
+    include_toc = False
+    include_ending = False
+    ending_title = "谢谢观看"
+    ending_message = ""
+    sections = []
+    current_section = None
+
+    for p in pages_data:
+        page_type = p.get("page_type", "content")
+        if page_type == "cover":
+            title = p.get("title", title)
+            subtitle = p.get("subtitle", "")
+            date_badge = p.get("date_badge", "")
+        elif page_type == "toc":
+            include_toc = True
+            raw_items = p.get("bullets") or p.get("items") or p.get("content_points") or []
+            toc_items = [
+                {"title": str(item).strip(), "description": ""}
+                for item in raw_items
+                if str(item).strip()
+            ]
+        elif page_type in ("end", "ending"):
+            include_ending = True
+            ending_title = p.get("title") or "谢谢观看"
+            ending_message = p.get("subtitle") or p.get("summary") or ""
+            continue
+        elif page_type == "section":
+            current_section = {
+                "title": p.get("subtitle") or p.get("title") or "章节",
+                "content_pages": [],
+                "include_section_page": True,
+            }
+            sections.append(current_section)
+        elif page_type == "content":
+            if not sections:
+                current_section = {
+                    "title": "主要内容",
+                    "content_pages": [],
+                    "include_section_page": False,
+                }
+                sections.append(current_section)
+            summary = p.get("summary") or p.get("subtitle", "")
+            bullets = p.get("bullets", []) or []
+            if not bullets and summary:
+                bullets = [summary[:400]]
+            sections[-1]["content_pages"].append(
+                {
+                    "title": p.get("title", ""),
+                    "summary": summary,
+                    "bullets": bullets,
+                }
+            )
+
+    if not sections:
+        sections = [
+            {
+                "title": "主要内容",
+                "include_section_page": False,
+                "content_pages": [
+                    {
+                        "title": title or "概述",
+                        "summary": subtitle,
+                        "bullets": [subtitle] if subtitle else ["请提供有效内容以生成正文要点。"],
+                    }
+                ],
+            }
+        ]
+
+    return {
+        "title": title,
+        "subtitle": subtitle,
+        "date_badge": date_badge,
+        "toc_items": toc_items,
+        "include_toc": include_toc,
+        "include_ending": include_ending,
+        "ending_title": ending_title,
+        "ending_message": ending_message,
+        "sections": sections,
+    }
+
+
+def _presentation_result_payload(result) -> dict:
+    html_content = ""
+    if result.success and result.output_path:
+        with open(result.output_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+    pages_dir = os.path.join(os.path.dirname(result.output_path), "pages") if result.output_path else ""
+    slides = []
+    for i, layout in enumerate(result.page_layouts):
+        page_num = layout.get("page_number", i + 1)
+        page_html = result.pages_html[i] if i < len(result.pages_html) else ""
+        page_url = ""
+        page_path = ""
+        if getattr(result, "page_paths", None) and i < len(result.page_paths):
+            page_path = result.page_paths[i]
+        if page_path and os.path.isfile(page_path):
+            page_url = f"/output/pages/{os.path.basename(page_path)}"
+            with open(page_path, "r", encoding="utf-8") as pf:
+                page_html = pf.read()
+        elif pages_dir and os.path.isdir(pages_dir):
+            prefix = f"{int(page_num):02d}_{layout.get('type', '')}_"
+            fallback_prefix = f"{int(page_num):02d}_"
+            matches = [
+                name for name in os.listdir(pages_dir)
+                if name.startswith(prefix) and name.endswith(".html")
+            ] or [
+                name for name in os.listdir(pages_dir)
+                if name.startswith(fallback_prefix) and name.endswith(".html")
+            ]
+            if matches:
+                newest = max(matches, key=lambda name: os.path.getmtime(os.path.join(pages_dir, name)))
+                page_url = f"/output/pages/{newest}"
+                with open(os.path.join(pages_dir, newest), "r", encoding="utf-8") as pf:
+                    page_html = pf.read()
+        slides.append(
+            {
+                "page_type": layout.get("type", "content"),
+                "title": layout.get("title", ""),
+                "layout_type": layout.get("layout_type", ""),
+                "page_number": page_num,
+                "page_url": page_url,
+                "html": page_html,
+            }
+        )
+
+    return {
+        "success": result.success,
+        "html": html_content,
+        "slides": slides,
+        "page_count": result.page_count,
+        "document_size": result.document_size,
+        "output_path": result.output_path,
+        "error": result.error,
+    }
+
+
 @app.route('/')
 def index():
     """首页"""
@@ -274,7 +558,7 @@ def parse_text():
 
 @app.route('/api/parse-document', methods=['POST'])
 def parse_document():
-    """上传文件，提取文本后用 LLM 解析为结构化大纲。"""
+    """上传并解析文档：规则解析器提取纯文本，LLM 负责页面结构分析。"""
     try:
         if "file" not in request.files:
             return jsonify({"error": "缺少上传文件(file)"}), 400
@@ -293,60 +577,65 @@ def parse_document():
         uploaded_path = os.path.join(upload_dir, safe_name)
         upload.save(uploaded_path)
 
-        # 提取纯文本
+        output_dir = os.path.join(os.path.dirname(__file__), "output")
+        os.makedirs(output_dir, exist_ok=True)
+
         raw_text = extract_text_from_file(uploaded_path)
+        if not raw_text.strip():
+            return jsonify({"error": "未能从文件中提取到可解析文本"}), 400
 
-        if not raw_text or len(raw_text.strip()) < 10:
-            return jsonify({'error': '文件内容太少，至少需要10个字符'}), 400
+        extracted_text_path = os.path.join(output_dir, f"extracted_{int(time.time())}.txt")
+        with open(extracted_text_path, "w", encoding="utf-8") as f:
+            f.write(raw_text)
+        rel_text = os.path.relpath(extracted_text_path, os.path.dirname(__file__)).replace("\\", "/")
 
-        logger.info(
-            f"上传文件解析: file={upload.filename}, text_len={len(raw_text)}"
-        )
-
-        # 用 LLM 解析文档结构
         from generator.prompts import (
             build_document_parsing_prompt,
             parse_document_parsing_response,
         )
 
+        llm_text = _prepare_text_for_llm(raw_text)
         llm_client = default_llm_client()
-        system_prompt, user_prompt = build_document_parsing_prompt(raw_text)
-
-        logger.info("调用 LLM 解析文档结构...")
+        system_prompt, user_prompt = build_document_parsing_prompt(llm_text)
+        logger.info("调用 LLM 解析上传文档结构...")
         response = asyncio.run(llm_client.complete(system_prompt, user_prompt))
-
         parse_result = parse_document_parsing_response(response)
-        pages = parse_result.get('pages', [])
-
-        if not pages:
-            pages = [
-                {"type": "cover", "title": parse_result.get('title', 'PPT演示文稿'), "subtitle": parse_result.get('subtitle', '')},
-                {"type": "end", "title": "谢谢观看", "subtitle": ""}
+        frontend_pages = parse_result.get("pages", [])
+        if not frontend_pages:
+            frontend_pages = [
+                {"type": "cover", "title": parse_result.get("title") or Path(upload.filename).stem, "subtitle": parse_result.get("subtitle", "")},
+                {"type": "end", "title": "谢谢观看", "subtitle": ""},
             ]
-
         result = {
-            'title': parse_result.get('title', '未命名文档'),
-            'subtitle': parse_result.get('subtitle', ''),
-            'pages': pages
+            "title": parse_result.get("title") or Path(upload.filename).stem or "未命名文档",
+            "subtitle": parse_result.get("subtitle", ""),
+            "pages": frontend_pages,
+            "extracted_text_path": rel_text,
+            "source_file": uploaded_path,
         }
 
-        logger.info(f"LLM解析完成: title={result.get('title')}, pages={len(pages)}")
-
-        return jsonify({
-            'success': True,
-            'result': result,
-            'meta': {
-                'original_text_length': len(raw_text),
-                'llm_parsed': True,
-                'source_file': upload.filename,
+        logger.info(
+            f"文档解析完成: file={upload.filename}, pages={len(frontend_pages)}, text_chars={len(raw_text)}"
+        )
+        return jsonify(
+            {
+                "success": True,
+                "result": result,
+                "meta": {
+                    "llm_parsed": True,
+                    "text_extracted": True,
+                    "extracted_text_path": rel_text,
+                    "extracted_text_abs": extracted_text_path,
+                    "original_text_length": len(raw_text),
+                    "llm_input_length": len(llm_text),
+                },
             }
-        })
-
+        )
     except Exception as e:
         logger.error(f"解析文档失败: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/api/outline-from-parsed-json', methods=['POST'])
@@ -536,7 +825,6 @@ def generate_ppt_parallel():
         topic = data.get('topic', 'PPT演示文稿')
         template_name = data.get('template', 'tech')
         save_pages = data.get('save_pages', False)
-        requested_progress_total = data.get('progress_total')
 
         if not pages_data:
             return jsonify({'error': 'pages 数组不能为空'}), 400
@@ -547,6 +835,11 @@ def generate_ppt_parallel():
         title = topic
         subtitle = ""
         date_badge = ""
+        toc_items = []
+        include_toc = False
+        include_ending = False
+        ending_title = "谢谢观看"
+        ending_message = ""
         sections = []
         current_section = None
 
@@ -556,18 +849,33 @@ def generate_ppt_parallel():
                 title = p.get('title', title)
                 subtitle = p.get('subtitle', '')
                 date_badge = p.get('date_badge', '')
-            elif page_type in ('toc', 'end'):
+            elif page_type == 'toc':
+                include_toc = True
+                raw_items = p.get('bullets') or p.get('items') or p.get('content_points') or []
+                toc_items = [
+                    {'title': str(item).strip(), 'description': ''}
+                    for item in raw_items
+                    if str(item).strip()
+                ]
+            elif page_type in ('end', 'ending'):
+                include_ending = True
+                ending_title = p.get('title') or '谢谢观看'
+                ending_message = p.get('subtitle') or p.get('summary') or ''
                 continue
             elif page_type == 'section':
                 current_section = {
-                    'title': p.get('title', ''),
-                    'subtitle': p.get('subtitle', ''),
-                    'content_pages': []
+                    'title': p.get('subtitle', p.get('title', '')),
+                    'content_pages': [],
+                    'include_section_page': True,
                 }
                 sections.append(current_section)
             elif page_type == 'content':
                 if not sections:
-                    current_section = {'title': '默认章节', 'content_pages': []}
+                    current_section = {
+                        'title': '默认章节',
+                        'content_pages': [],
+                        'include_section_page': False,
+                    }
                     sections.append(current_section)
                 summary = p.get('summary') or p.get('subtitle', '')
                 bullets = p.get('bullets', []) or []
@@ -577,10 +885,6 @@ def generate_ppt_parallel():
                     'title': p.get('title', ''),
                     'summary': summary,
                     'bullets': bullets,
-                    'description': p.get('description', ''),
-                    'highlights': p.get('highlights'),
-                    'steps': p.get('steps'),
-                    'compare': p.get('compare'),
                 })
 
         if not sections:
@@ -589,6 +893,7 @@ def generate_ppt_parallel():
                 sections = [
                     {
                         'title': '主要内容',
+                        'include_section_page': False,
                         'content_pages': [
                             {
                                 'title': x.get('title', ''),
@@ -604,6 +909,7 @@ def generate_ppt_parallel():
                 sections = [
                     {
                         'title': '主要内容',
+                        'include_section_page': False,
                         'content_pages': [
                             {
                                 'title': title or '概述',
@@ -619,6 +925,11 @@ def generate_ppt_parallel():
             'title': title,
             'subtitle': subtitle,
             'date_badge': date_badge,
+            'toc_items': toc_items,
+            'include_toc': include_toc,
+            'include_ending': include_ending,
+            'ending_title': ending_title,
+            'ending_message': ending_message,
             'sections': sections
         }
 
@@ -627,75 +938,109 @@ def generate_ppt_parallel():
         generator = PresentationGenerator(template_name=template_name)
         output_filename = f"parallel_{int(time.time())}.html"
 
-        progress_total = int(requested_progress_total or len(pages_data) or 1)
-        progress_total = max(progress_total, 1)
-        progress_lock = Lock()
-        completed_pages = 0
-
-        def emit_generation_progress(current, total, page_info=None):
-            nonlocal completed_pages
-            page_info = page_info or {}
-            if page_info.get('status') == 'started':
-                display_current = 0
-            elif page_info.get('status') == 'completed':
-                display_current = progress_total
-            else:
-                with progress_lock:
-                    completed_pages += 1
-                    display_current = min(completed_pages, progress_total)
-            socketio.emit('ppt_generation_progress', {
-                'current': display_current,
-                'total': progress_total,
-                'page': page_info,
-            })
-            # 让 Socket.IO 在线程模式下立即处理本次 emit，避免请求结束后前端才收到最终进度。
-            socketio.sleep(0)
-
-        emit_generation_progress(0, progress_total, {'status': 'started'})
         result = asyncio.run(generator.generate_presentation(
             outline=outline,
             output_filename=output_filename,
             navigation=True,
             save_pages=save_pages,
-            progress_callback=emit_generation_progress,
         ))
 
-        # 读取生成的 HTML
-        html_content = ""
-        if result.success and result.output_path:
-            with open(result.output_path, "r", encoding="utf-8") as f:
-                html_content = f.read()
-
-        # 构建 slides 数组 - 直接使用 pipeline 返回的页面 HTML（无需文件 I/O）
-        slides = []
-        for i, layout in enumerate(result.page_layouts):
-            page_num = layout.get('page_number', i + 1)
-            page_html = result.pages_html[i] if i < len(result.pages_html) else ""
-
-            slides.append({
-                'page_type': layout.get('type', ''),
-                'title': layout.get('title', ''),
-                'layout_type': layout.get('layout_type', ''),
-                'page_number': page_num,
-                'html': page_html,
-            })
-
-        emit_generation_progress(progress_total, progress_total, {'status': 'completed'})
         logger.info(f"[Parallel] 生成完成: {result.page_count} 页, {result.document_size} chars")
-
-        return jsonify({
-            'success': result.success,
-            'html': html_content,
-            'slides': slides,
-            'page_count': result.page_count,
-            'document_size': result.document_size,
-            'output_path': result.output_path,
-            'error': result.error,
-        })
+        return jsonify(_presentation_result_payload(result))
 
     except Exception as e:
         logger.error(f"并行生成PPT失败: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/generate-ppt-progress', methods=['POST'])
+def generate_ppt_progress():
+    """流式生成 PPT，按 NDJSON 持续返回进度和最终结果。"""
+    data = request.get_json() or {}
+    pages_data = data.get("pages", [])
+    topic = data.get("topic", "PPT演示文稿")
+    template_name = data.get("template", "tech")
+    save_pages = data.get("save_pages", False)
+
+    if not pages_data:
+        return jsonify({"error": "pages 数组不能为空"}), 400
+
+    def stream():
+        events: queue.Queue[dict] = queue.Queue()
+
+        def worker():
+            try:
+                from pipeline import PresentationGenerator
+
+                outline = _build_outline_from_pages_data(pages_data, topic)
+                generator = PresentationGenerator(template_name=template_name)
+                output_filename = f"parallel_{int(time.time())}.html"
+                completed_pages: set[int] = set()
+                progress_total = (
+                    1
+                    + (1 if outline.get("include_toc") else 0)
+                    + sum(1 for s in outline.get("sections", []) if s.get("include_section_page", True))
+                    + sum(len(s.get("content_pages", [])) for s in outline.get("sections", []))
+                    + (1 if outline.get("include_ending") else 0)
+                )
+
+                def progress_callback(current, total, page_info=None):
+                    page_info = page_info or {}
+                    page_number = int(page_info.get("page_number") or current or 0)
+                    if page_number:
+                        completed_pages.add(page_number)
+                    if page_info.get("html"):
+                        events.put(
+                            {
+                                "type": "slide",
+                                "slide": {
+                                    "page_number": page_number,
+                                    "page_type": page_info.get("page_type", "content"),
+                                    "title": page_info.get("title", ""),
+                                    "layout_type": page_info.get("layout_type", ""),
+                                    "html": page_info.get("html", ""),
+                                    "evaluation": {
+                                        "quality_warnings": page_info.get("quality_warnings", []),
+                                    },
+                                },
+                            }
+                        )
+                    events.put(
+                        {
+                            "type": "progress",
+                            "current": min(len(completed_pages), total),
+                            "total": total,
+                            "page": page_info,
+                        }
+                    )
+
+                events.put({"type": "progress", "current": 0, "total": progress_total, "page": {"status": "started"}})
+                result = asyncio.run(
+                    generator.generate_presentation(
+                        outline=outline,
+                        output_filename=output_filename,
+                        navigation=True,
+                        save_pages=save_pages,
+                        progress_callback=progress_callback,
+                    )
+                )
+                payload = _presentation_result_payload(result)
+                events.put({"type": "complete", "result": payload})
+            except Exception as exc:
+                logger.error(f"流式生成PPT失败: {exc}")
+                events.put({"type": "error", "error": str(exc)})
+            finally:
+                events.put({"type": "done"})
+
+        threading.Thread(target=worker, daemon=True).start()
+
+        while True:
+            event = events.get()
+            if event.get("type") == "done":
+                break
+            yield _json_line(event)
+
+    return Response(stream_with_context(stream()), mimetype="application/x-ndjson")
 
 
 @app.route('/api/generate-preview', methods=['POST'])
@@ -728,222 +1073,219 @@ def generate_preview():
 
 @app.route('/api/rewrite-slide', methods=['POST'])
 def rewrite_slide():
-    """根据用户指令重写当前选中的页面"""
+    """根据用户指令重写选中的单页。"""
     try:
         data = request.get_json() or {}
-        page = data.get('page') or {}
-        instruction = (data.get('instruction') or '').strip()
-        project_id = data.get('project_id')
+        page = data.get("page") or {}
+        instruction = (data.get("instruction") or "").strip()
+        project_id = data.get("project_id")
+        output_path = data.get("output_path") or data.get("presentation_output_path")
 
         if not page:
-            logger.warning('[rewrite-slide] 请求失败：页面数据为空')
-            return jsonify({'error': '页面数据不能为空'}), 400
+            return jsonify({"error": "页面数据不能为空"}), 400
         if not instruction:
-            logger.warning('[rewrite-slide] 请求失败：修改指令为空')
-            return jsonify({'error': '修改指令不能为空'}), 400
+            return jsonify({"error": "修改指令不能为空"}), 400
 
-        page_id = page.get('id')
-        page_number = page.get('page_number') or page.get('pageNumber') or 1
-        page_html = page.get('html') or ''
-        page_html_path = ''
-        if not page_html and page_number:
-            page_html, page_html_path = _load_page_html_from_outputs(page_number)
+        page_id = page.get("id")
+        page_number = int(page.get("page_number") or page.get("pageNumber") or 1)
+        page_html = page.get("html") or ""
         if not page_html:
-            logger.warning(f"[rewrite-slide] page_html 为空，page_number={page_number}")
-        else:
-            logger.info(f"[rewrite-slide] 使用页面HTML路径: {page_html_path or '[request]'}")
-        title = (page.get('title') or '').strip() or f'第{page_number}页'
+            page_html, _ = _load_page_html_from_outputs(page_number)
 
-        logger.info(
-            f"[rewrite-slide] 请求进入 project_id={project_id} page_id={page_id} "
-            f"page_number={page_number} instruction={instruction[:120]!r} html_len={len(page_html)}"
-        )
-
+        title = (page.get("title") or "").strip() or f"第{page_number}页"
         system_prompt = (
-            '你是一个专业的PPT页面局部修改助手。'
-            '请根据用户指令，只输出严格JSON，不要输出任何多余说明。'
-            '你只能修改当前页面中的局部样式或元素，不要重写整页内容，不要影响其他页面。'
-            '如果用户要求移动文本位置，只修改对应元素的定位/对齐/布局相关样式。'
-            '如果用户要求移动图片位置、调整大小或删除图片，只修改图片相关样式或删除图片节点。'
-            '如果用户要求替换文本内容，请输出 update_text 或 replace_text 操作，不要改成 update_style。'
-            '如果用户没有明确要求某项内容，请保持原值不变。'
-            '输出必须符合以下格式：'
-            '{'
-            '"page_id": 页面ID, '
-            '"operations": [ {"type": "update_style|delete_element|move_element|update_text|replace_text", "selector": "CSS选择器", "style": {"属性": "值"}, "position": "left|right|center|top|bottom", "text": "新文本", "find": "旧文本", "replace": "新文本"} ], '
-            '"page_data": {"可选": "用于同步预览的数据"}'
-            '}'
+            "你是专业的PPT单页修改助手。请根据用户指令修改当前页面，只输出严格JSON。"
+            "优先返回可应用到现有HTML的局部操作，不要影响其它页面。"
+            "只修改用户明确提到的元素；如果用户说上下两块文字，通常指页面内容区顶部说明文字和底部提示文字，不要改中间卡片、流程节点或标题。"
+            "JSON格式："
+            '{"page_id": 页面ID, "operations": ['
+            '{"type": "update_style|delete_element|move_element", "selector": "CSS选择器", '
+            '"style": {"CSS属性": "值"}, "position": "left|right|center|top|bottom"}], '
+            '"page_data": {"title": "可选", "subtitle": "可选", "bullets": []}}'
+        )
+        user_prompt = json.dumps(
+            {
+                "project_id": project_id,
+                "page": {
+                    "id": page_id,
+                    "page_number": page_number,
+                    "title": title,
+                    "html": page_html,
+                },
+                "instruction": instruction,
+            },
+            ensure_ascii=False,
         )
 
-        user_prompt = json.dumps({
-            'project_id': project_id,
-            'page': {
-                'id': page_id,
-                'page_number': page_number,
-                'title': title,
-                'html': page_html,
-            },
-            'instruction': instruction,
-            'requirements': {
-                'output_format': 'json',
-                'apply_immediately': True,
-                'mode': 'local_patch',
-                'do_not_modify_other_pages': True,
-                'image_policy': ['move', 'resize', 'delete']
-            }
-        }, ensure_ascii=False, indent=2)
-
-        logger.info(f"[rewrite-slide] system_prompt_preview={system_prompt[:500]!r}")
-        logger.info(f"[rewrite-slide] user_prompt_preview={user_prompt[:1000]!r}")
-
-        client = default_llm_client()
-        raw = asyncio.run(client.complete(system_prompt, user_prompt))
-        logger.info(f"[rewrite-slide] raw_response_len={len(raw)}")
-        logger.info(f"[rewrite-slide] raw_response_preview={raw[:1000]!r}")
-        if raw.startswith('__TIMEOUT__:'):
-            timeout_msg = raw.split(':', 1)[1].strip() or '模型响应超时，请重试'
-            logger.warning(f"[rewrite-slide] 模型超时: {timeout_msg}")
-            return jsonify({'error': timeout_msg}), 504
-
+        raw = asyncio.run(default_llm_client().complete(system_prompt, user_prompt))
         cleaned = raw.strip()
-        if cleaned.startswith('```'):
-            cleaned = cleaned.split('```', 2)[1] if '```' in cleaned else cleaned
-        logger.info(f"[rewrite-slide] cleaned_before_json_len={len(cleaned)}")
-        logger.info(f"[rewrite-slide] cleaned_before_json_preview={cleaned[:1000]!r}")
-        try:
-            start = cleaned.find('{')
-            end = cleaned.rfind('}')
-            if start != -1 and end != -1:
-                cleaned = cleaned[start:end + 1]
-            result = json.loads(cleaned)
-        except Exception as parse_err:
-            logger.error(f"[rewrite-slide] 解析重写JSON失败: {parse_err}; raw={raw[:500]}")
-            return jsonify({'error': 'AI返回的JSON无法解析', 'raw': raw[:500]}), 500
-
-        logger.info(f"[rewrite-slide] parsed_keys={list(result.keys())}")
-        logger.info(f"[rewrite-slide] operations_count={len(result.get('operations') or [])}")
-        logger.info(f"[rewrite-slide] page_data_keys={list((result.get('page_data') or {}).keys())}")
+        if cleaned.startswith("```"):
+            cleaned = cleaned.strip("`")
+            cleaned = cleaned.removeprefix("json").strip()
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start != -1 and end != -1:
+            cleaned = cleaned[start:end + 1]
+        result = json.loads(cleaned)
 
         merged_page = dict(page)
-        page_data = result.get('page_data') or {}
+        page_data = result.get("page_data") or {}
         if isinstance(page_data, dict):
             merged_page.update(page_data)
-        for key in ('title', 'subtitle', 'layout', 'background', 'bullets', 'image'):
-            if key in result and result[key] is not None:
-                merged_page[key] = result[key]
 
-        operations = result.get('operations') or []
-        soup = BeautifulSoup(page_html, 'lxml')
-        logger.info(f"[rewrite-slide] patch_start original_html_len={len(page_html)}")
+        soup = BeautifulSoup(page_html or "<div></div>", "html.parser")
+        operations = result.get("operations") or []
 
-        def selector_matches(selector: str):
-            if not selector:
-                return []
-            try:
-                return soup.select(selector)
-            except Exception as sel_err:
-                logger.error(f"[rewrite-slide] selector 解析失败 selector={selector!r} err={sel_err}")
-                return []
+        def merge_style(node, updates: dict):
+            style_map = {}
+            for chunk in (node.get("style") or "").split(";"):
+                if ":" in chunk:
+                    k, v = chunk.split(":", 1)
+                    style_map[k.strip()] = v.strip()
+            style_map.update({str(k): str(v) for k, v in updates.items()})
+            node["style"] = "; ".join(f"{k}: {v}" for k, v in style_map.items())
 
-        for idx, op in enumerate(operations):
+        for op in operations:
             if not isinstance(op, dict):
-                logger.warning(f"[rewrite-slide] op[{idx}] 非 dict: {op!r}")
                 continue
-            op_type = str(op.get('type') or '').lower()
-            selector = op.get('selector') or ''
-            nodes = selector_matches(selector)
-            logger.info(f"[rewrite-slide] op[{idx}] type={op_type} selector={selector!r} matched={len(nodes)}")
+            selector = op.get("selector") or ""
+            try:
+                nodes = soup.select(selector) if selector else []
+            except Exception:
+                nodes = []
             if not nodes:
                 continue
 
-            if op_type == 'delete_element':
+            op_type = str(op.get("type") or "").lower()
+            if op_type == "delete_element":
                 for node in nodes:
                     node.decompose()
-                continue
-
-            if op_type == 'update_text':
-                new_text = op.get('text')
-                if new_text is None:
-                    continue
+            elif op_type in ("update_style", "move_element"):
+                style_updates = op.get("style") if isinstance(op.get("style"), dict) else {}
+                position = str(op.get("position") or "").lower()
+                if position in {"left", "center", "right"}:
+                    style_updates = {**style_updates, "text-align": position}
+                elif position == "top":
+                    style_updates = {**style_updates, "justify-content": "flex-start"}
+                elif position == "bottom":
+                    style_updates = {**style_updates, "justify-content": "flex-end"}
                 for node in nodes:
-                    for child in list(node.children):
-                        if getattr(child, 'extract', None):
-                            child.extract()
-                    node.string = str(new_text)
-                continue
+                    merge_style(node, style_updates)
 
-            if op_type == 'replace_text':
-                new_text = op.get('replace') if op.get('replace') is not None else op.get('text')
-                if new_text is None:
-                    continue
-                find_text = op.get('find')
-                for node in nodes:
-                    if find_text:
-                        current_text = node.get_text(" ", strip=True)
-                        if str(find_text) not in current_text:
-                            continue
-                    if len(node.contents) == 1 and getattr(node.contents[0], 'replace_with', None):
-                        node.contents[0].replace_with(str(new_text))
-                    else:
-                        node.clear()
-                        node.append(str(new_text))
-                continue
-
-            if op_type in ('update_style', 'move_element'):
-                for node in nodes:
-                    style_map = {}
-                    style_attr = node.get('style', '')
-                    if style_attr:
-                        for chunk in style_attr.split(';'):
-                            if ':' in chunk:
-                                k, v = chunk.split(':', 1)
-                                style_map[k.strip()] = v.strip()
-                    style_updates = op.get('style') or {}
-                    if isinstance(style_updates, dict):
-                        style_map.update(style_updates)
-                    position = str(op.get('position') or '').lower()
-                    if position == 'center':
-                        style_map['text-align'] = 'center'
-                    elif position == 'left':
-                        style_map['text-align'] = 'left'
-                    elif position == 'right':
-                        style_map['text-align'] = 'right'
-                    elif position == 'top':
-                        style_map['justify-content'] = 'flex-start'
-                    elif position == 'bottom':
-                        style_map['justify-content'] = 'flex-end'
-                    node['style'] = '; '.join(f'{k}: {v}' for k, v in style_map.items())
-
-        html = str(soup)
-        logger.info(f"[rewrite-slide] patched_html_len={len(html)}")
-        logger.info(f"[rewrite-slide] patched_html_preview={html[:1000]!r}")
-
-        result['page_id'] = page_id
-        result['page_data'] = merged_page
-
+        quick_operations = _try_apply_common_font_resize(soup, instruction)
+        combined_operations = [*operations, *quick_operations]
+        html = _ensure_single_page_canvas_css(str(soup))
         saved_path = _save_page_html_to_outputs(page_number, html)
-        logger.info(f"[rewrite-slide] 已持久化页面HTML: {saved_path}")
-        logger.info(
-            f"[rewrite-slide] 返回成功 page_id={page_id} operations_count={len(operations)} html_len={len(html)}"
+        presentation_html, updated_output_path = _update_presentation_file(output_path, page_number, html)
+        result["page_id"] = page_id
+        result["page_data"] = merged_page
+        result["operations"] = combined_operations
+        result["output_path"] = updated_output_path or output_path
+
+        return jsonify(
+            {
+                "success": True,
+                "result": result,
+                "operations": combined_operations,
+                "page_data": merged_page,
+                "html": html,
+                "presentation_html": presentation_html,
+                "output_path": updated_output_path or output_path,
+                "saved_path": saved_path,
+            }
         )
-
-        return jsonify({
-            'success': True,
-            'result': result,
-            'operations': operations,
-            'page_data': merged_page,
-            'html': html,
-            'saved_path': saved_path,
-            'evaluation': {
-                'passed': True,
-                'layout': {},
-                'style': {},
-            },
-        })
-
     except Exception as e:
         logger.error(f"重写页面失败: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/evaluate-presentation', methods=['POST'])
+def evaluate_presentation():
+    """评估生成后的 HTML 演示文稿，返回报告页使用的数据。"""
+    try:
+        data = request.get_json() or {}
+        slides = data.get("slides") or []
+        total_generation_time = float(data.get("total_generation_time") or 0)
+        template_name = data.get("template") or "tech"
+
+        if not slides:
+            return jsonify({"error": "缺少 slides 数据"}), 400
+
+        try:
+            template = __import__("templates.template_loader", fromlist=["load_template"]).load_template(template_name)
+            css_variables = dict(template.css_variables)
+            for idx, color in enumerate(sorted(extract_colors_from_html(template.raw_html))):
+                css_variables[f"template-color-{idx}"] = color
+        except Exception:
+            css_variables = {}
+
+        pages = []
+        style_metrics = []
+        for idx, slide in enumerate(slides, start=1):
+            html = slide.get("html") or ""
+            layout = overlap_ratio_from_html(html)
+            style = color_consistency_from_html(html, css_variables)
+            style_metrics.append(style)
+            overlap_ok = layout.overlap_ratio == 0
+            color_ok = (style.global_color_deviation_percent or 0) <= 5
+            pages.append(
+                {
+                    "page_number": slide.get("pageNumber") or slide.get("page_number") or idx,
+                    "title": slide.get("title") or f"第{idx}页",
+                    "overlap_ratio": layout.overlap_ratio,
+                    "color_deviation_percent": style.global_color_deviation_percent,
+                    "passed": overlap_ok and color_ok,
+                }
+            )
+
+        global_color_deviation = aggregate_color_deviation(style_metrics)
+        page_count = len(slides)
+        average_generation_time = total_generation_time / page_count if total_generation_time and page_count else 0
+        passed = all(p["overlap_ratio"] == 0 for p in pages) and global_color_deviation <= 5
+
+        summary = ""
+        try:
+            prompt = json.dumps(
+                {
+                    "task": "用中文简短评估HTML演示文稿质量",
+                    "constraints": {
+                        "overlap_ratio_target": 0,
+                        "global_color_deviation_percent_target": "<=5",
+                    },
+                    "metrics": {
+                        "page_count": page_count,
+                        "global_color_deviation_percent": global_color_deviation,
+                        "average_generation_time_seconds": average_generation_time,
+                        "pages": pages,
+                    },
+                },
+                ensure_ascii=False,
+            )
+            summary = asyncio.run(default_llm_client().complete("只输出一段中文评估摘要。", prompt))
+        except Exception as llm_err:
+            logger.warning(f"LLM评估摘要失败，使用本地摘要: {llm_err}")
+            summary = "已完成规则评估。请重点关注重叠率不为 0 或颜色偏差超过 5% 的页面。"
+
+        return jsonify(
+            {
+                "success": True,
+                "report": {
+                    "passed": passed,
+                    "page_count": page_count,
+                    "pages": pages,
+                    "global_color_deviation_percent": global_color_deviation,
+                    "average_generation_time_seconds": average_generation_time,
+                    "summary": summary.strip(),
+                    "metric_notes": {
+                        "color_deviation": "每页色彩偏差率=该页中偏离模板调色板的颜色数量占比；全局色彩偏差率=各页色彩偏差率的平均值。",
+                        "overlap_ratio": "元素重叠率基于内联绝对定位元素的矩形交叠面积估算，并忽略背景层、低透明度装饰和 pointer-events:none 的装饰元素。",
+                    },
+                },
+            }
+        )
+    except Exception as e:
+        logger.error(f"评估演示文稿失败: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/output/<path:filename>')
@@ -1330,26 +1672,36 @@ def get_templates():
         import os
         templates_dir = os.path.join(os.path.dirname(__file__), 'templates', 'data')
         templates = []
+        seen_template_ids = set()
 
-        if os.path.exists(templates_dir):
-            for filename in os.listdir(templates_dir):
+        def load_template_summaries(directory, default_type):
+            if not os.path.exists(directory):
+                return
+            for filename in os.listdir(directory):
                 if filename.endswith('.json'):
-                    filepath = os.path.join(templates_dir, filename)
+                    filepath = os.path.join(directory, filename)
                     try:
                         with open(filepath, 'r', encoding='utf-8') as f:
                             template_data = json.load(f)
+                            template_id = template_data.get('template_id') or os.path.splitext(filename)[0]
+                            if template_id in seen_template_ids:
+                                continue
+                            seen_template_ids.add(template_id)
                             templates.append({
-                                'template_id': template_data.get('template_id'),
+                                'template_id': template_id,
                                 'template_name': template_data.get('template_name'),
                                 'description': template_data.get('description'),
                                 'css_variables': template_data.get('css_variables'),
                                 'tags': template_data.get('tags', []),
                                 'is_default': template_data.get('is_default', False),
                                 'page_types': list(template_data.get('page_types', {}).keys()),
-                                'template_type': template_data.get('template_type', 'preset')
+                                'template_type': template_data.get('template_type', default_type)
                             })
                     except Exception as e:
-                        logger.error(f"加载模板文件 {filename} 失败: {e}")
+                        logger.error(f"加载模板文件 {filepath} 失败: {e}")
+
+        load_template_summaries(templates_dir, 'preset')
+        load_template_summaries(os.path.join(templates_dir, 'user_generated'), 'user')
 
         return jsonify({
             'success': True,
@@ -1414,7 +1766,7 @@ def main():
     # 注册模板生成 API
     register_template_api_routes(app)
     logger.info(f"启动LandPPT Demo服务: http://{APP_HOST}:{APP_PORT}")
-    socketio.run(app, host=APP_HOST, port=APP_PORT, debug=DEBUG)
+    app.run(host=APP_HOST, port=APP_PORT, debug=DEBUG)
 
 
 if __name__ == '__main__':

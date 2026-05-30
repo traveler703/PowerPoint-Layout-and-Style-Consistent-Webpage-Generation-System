@@ -38,6 +38,57 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+STANDARD_PAGE_TYPES = {"cover", "toc", "section", "content", "ending"}
+
+LAYOUT_PAGE_TYPE_ORDER = [
+    "hero-title-body",
+    "two-column",
+    "three-column",
+    "image-text-left",
+    "image-text-top",
+    "chart-focus",
+    "table-focus",
+    "title-only",
+    "quote-highlight",
+    "timeline",
+    "comparison",
+    "statistics",
+]
+
+LAYOUT_PAGE_TYPES = set(LAYOUT_PAGE_TYPE_ORDER)
+
+SUPPORTED_PAGE_TYPES = STANDARD_PAGE_TYPES | LAYOUT_PAGE_TYPES
+
+PAGE_TYPE_PLACEHOLDERS = {
+    "cover": ("title", "subtitle", "date_badge"),
+    "toc": ("title", "toc_items"),
+    "section": ("chapter_tag", "title", "subtitle"),
+    "content": ("title", "content"),
+    "ending": ("title", "message"),
+    "hero-title-body": ("title", "content"),
+    "two-column": ("title", "left", "right"),
+    "three-column": ("title", "col1", "col2", "col3"),
+    "image-text-left": ("title", "media", "content"),
+    "image-text-top": ("title", "media", "content"),
+    "chart-focus": ("title", "chart", "content"),
+    "table-focus": ("title", "table", "content"),
+    "title-only": ("title", "subtitle"),
+    "quote-highlight": ("title", "quote", "attribution"),
+    "timeline": ("title", "timeline_items"),
+    "comparison": ("title", "left_title", "left", "right_title", "right"),
+    "statistics": ("title", "stat1", "stat2", "stat3", "content"),
+}
+
+TOC_LAYOUT_GUARD_CSS = """
+/* generated toc layout guard: renderer inserts .generated-toc/.toc-item/.toc-number/.toc-text */
+.slide.toc .page-content .generated-toc{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 22px;align-content:center;width:100%;height:100%;max-height:100%;overflow:hidden;box-sizing:border-box;}
+.slide.toc .page-content .toc-item{display:flex;align-items:center;gap:14px;min-width:0;min-height:0;padding:14px 18px;border-radius:18px;background:#fff;border:1px solid rgba(0,0,0,.08);box-shadow:0 8px 22px rgba(0,0,0,.08);box-sizing:border-box;overflow:hidden;}
+.slide.toc .page-content .toc-number{display:flex;align-items:center;justify-content:center;width:48px;height:48px;flex:0 0 48px;border-radius:999px;background:var(--color-primary,#2563eb);color:#fff;font-weight:800;font-size:18px;}
+.slide.toc .page-content .toc-text{min-width:0;overflow:hidden;}
+.slide.toc .page-content .toc-text h3{font-size:20px;line-height:1.35;margin:0;color:var(--color-text,#111827);white-space:normal;overflow-wrap:anywhere;}
+.slide.toc .page-content .toc-text p{font-size:12px;line-height:1.35;margin:4px 0 0;color:var(--color-text-muted,#6b7280);}
+"""
+
 
 # ============================================================
 # Prompt：只输出 HTML
@@ -50,8 +101,10 @@ TEMPLATE_GENERATION_SYSTEM_PROMPT = """你是一位极具创意的前端设计�
 只输出一个 HTML 代码块（```html），不要有任何解释文字。
 
 HTML 要求：
-- 完整、可直接运行的 HTML 文件，包含 5 个 slide 页面示例（封面、目录、章节、内容、结尾各一页）
-- 每个页面用 `<div class="slide [page_type]">` 包裹，page_type 取值为：cover、toc、section、content、ending
+- 完整、可直接运行的 HTML 文件，包含至少 12 个 slide 页面示例：
+  - 基础页：cover、toc、section、content、ending
+  - 扩展版式页：hero-title-body、two-column、three-column、image-text-left、image-text-top、chart-focus、table-focus、title-only、quote-highlight、timeline、comparison、statistics
+- 每个页面用 `<div class="slide [page_type]">` 包裹，page_type 取值必须来自上面的基础页或扩展版式页
 - **【最重要】所有页面都必须遵循统一的结构规范**：
 
   **外层容器结构**（必须严格遵守）：
@@ -59,7 +112,7 @@ HTML 要求：
   <body>
     <div class="slides-wrapper" id="slidesWrapper">
       <div class="slides-track" id="slidesTrack">
-        <!-- 5个 slide 页面放这里 -->
+        <!-- 所有 slide 页面放这里 -->
       </div>
     </div>
     <div class="nav-dots" id="navDots"></div>     <!-- JS 动态生成，HTML 留空 -->
@@ -127,6 +180,12 @@ HTML 要求：
 ```
 **严格要求**：`{{title}}` 用 `.page-title` div 包裹，`{{toc_items}}` 用 `.page-content` div 包裹，末尾必须有 `.slide-footer`。
 这些元素在 CSS 中必须用 absolute 定位（top/left/right/bottom）。
+**目录页排版硬性要求**：
+- 渲染器会把 `{{toc_items}}` 替换成如下结构：`.generated-toc` 外层，内部多个 `.toc-item`，每项包含 `.toc-number` 和 `.toc-text`，`.toc-text` 内含 `h3` 与 `p`。
+- 你必须为 `.slide.toc .page-content .generated-toc`、`.toc-item`、`.toc-number`、`.toc-text h3`、`.toc-text p` 编写稳定 CSS。
+- `.generated-toc` 必须使用 `grid` 或规整的纵向列表布局，优先 `grid-template-columns: repeat(2, minmax(0, 1fr))`，并限制在 `.page-content` 内。
+- `.toc-item` 必须是独立卡片/列表项，不能嵌套成树状、气泡状、大块空白块；禁止让 `{{toc_items}}` 被多个示例 `.toc-item` 重复包裹。
+- `.page-content` 内部只能出现一个 `{{toc_items}}` 占位符，不要写示例目录项、不要重复写 `{{toc_items}}`。
 
 ### section 章节页（必须严格遵守以下结构）
 ```html
@@ -162,6 +221,21 @@ HTML 要求：
 - 正确示例：`<div class="page-content">{{content}}</div>`（内部只有占位符）
 - 错误示例：`<div class="page-content"><!-- 装饰 -->...很多div...</div>`（会被系统拒绝）
 
+### 扩展版式页（用于适配更多场景）
+扩展版式页也必须是 `<div class="slide [page_type]">`，必须包含 `.page-title` 和 `.slide-footer`，内部必须使用对应占位符：
+- `hero-title-body`: `{{title}}`, `{{content}}`
+- `two-column`: `{{title}}`, `{{left}}`, `{{right}}`
+- `three-column`: `{{title}}`, `{{col1}}`, `{{col2}}`, `{{col3}}`
+- `image-text-left`: `{{title}}`, `{{media}}`, `{{content}}`
+- `image-text-top`: `{{title}}`, `{{media}}`, `{{content}}`
+- `chart-focus`: `{{title}}`, `{{chart}}`, `{{content}}`
+- `table-focus`: `{{title}}`, `{{table}}`, `{{content}}`
+- `title-only`: `{{title}}`, `{{subtitle}}`
+- `quote-highlight`: `{{title}}`, `{{quote}}`, `{{attribution}}`
+- `timeline`: `{{title}}`, `{{timeline_items}}`
+- `comparison`: `{{title}}`, `{{left_title}}`, `{{left}}`, `{{right_title}}`, `{{right}}`
+- `statistics`: `{{title}}`, `{{stat1}}`, `{{stat2}}`, `{{stat3}}`, `{{content}}`
+
 ### ending 结尾页（必须严格遵守以下结构）
 ```html
 <div class="slide ending">
@@ -177,8 +251,8 @@ HTML 要求：
 
 ## 重要约束（必须遵守）
 
-1. **每种 page_type 都必须生成示例页面**：cover、toc、section、content、ending
-2. **占位符使用双花括号**：`{{title}}`、`{{subtitle}}`、`{{date_badge}}`、`{{chapter_tag}}`、`{{content}}`、`{{toc_items}}`、`{{message}}`、`{{page_number}}`
+1. **每种基础 page_type 都必须生成示例页面**：cover、toc、section、content、ending；同时尽量生成全部扩展版式页
+2. **占位符使用双花括号**：`{{title}}`、`{{subtitle}}`、`{{date_badge}}`、`{{chapter_tag}}`、`{{content}}`、`{{toc_items}}`、`{{message}}`、`{{page_number}}` 以及扩展版式页要求的占位符
 3. **color-* 和 font-* CSS 变量必须全部填写**，不得为空
 4. **页面中要有装饰元素**（emoji、几何图形、渐变等），体现主题特色，装饰元素只能放在 slide 外层或 `.page-title` 旁边，**禁止放在 `.page-content` 内部**
 5. **【最关键】`{{content}}` 占位符内部必须保持空白**：
@@ -420,9 +494,65 @@ def _normalize_skeleton(ptype: str, skeleton: str) -> str:
             skeleton = skeleton.replace('{{subtitle}}', '<p class="subtitle">{{subtitle}}</p>')
     elif ptype == "content":
         # content 页：title 用 .page-title，content 用 .page-content
-        if '{{title}}' in skeleton and '<div class="page-title">' not in skeleton:
+        if "{{title}}" not in skeleton:
+            page_title_pattern = (
+                r'(<div\s+class="[^"]*\bpage-title\b[^"]*"[^>]*>)(.*?)(</div>)'
+            )
+            if re.search(page_title_pattern, skeleton, re.DOTALL | re.IGNORECASE):
+                skeleton = re.sub(
+                    page_title_pattern,
+                    r"\1{{title}}\3",
+                    skeleton,
+                    count=1,
+                    flags=re.DOTALL | re.IGNORECASE,
+                )
+            elif re.search(r"<h[12][^>]*>.*?</h[12]>", skeleton, re.DOTALL | re.IGNORECASE):
+                skeleton = re.sub(
+                    r"(<h[12][^>]*>)(.*?)(</h[12]>)",
+                    r"\1{{title}}\3",
+                    skeleton,
+                    count=1,
+                    flags=re.DOTALL | re.IGNORECASE,
+                )
+            else:
+                skeleton = re.sub(
+                    r'(<div\s+class="[^"]*\bslide\b[^"]*"[^>]*>)',
+                    r'\1\n<div class="page-title">{{title}}</div>',
+                    skeleton,
+                    count=1,
+                    flags=re.IGNORECASE,
+                )
+        if "{{content}}" not in skeleton:
+            content_container_pattern = (
+                r'(<div\s+class="[^"]*\b(?:page-content|content-body)\b[^"]*"[^>]*>)(.*?)(</div>)'
+            )
+            if re.search(content_container_pattern, skeleton, re.DOTALL | re.IGNORECASE):
+                skeleton = re.sub(
+                    content_container_pattern,
+                    r"\1{{content}}\3",
+                    skeleton,
+                    count=1,
+                    flags=re.DOTALL | re.IGNORECASE,
+                )
+            else:
+                skeleton = re.sub(
+                    r'(<div\s+class="[^"]*\bslide\b[^"]*"[^>]*>)',
+                    r'\1\n<div class="page-content">{{content}}</div>',
+                    skeleton,
+                    count=1,
+                    flags=re.IGNORECASE,
+                )
+        if "{{title}}" in skeleton and not re.search(
+            r'<div\s+class="[^"]*\bpage-title\b[^"]*"',
+            skeleton,
+            re.IGNORECASE,
+        ):
             skeleton = skeleton.replace('{{title}}', '<div class="page-title">{{title}}</div>')
-        if '{{content}}' in skeleton and '<div class="page-content">' not in skeleton:
+        if "{{content}}" in skeleton and not re.search(
+            r'<div\s+class="[^"]*\bpage-content\b[^"]*"',
+            skeleton,
+            re.IGNORECASE,
+        ):
             skeleton = skeleton.replace('{{content}}', '<div class="page-content">{{content}}</div>')
     elif ptype == "ending":
         # ending 页：title 在 h1 中，message 在 p.ending-message 中，且在 .ending-content 内
@@ -456,6 +586,27 @@ def _normalize_skeleton(ptype: str, skeleton: str) -> str:
                             r'<div class="ending-content">\1</div>',
                             skeleton,
                         )
+    elif ptype in LAYOUT_PAGE_TYPES:
+        if "{{title}}" not in skeleton:
+            page_title_pattern = (
+                r'(<div\s+class="[^"]*\bpage-title\b[^"]*"[^>]*>)(.*?)(</div>)'
+            )
+            if re.search(page_title_pattern, skeleton, re.DOTALL | re.IGNORECASE):
+                skeleton = re.sub(
+                    page_title_pattern,
+                    r"\1{{title}}\3",
+                    skeleton,
+                    count=1,
+                    flags=re.DOTALL | re.IGNORECASE,
+                )
+            else:
+                skeleton = re.sub(
+                    r'(<div\s+class="[^"]*\bslide\b[^"]*"[^>]*>)',
+                    r'\1\n<div class="page-title">{{title}}</div>',
+                    skeleton,
+                    count=1,
+                    flags=re.IGNORECASE,
+                )
 
     return skeleton
 
@@ -524,14 +675,8 @@ def _extract_page_types(html: str) -> dict[str, dict[str, Any]]:
         logger.warning("BeautifulSoup 未安装，回退到正则提取")
         return _extract_page_types_regex(html)
 
-    VALID_TYPES = {"cover", "toc", "section", "content", "ending"}
-    PLACEHOLDER_MAP = {
-        "cover":    ("title", "subtitle", "date_badge"),
-        "toc":      ("title", "toc_items"),
-        "section":  ("chapter_tag", "title", "subtitle"),
-        "content":  ("title", "content"),
-        "ending":   ("title", "message"),
-    }
+    VALID_TYPES = SUPPORTED_PAGE_TYPES
+    PLACEHOLDER_MAP = PAGE_TYPE_PLACEHOLDERS
 
     soup = BeautifulSoup(html, "html.parser")
     result = {}
@@ -654,21 +799,9 @@ def _replace_page_content_block(skeleton: str, placeholder: str) -> str:
 
 def _extract_page_types_regex(html: str) -> dict[str, dict[str, Any]]:
     """回退：使用正则提取（不支持嵌套 div）。"""
-    VALID_TYPES = {"cover", "toc", "section", "content", "ending"}
-    PLACEHOLDER_MAP = {
-        "cover":    ("title", "subtitle", "date_badge"),
-        "toc":      ("title", "toc_items"),
-        "section":  ("chapter_tag", "title", "subtitle"),
-        "content":  ("title", "content"),
-        "ending":   ("title", "message"),
-    }
-    PAGE_TYPE_CLASSES = {
-        "cover":    "slide cover",
-        "toc":      "slide toc",
-        "section":  "slide section",
-        "content":  "slide content",
-        "ending":   "slide ending",
-    }
+    VALID_TYPES = SUPPORTED_PAGE_TYPES
+    PLACEHOLDER_MAP = PAGE_TYPE_PLACEHOLDERS
+    PAGE_TYPE_CLASSES = {ptype: f"slide {ptype}" for ptype in VALID_TYPES}
 
     result = {}
     for ptype in VALID_TYPES:
@@ -771,6 +904,15 @@ def extract_template_from_response(response: str, user_description: str = "") ->
             "placeholders": ["title", "page_number"],
         }
 
+    missing_layout_types = [
+        ptype for ptype in LAYOUT_PAGE_TYPE_ORDER if ptype not in page_types
+    ]
+    for ptype in missing_layout_types:
+        page_types[ptype] = {
+            "skeleton": _fallback_layout_skeleton(ptype),
+            "placeholders": _infer_placeholders(ptype),
+        }
+
     # 重点校验：content 页的 {{title}} 必须在 {{content}} 之前
     content_skeleton = page_types.get("content", {}).get("skeleton", "")
     if content_skeleton:
@@ -833,6 +975,10 @@ def extract_template_from_response(response: str, user_description: str = "") ->
                     + "\n".join(f"  - {e}" for e in clean_errors)
                 )
 
+    raw_html = _inject_toc_layout_guard_css(_clean_page_content_visual_styles(_clean_css_placeholders(html)))
+    if missing_layout_types:
+        raw_html = _append_missing_layout_skeletons(raw_html, missing_layout_types)
+
     template_dict: dict[str, Any] = {
         "template_id": _make_template_id(user_description or "template"),
         "template_name": _infer_theme_name(user_description),
@@ -843,7 +989,7 @@ def extract_template_from_response(response: str, user_description: str = "") ->
         "viewport": {"width": 1280, "height": 720},
         "tags": _infer_tags(user_description),
         "is_default": False,
-        "raw_html": _clean_page_content_visual_styles(_clean_css_placeholders(html)),
+        "raw_html": raw_html,
     }
 
     return template_dict
@@ -860,18 +1006,52 @@ def _infer_tags(_description: str) -> list[str]:
 
 
 def _infer_placeholders(ptype: str) -> list[str]:
-    """根据 page_type 推断需要的占位符（仅保留 5 种标准类型）。"""
-    mapping = {
-        "cover":    ["title", "subtitle", "date_badge"],
-        "toc":      ["title", "toc_items"],
-        "section":  ["chapter_tag", "title", "subtitle"],
-        "content":  ["title", "content"],
-        "ending":   ["title", "message"],
-    }
-    base = mapping.get(ptype, ["title"])
+    """根据 page_type 推断需要的占位符。"""
+    base = list(PAGE_TYPE_PLACEHOLDERS.get(ptype, ("title",)))
     if "page_number" not in base:
         base.append("page_number")
     return base
+
+
+def _fallback_layout_skeleton(ptype: str) -> str:
+    placeholders = PAGE_TYPE_PLACEHOLDERS.get(ptype, ("title", "content"))
+    body_parts = []
+    for ph in placeholders:
+        if ph == "title":
+            continue
+        body_parts.append(f'<div class="layout-slot layout-slot-{ph}">{{{{{ph}}}}}</div>')
+    body_html = "\n    ".join(body_parts) or '<div class="layout-slot layout-slot-content">{{content}}</div>'
+    return (
+        f'<div class="slide {ptype}">\n'
+        f'  <div class="page-title">{{{{title}}}}</div>\n'
+        f'  <div class="page-content layout-{ptype}">\n'
+        f'    {body_html}\n'
+        f'  </div>\n'
+        f'  <div class="slide-footer"><span class="page-num">{{{{page_number}}}}</span></div>\n'
+        f'</div>'
+    )
+
+
+def _append_missing_layout_skeletons(html: str, missing_layout_types: list[str]) -> str:
+    if not missing_layout_types:
+        return html
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        return html
+
+    soup = BeautifulSoup(html, "html.parser")
+    track = soup.find("div", class_=lambda c: c and "slides-track" in c.split())
+    if not track:
+        return html
+
+    for ptype in missing_layout_types:
+        skeleton_soup = BeautifulSoup(_fallback_layout_skeleton(ptype), "html.parser")
+        slide = skeleton_soup.find("div", class_=lambda c: c and "slide" in c.split())
+        if slide:
+            track.append(slide)
+
+    return str(soup)
 
 
 # ============================================================
@@ -888,6 +1068,63 @@ REQUIRED_CSS_KEYS = {
     "color-primary", "color-secondary", "color-background",
     "color-surface", "color-text", "color-card"
 }
+
+
+def extract_json_from_response(response: str) -> dict[str, Any]:
+    """兼容旧测试/调用方：从响应文本中提取 JSON 模板配置。"""
+    text = (response or "").strip()
+    if not text:
+        raise ValueError("响应为空，无法提取 JSON")
+
+    fenced = re.search(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", text, re.IGNORECASE)
+    if fenced:
+        text = fenced.group(1).strip()
+    else:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise ValueError("响应中未找到 JSON 对象")
+        text = text[start:end + 1]
+
+    return json.loads(text)
+
+
+def merge_with_defaults(template: dict[str, Any]) -> dict[str, Any]:
+    """兼容旧测试/调用方：补齐模板配置的基础默认值。"""
+    merged = dict(template or {})
+    merged.setdefault("template_id", "custom_template")
+    merged.setdefault("template_name", "自定义模板")
+    merged.setdefault("description", "")
+    merged.setdefault("tags", [])
+    merged.setdefault("viewport", {"width": 1280, "height": 720})
+    merged.setdefault("css_variables", {})
+    merged.setdefault("page_types", {})
+    merged.setdefault("raw_html", "")
+
+    css = merged["css_variables"]
+    for key, value in {
+        "color-primary": "#6366f1",
+        "color-secondary": "#8b5cf6",
+        "color-background": "#ffffff",
+        "color-surface": "#f8fafc",
+        "color-text": "#1f2937",
+        "color-card": "#ffffff",
+        "font-body": "'Segoe UI', 'Microsoft YaHei', sans-serif",
+        "font-heading": "'Segoe UI', 'Microsoft YaHei', sans-serif",
+    }.items():
+        css.setdefault(key, value)
+
+    page_types = merged["page_types"]
+    for ptype in REQUIRED_PAGE_TYPES:
+        page_types.setdefault(
+            ptype,
+            {
+                "skeleton": f'<div class="slide {ptype}"><div class="page-title">{{{{title}}}}</div><div class="slide-footer"><span class="page-num">{{{{page_number}}}}</span></div></div>',
+                "placeholders": ["title", "page_number"],
+            },
+        )
+
+    return merged
 
 
 def _clean_css_placeholders(html: str) -> str:
@@ -909,6 +1146,16 @@ def _clean_css_placeholders(html: str) -> str:
         html,
         flags=re.DOTALL | re.IGNORECASE,
     )
+
+
+def _inject_toc_layout_guard_css(html: str) -> str:
+    """Ensure generated templates can render renderer-produced TOC items cleanly."""
+    if not html or "generated toc layout guard" in html:
+        return html
+    style_block = f"<style>\n{TOC_LAYOUT_GUARD_CSS}\n</style>"
+    if "</head>" in html:
+        return html.replace("</head>", style_block + "\n</head>", 1)
+    return style_block + html
 
 
 def _clean_page_content_visual_styles(html: str) -> str:
@@ -1127,6 +1374,9 @@ def validate_template(template: dict[str, Any]) -> tuple[bool, list[str]]:
     # 导航结构检查
     raw_html = template.get("raw_html", "")
     if raw_html:
+        for required_selector in (".generated-toc", ".toc-item", ".toc-number", ".toc-text"):
+            if required_selector not in raw_html:
+                errors.append(f"raw_html 缺少目录页稳定排版选择器: {required_selector}")
         nav_errors = _check_navigation_structure(raw_html)
         errors.extend(nav_errors)
         # ---- 新增：slide 尺寸 CSS 检查 ----
@@ -1144,6 +1394,62 @@ def validate_template(template: dict[str, Any]) -> tuple[bool, list[str]]:
 # 核心生成器
 # ============================================================
 
+def _truncate_text(value: str, max_chars: int = 12000) -> str:
+    if len(value) <= max_chars:
+        return value
+    head = int(max_chars * 0.65)
+    tail = max_chars - head
+    return (
+        value[:head]
+        + "\n\n[... 中间内容已截断，保留首尾用于模板修改上下文 ...]\n\n"
+        + value[-tail:]
+    )
+
+
+def _compact_current_template(current_template: dict[str, Any] | None) -> dict[str, Any]:
+    if not current_template:
+        return {}
+
+    compact = {
+        "template_id": current_template.get("template_id"),
+        "template_name": current_template.get("template_name"),
+        "description": current_template.get("description"),
+        "css_variables": current_template.get("css_variables", {}),
+        "page_types": current_template.get("page_types", {}),
+        "viewport": current_template.get("viewport"),
+        "tags": current_template.get("tags", []),
+    }
+    raw_html = current_template.get("raw_html") or ""
+    if raw_html:
+        compact["raw_html"] = _truncate_text(str(raw_html))
+    return compact
+
+
+def _build_template_user_prompt(
+    user_description: str,
+    *,
+    conversation_context: str = "",
+    current_template: dict[str, Any] | None = None,
+) -> str:
+    parts = []
+    if conversation_context:
+        parts.append("## 对话历史\n\n" + _truncate_text(conversation_context, 6000))
+
+    compact_template = _compact_current_template(current_template)
+    if compact_template:
+        parts.append(
+            "## 当前模板配置\n\n"
+            "用户可能是在这个模板基础上继续修改。若用户表达的是调整、继续、变更、优化，"
+            "请保留当前模板的核心结构和主题，只按最新需求修改。\n\n"
+            "```json\n"
+            + json.dumps(compact_template, ensure_ascii=False, indent=2)
+            + "\n```"
+        )
+
+    parts.append("## 用户最新需求\n\n" + user_description)
+    return "\n\n".join(parts)
+
+
 class TemplateGenerator:
     """
     根据用户需求生成 PPT 模板的 LLM 服务。
@@ -1158,11 +1464,20 @@ class TemplateGenerator:
     def __init__(self, llm_client: LLMClient | None = None) -> None:
         self.llm = llm_client or default_llm_client()
 
-    async def generate(self, user_description: str) -> dict[str, Any]:
-        prompt = (
-            TEMPLATE_GENERATION_SYSTEM_PROMPT
-            + f"\n\n## 用户需求\n\n{user_description}\n\n"
-            + "请只输出 HTML 代码块，不要有任何解释文字。"
+    async def generate(
+        self,
+        user_description: str,
+        *,
+        conversation_context: str = "",
+        current_template: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        user_prompt = (
+            _build_template_user_prompt(
+                user_description,
+                conversation_context=conversation_context,
+                current_template=current_template,
+            )
+            + "\n\n请只输出 HTML 代码块，不要有任何解释文字。"
         )
 
         logger.info(f"[TemplateGenerator] 调用 LLM 生成模板，描述: {user_description[:50]}")
@@ -1173,7 +1488,7 @@ class TemplateGenerator:
 
         for attempt in range(MAX_RETRIES):
             if attempt > 0:
-                retry_prompt = prompt + (
+                retry_prompt = user_prompt + (
                     "\n\n## 重试提示\n"
                     "上一次生成存在以下问题之一：\n"
                     "1. 内容页缺少 `{{title}}` 占位符，或章节页标题硬编码了文字\n"
@@ -1192,9 +1507,9 @@ class TemplateGenerator:
                     "- 页面切换必须用 `transform: translateX()` 滑动，不许用 opacity 切换"
                 )
                 logger.info(f"[TemplateGenerator] 重试第 {attempt + 1} 次")
-                response = await self.llm.complete(retry_prompt, "")
+                response = await self.llm.complete(TEMPLATE_GENERATION_SYSTEM_PROMPT, retry_prompt)
             else:
-                response = await self.llm.complete(prompt, "")
+                response = await self.llm.complete(TEMPLATE_GENERATION_SYSTEM_PROMPT, user_prompt)
 
             last_response = response
 
@@ -1240,6 +1555,28 @@ class TemplateGenerator:
 # Flask API 路由（保留，兼容现有系统）
 # ============================================================
 
+def _extract_last_user_message(messages: list[dict[str, Any]]) -> tuple[str, int]:
+    for idx in range(len(messages) - 1, -1, -1):
+        msg = messages[idx]
+        if msg.get("role") == "user":
+            return str(msg.get("content", "")), idx
+    return "", -1
+
+
+def _build_conversation_context(messages: list[dict[str, Any]], last_user_idx: int) -> str:
+    context_lines = []
+    for msg in messages[:last_user_idx]:
+        role = msg.get("role")
+        if role not in {"user", "assistant"}:
+            continue
+        content = str(msg.get("content", "")).strip()
+        if not content:
+            continue
+        label = "用户" if role == "user" else "AI"
+        context_lines.append(f"{label}: {content}")
+    return "\n\n".join(context_lines[-8:])
+
+
 def register_template_api_routes(app):
     """将模板生成 API 注册到 Flask app。"""
 
@@ -1251,19 +1588,23 @@ def register_template_api_routes(app):
             data = request.get_json() or {}
             messages = data.get("messages", [])
             mode = data.get("mode", "general")
+            current_template = data.get("current_template") or {}
 
-            last_user_msg = ""
-            for msg in reversed(messages):
-                if msg.get("role") == "user":
-                    last_user_msg = msg.get("content", "")
-                    break
+            last_user_msg, last_user_idx = _extract_last_user_message(messages)
 
             if not last_user_msg:
                 return jsonify({"error": "未找到用户消息"}), 400
 
             if mode == "template":
+                conversation_context = _build_conversation_context(messages, last_user_idx)
                 generator = TemplateGenerator()
-                result = asyncio.run(generator.generate(last_user_msg))
+                result = asyncio.run(
+                    generator.generate(
+                        last_user_msg,
+                        conversation_context=conversation_context,
+                        current_template=current_template,
+                    )
+                )
                 return jsonify({
                     "success": result["success"],
                     "response": result["response"],

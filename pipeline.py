@@ -39,6 +39,8 @@ from generator.prompts import (
 )
 from templates.renderer import TemplateRenderer
 from templates.template_loader import Template, load_template
+from evaluator.layout_metrics import overlap_ratio_from_html
+from evaluator.style_metrics import color_consistency_from_html
 
 
 # ============================================================
@@ -51,10 +53,6 @@ class ContentPageInput:
     title: str
     summary: str
     bullet_points: list[str]
-    description: str = ""
-    highlights: dict | None = None
-    steps: list[str] | None = None
-    compare: dict | None = None
 
 
 @dataclass
@@ -62,7 +60,7 @@ class SectionInput:
     """章节输入数据"""
     title: str
     content_pages: list[ContentPageInput]
-    subtitle: str = ""
+    include_section_page: bool = True
 
 
 @dataclass
@@ -71,6 +69,9 @@ class PresentationOutline:
     title: str
     subtitle: str
     date_badge: str = ""
+    toc_items: list[dict[str, str]] = field(default_factory=list)
+    include_toc: bool = True
+    include_ending: bool = True
     sections: list[SectionInput] = field(default_factory=list)
     ending_title: str = "谢谢观看"
     ending_message: str = ""
@@ -86,6 +87,7 @@ class GenerationResult:
     error: str | None = None
     page_layouts: list[dict[str, str]] = field(default_factory=list)
     pages_html: list[str] = field(default_factory=list)
+    page_paths: list[str] = field(default_factory=list)
 
 
 # ============================================================
@@ -224,28 +226,83 @@ class PresentationGenerator:
 
         logger.info(f"[Pipeline] 内容页生成 - 主题: {page.title}, 模板: {self.template_name}")
 
-        # Stage 2: HTML 生成（传入CSS变量、模板风格信息和富内容字段）
-        sys_prompt, user_prompt = build_html_generation_prompt(
-            page=page,
-            layout_analysis=layout_analysis,
-            css_variables=self.template.css_variables,
-            template_info=self._build_template_info(),
-            description=page.description,
-            highlights=page.highlights,
-            steps=page.steps,
-            compare=page.compare,
-        )
-        logger.info(f"[Pipeline] [Stage2] ===== HTML生成 =====")
-        logger.info(f"[Pipeline] [Stage2] 主题: {page.title}")
-        logger.info(f"[Pipeline] [Stage2] CSS变量: {self.template.css_variables}")
-        logger.info(f"[Pipeline] [Stage2] sys_prompt:\n{sys_prompt}")
-        logger.info(f"[Pipeline] [Stage2] user_prompt:\n{user_prompt}")
-        response = await self.llm_client.complete(sys_prompt, user_prompt)
-        logger.info(f"[Pipeline] [Stage2] LLM原始响应:\n{response[:1000]}")
-        html = parse_html_response(response)
-        logger.info(f"[Pipeline] [Stage2] 解析后HTML长度: {len(html)}")
+        html = ""
+        quality_issues: list[str] = []
+        prompt_page = page
+        for attempt in range(2):
+            # Stage 2: HTML 生成（传入CSS变量和模板风格信息）
+            sys_prompt, user_prompt = build_html_generation_prompt(
+                page=prompt_page,
+                layout_analysis=layout_analysis,
+                css_variables=self.template.css_variables,
+                template_info=self._build_template_info(),
+            )
+            logger.info(f"[Pipeline] [Stage2] ===== HTML生成 attempt={attempt + 1} =====")
+            logger.info(f"[Pipeline] [Stage2] 主题: {page.title}")
+            logger.info(f"[Pipeline] [Stage2] CSS变量: {self.template.css_variables}")
+            logger.info(f"[Pipeline] [Stage2] sys_prompt:\n{sys_prompt}")
+            logger.info(f"[Pipeline] [Stage2] user_prompt:\n{user_prompt}")
+            response = await self.llm_client.complete(sys_prompt, user_prompt)
+            logger.info(f"[Pipeline] [Stage2] LLM原始响应:\n{response[:1000]}")
+            html = parse_html_response(response)
+            logger.info(f"[Pipeline] [Stage2] 解析后HTML长度: {len(html)}")
+
+            quality_issues = self._content_quality_issues(html)
+            if not quality_issues:
+                break
+            logger.warning(
+                "[Pipeline] 内容页质量检查未通过，将重试: page=%s issues=%s",
+                page.title,
+                "；".join(quality_issues),
+            )
+            prompt_page = SemanticPageInput(
+                page_index=page.page_index,
+                title=page.title,
+                summary=(
+                    (page.summary or "")
+                    + "\n\n上一版页面质量检查未通过，请重新生成。必须修复："
+                    + "；".join(quality_issues)
+                    + "。不要重复标题，不要生成幻灯片外壳，不要让元素重叠。"
+                ),
+                page_type=page.page_type,
+                bullet_points=page.bullet_points,
+                headings=page.headings,
+                bullet_items=page.bullet_items,
+                image_urls=page.image_urls,
+                table=page.table,
+                has_chart=page.has_chart,
+                has_table=page.has_table,
+                raw_notes=page.raw_notes,
+                features=page.features,
+            )
+
+        if quality_issues:
+            layout_info["quality_warnings"] = quality_issues
 
         return html, layout_info
+
+    def _content_quality_issues(self, html: str) -> list[str]:
+        """对 LLM 生成的内容片段做轻量质量检查，失败时触发一次重生成。"""
+        issues: list[str] = []
+        if not html.strip():
+            return ["内容为空"]
+        if 'class="slide"' in html or "class='slide'" in html or "page-content" in html:
+            issues.append("生成了嵌套幻灯片外壳")
+        try:
+            overlap_report = overlap_ratio_from_html(html)
+            overlap = float(overlap_report.overlap_ratio or 0)
+            if overlap >= 0.08:
+                issues.append(f"元素重叠比例过高({overlap:.0%})")
+        except Exception as exc:
+            logger.debug("[Pipeline] overlap check skipped: %s", exc)
+        try:
+            color_report = color_consistency_from_html(html, self.template.css_variables if self.template else {})
+            deviation = float(color_report.global_color_deviation_percent or 0)
+            if deviation >= 35:
+                issues.append(f"颜色偏离模板过高({deviation:.0f}%)")
+        except Exception as exc:
+            logger.debug("[Pipeline] color check skipped: %s", exc)
+        return issues
 
     async def generate_content_pages_parallel(
         self,
@@ -259,7 +316,6 @@ class PresentationGenerator:
         Args:
             content_pages: [(page_number, ContentPageInput), ...]
             total_pages: 总页数
-            progress_callback: 页面完成时回调，参数为 (current, total, page_info)
 
         Returns:
             [(page_number, html_content, layout_info), ...]
@@ -271,27 +327,34 @@ class PresentationGenerator:
                 summary=cp.summary,
                 page_type="content",
                 bullet_points=cp.bullet_points,
-                description=cp.description or None,
-                highlights=cp.highlights,
-                steps=cp.steps,
-                compare=cp.compare,
             )
             html, layout_info = await self.generate_content_page_html(semantic_page)
             return page_num, html, layout_info
 
         tasks = [asyncio.create_task(generate_one(pn, cp)) for pn, cp in content_pages]
         results: list[tuple[int, str, dict]] = []
+        titles = {pn: cp.title for pn, cp in content_pages}
         for task in asyncio.as_completed(tasks):
             page_num, html, layout_info = await task
             results.append((page_num, html, layout_info))
             if progress_callback:
+                rendered_html = self.renderer.render_content_page(
+                    title=titles.get(page_num, ""),
+                    content=html,
+                    bullets=None,
+                    page_number=page_num,
+                    total_pages=total_pages,
+                ) if self.renderer else html
                 progress_callback(
                     page_num,
                     total_pages,
                     {
                         "page_number": page_num,
                         "page_type": "content",
-                        "title": next((cp.title for pn, cp in content_pages if pn == page_num), ""),
+                        "title": titles.get(page_num, ""),
+                        "html": self._make_single_page_document(rendered_html, page_num, total_pages),
+                        "layout_type": layout_info.get("layout_type", ""),
+                        "quality_warnings": layout_info.get("quality_warnings", []),
                     },
                 )
         return results
@@ -312,7 +375,6 @@ class PresentationGenerator:
             output_filename: 输出文件名
             navigation: 是否启用导航
             save_pages: 是否保存单页文件
-            progress_callback: 页面完成时回调，参数为 (current, total, page_info)
 
         Returns:
             GenerationResult: 生成结果
@@ -325,18 +387,16 @@ class PresentationGenerator:
             await self.initialize()
 
         try:
-            # 清理旧页面文件，避免残留文件干扰本轮结果
-            output_dir = os.path.join(os.path.dirname(__file__), "output")
-            pages_dir = os.path.join(output_dir, "pages")
-            if os.path.exists(pages_dir):
-                import shutil as _shutil
-                _shutil.rmtree(pages_dir)
-                logger.info("[Pipeline] 已清理旧页面文件")
-
-            # 计算总页数 (cover + toc + sections + content + ending)
-            total_sections = len(outline.sections)
+            # 计算总页数：严格跟随前端大纲是否包含目录/结束页，避免生成页数凭空 +1。
+            total_sections = sum(1 for s in outline.sections if s.include_section_page)
             total_content_pages = sum(len(s.content_pages) for s in outline.sections)
-            total_pages = 1 + 1 + total_sections + total_content_pages + 1  # +1 for ending
+            total_pages = (
+                1
+                + (1 if outline.include_toc else 0)
+                + total_sections
+                + total_content_pages
+                + (1 if outline.include_ending else 0)
+            )
 
             # ============================================================
             # 构建页面列表（按正确顺序）
@@ -358,50 +418,55 @@ class PresentationGenerator:
                     "page_number": current_page_number,
                     "page_type": "cover",
                     "title": outline.title,
+                    "html": self._make_single_page_document(cover_page, current_page_number, total_pages),
                 })
             current_page_number += 1
 
-            # Page 2: TOC
-            toc_items = [
-                {"title": s.title, "description": f"{len(s.content_pages)} 页内容"}
-                for s in outline.sections
-            ]
-            toc_page = self.renderer.render_toc_page(
-                title="目录",
-                toc_items=toc_items,
-                page_number=current_page_number,
-                total_pages=total_pages,
-            )
-            pages_list.append((current_page_number, "toc", toc_page, {"type": "toc", "title": "目录"}))
-            if progress_callback:
-                progress_callback(current_page_number, total_pages, {
-                    "page_number": current_page_number,
-                    "page_type": "toc",
-                    "title": "目录",
-                })
-            current_page_number += 1
+            # Optional TOC: only render it when the parsed/edited outline contains one.
+            if outline.include_toc:
+                toc_items = outline.toc_items or [
+                    {"title": s.title, "description": f"{len(s.content_pages)} 页内容"}
+                    for s in outline.sections
+                ]
+                toc_page = self.renderer.render_toc_page(
+                    title="目录",
+                    toc_items=toc_items,
+                    page_number=current_page_number,
+                    total_pages=total_pages,
+                )
+                pages_list.append((current_page_number, "toc", toc_page, {"type": "toc", "title": "目录"}))
+                if progress_callback:
+                    progress_callback(current_page_number, total_pages, {
+                        "page_number": current_page_number,
+                        "page_type": "toc",
+                        "title": "目录",
+                        "html": self._make_single_page_document(toc_page, current_page_number, total_pages),
+                    })
+                current_page_number += 1
 
             # 收集所有需要生成的内容页信息
             content_pages_for_parallel: list[tuple[int, ContentPageInput]] = []
 
             for section_idx, section in enumerate(outline.sections, 1):
-                # Section Page
-                section_page = self.renderer.render_page(
-                    page_type="section",
-                    title=section.title,
-                    subtitle=section.subtitle,
-                    page_number=current_page_number,
-                    total_pages=total_pages,
-                    extra={"chapter_tag": f"第{_roman_numeral(section_idx)}章"},
-                )
-                pages_list.append((current_page_number, "section", section_page, {"type": "section", "title": section.title}))
-                if progress_callback:
-                    progress_callback(current_page_number, total_pages, {
-                        "page_number": current_page_number,
-                        "page_type": "section",
-                        "title": section.title,
-                    })
-                current_page_number += 1
+                # Section Page: only render when the source outline has an explicit section page.
+                if section.include_section_page:
+                    section_page = self.renderer.render_page(
+                        page_type="section",
+                        title=section.title,
+                        subtitle="",
+                        page_number=current_page_number,
+                        total_pages=total_pages,
+                        extra={"chapter_tag": f"第{_roman_numeral(section_idx)}章"},
+                    )
+                    pages_list.append((current_page_number, "section", section_page, {"type": "section", "title": section.title}))
+                    if progress_callback:
+                        progress_callback(current_page_number, total_pages, {
+                            "page_number": current_page_number,
+                            "page_type": "section",
+                            "title": section.title,
+                            "html": self._make_single_page_document(section_page, current_page_number, total_pages),
+                        })
+                    current_page_number += 1
 
                 # Content Pages - 收集到并行队列
                 for content_page in section.content_pages:
@@ -447,22 +512,24 @@ class PresentationGenerator:
             # ============================================================
             # Last Page: Ending
             # ============================================================
-            ending_page = self.renderer.render_ending_page(
-                title=outline.ending_title,
-                content=outline.ending_message,
-                page_number=current_page_number,
-                total_pages=total_pages,
-            )
-            pages_list.append((current_page_number, "ending", ending_page, {
-                "type": "ending",
-                "title": outline.ending_title,
-            }))
-            if progress_callback:
-                progress_callback(current_page_number, total_pages, {
-                    "page_number": current_page_number,
-                    "page_type": "ending",
+            if outline.include_ending:
+                ending_page = self.renderer.render_ending_page(
+                    title=outline.ending_title,
+                    content=outline.ending_message,
+                    page_number=current_page_number,
+                    total_pages=total_pages,
+                )
+                pages_list.append((current_page_number, "ending", ending_page, {
+                    "type": "ending",
                     "title": outline.ending_title,
-                })
+                }))
+                if progress_callback:
+                    progress_callback(current_page_number, total_pages, {
+                        "page_number": current_page_number,
+                        "page_type": "ending",
+                        "title": outline.ending_title,
+                        "html": self._make_single_page_document(ending_page, current_page_number, total_pages),
+                    })
 
             # 提取最终的 pages 和 page_layouts
             pages = [page_html for _, _, page_html, _ in pages_list]
@@ -493,10 +560,12 @@ class PresentationGenerator:
             # 如果需要保存单页
             if save_pages:
                 pages_dir = os.path.join(os.path.dirname(output_path), "pages")
-                os.makedirs(pages_dir, exist_ok=True)
-                self._save_individual_pages(
+                self._clear_pages_dir(pages_dir)
+                page_paths = self._save_individual_pages(
                     pages, page_layouts, total_pages, pages_dir
                 )
+            else:
+                page_paths = []
 
             return GenerationResult(
                 success=True,
@@ -505,6 +574,7 @@ class PresentationGenerator:
                 document_size=len(document),
                 page_layouts=page_layouts,
                 pages_html=pages,
+                page_paths=page_paths,
             )
 
         except Exception as e:
@@ -515,44 +585,36 @@ class PresentationGenerator:
                 error=f"{type(e).__name__}: {e}\n{tb}",
             )
 
+    def _clear_pages_dir(self, pages_dir: str) -> None:
+        """Clear stale per-page HTML files before saving a new presentation."""
+        import shutil
+
+        if os.path.isdir(pages_dir):
+            shutil.rmtree(pages_dir)
+            logger.info(f"[Pipeline] 清空旧页面目录: {pages_dir}")
+        os.makedirs(pages_dir, exist_ok=True)
+
     def _save_individual_pages(
         self,
         pages: list[str],
         page_layouts: list[dict],
         total_pages: int,
         pages_dir: str,
-    ) -> None:
+    ) -> list[str]:
         """保存每个页面为独立的完整 HTML 文档"""
         if not self.template:
-            return
+            return []
 
+        page_paths: list[str] = []
         for idx, (page_html, layout) in enumerate(zip(pages, page_layouts)):
             page_num = idx + 1
             ptype = layout.get("type", "content")
             title = layout.get("title", "")
 
-            slides_inner = f'''
-                <div class="slide-container">
-                    <div class="slide-wrapper" data-page="{page_num}">
-                        {page_html}
-                    </div>
-                </div>
-            '''
-
-            # 使用模板 raw_html 作为基础
-            single_html = self.template.raw_html
-            single_html = single_html.replace("{{SLIDES_CONTENT}}", slides_inner)
-            single_html = single_html.replace("{{TOTAL_PAGES}}", str(total_pages))
-
-            # 隐藏导航
-            single_html = single_html.replace('<div class="nav-dots"', '<div class="nav-dots" style="display:none"')
-            single_html = single_html.replace('<div class="nav-arrows">', '<div class="nav-arrows" style="display:none">')
-            single_html = single_html.replace('<div class="page-indicator"', '<div class="page-indicator" style="display:none"')
+            single_html = self._make_single_page_document(page_html, page_num, total_pages)
 
             # 保存文件 - 加入模板名称前缀，避免不同模板的页面混淆
             safe_title = title.replace("/", "_")[:20] if title else ""
-            import re as _re
-            safe_title = _re.sub(r'[<>:"/\\|?*]', '_', safe_title)
             # 文件名格式: {页码}_{模板名}_{类型}_{标题}.html
             filename = f"{page_num:02d}_{self.template_name}_{ptype}_{safe_title}.html"
             filepath = os.path.join(pages_dir, filename)
@@ -565,6 +627,55 @@ class PresentationGenerator:
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(single_html)
             logger.info(f"[Pipeline] 保存页面文件: {filename}")
+            page_paths.append(filepath)
+        return page_paths
+
+    def _make_single_page_document(self, page_html: str, page_num: int, total_pages: int) -> str:
+        """把单页片段包成完整 HTML，供缩略图/预览即时渲染。"""
+        if not self.template or not self.renderer:
+            return page_html
+        slides_inner = f'''
+            <div class="slide-container">
+                <div class="slide-wrapper" data-page="{page_num}">
+                    {page_html}
+                </div>
+            </div>
+        '''
+        single_html = self.template.raw_html
+        if "{{SLIDES_CONTENT}}" in single_html:
+            single_html = single_html.replace("{{SLIDES_CONTENT}}", slides_inner)
+        elif "{SLIDES_CONTENT}" in single_html:
+            single_html = single_html.replace("{SLIDES_CONTENT}", slides_inner)
+        else:
+            single_html = self._replace_slides_track_content(single_html, slides_inner)
+        single_html = single_html.replace("{{TOTAL_PAGES}}", str(total_pages))
+        single_html = single_html.replace("{TOTAL_PAGES}", str(total_pages))
+        single_html = self.renderer._inject_runtime_overrides(single_html)
+        single_html = single_html.replace('<div class="nav-dots"', '<div class="nav-dots" style="display:none"')
+        single_html = single_html.replace('<div class="nav-arrows">', '<div class="nav-arrows" style="display:none">')
+        single_html = single_html.replace('<div class="page-indicator"', '<div class="page-indicator" style="display:none"')
+        return single_html
+
+    def _replace_slides_track_content(self, html: str, slides_inner: str) -> str:
+        """Replace sample slides in a raw template when it has no slides placeholder."""
+        try:
+            from bs4 import BeautifulSoup
+        except Exception:
+            return html
+
+        soup = BeautifulSoup(html, "html.parser")
+        track = soup.find("div", id="slidesTrack") or soup.find(
+            "div",
+            class_=lambda c: c and "slides-track" in str(c).split(),
+        )
+        if not track:
+            return html
+
+        track.clear()
+        replacement = BeautifulSoup(slides_inner, "html.parser")
+        for child in list(replacement.contents):
+            track.append(child)
+        return str(soup)
 
 
 # ============================================================
@@ -595,20 +706,19 @@ def outline_from_dict(data: dict) -> PresentationOutline:
                 title=cp_data["title"],
                 summary=cp_data.get("summary", ""),
                 bullet_points=cp_data.get("bullets", []),
-                description=cp_data.get("description", ""),
-                highlights=cp_data.get("highlights"),
-                steps=cp_data.get("steps"),
-                compare=cp_data.get("compare"),
             ))
         sections.append(SectionInput(
             title=section_data["title"],
-            subtitle=section_data.get("subtitle", ""),
             content_pages=content_pages,
+            include_section_page=bool(section_data.get("include_section_page", True)),
         ))
     return PresentationOutline(
         title=data.get("title", ""),
         subtitle=data.get("subtitle", ""),
         date_badge=data.get("date_badge", ""),
+        toc_items=data.get("toc_items", []),
+        include_toc=bool(data.get("include_toc", True)),
+        include_ending=bool(data.get("include_ending", True)),
         sections=sections,
         ending_title=data.get("ending_title", "谢谢观看"),
         ending_message=data.get("ending_message", ""),
