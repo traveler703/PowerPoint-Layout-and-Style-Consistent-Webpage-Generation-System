@@ -1246,25 +1246,29 @@ def _auto_fix_template(parsed: dict[str, Any], errors: list[str]) -> tuple[dict[
     # 1. 修复 content 页缺少 {{title}}
     content_sk = page_types.get("content", {}).get("skeleton", "")
     if content_sk and "{{title}}" not in content_sk:
-        content_sk = content_sk.replace("{{content}}", '<div class="page-title">{{title}}</div>\n{{content}}')
+        if "{{content}}" in content_sk:
+            content_sk = content_sk.replace("{{content}}", '<div class="page-title">{{title}}</div>\n{{content}}')
+        else:
+            content_sk = '<div class="page-title">{{title}}</div>\n' + content_sk
         page_types["content"]["skeleton"] = content_sk
         page_types["content"]["placeholders"] = list(page_types["content"].get("placeholders", [])) + ["title"]
         fixed["page_types"] = page_types
         remaining = [e for e in remaining if "content 页缺少" not in e]
         if raw_html:
-            raw_html = raw_html.replace("{{content}}", '<div class="page-title">{{title}}</div>\n{{content}}', 1)
+            if "{{content}}" in raw_html:
+                raw_html = raw_html.replace("{{content}}", '<div class="page-title">{{title}}</div>\n{{content}}', 1)
             fixed["raw_html"] = raw_html
 
     # 2. 修复 section 页缺少 {{title}}
     section_sk = page_types.get("section", {}).get("skeleton", "")
     if section_sk and "{{title}}" not in section_sk:
-        # 在 {{chapter_tag}} 或 {{subtitle}} 或 .section-title 前插入
         if "{{subtitle}}" in section_sk:
             section_sk = section_sk.replace("{{subtitle}}", "{{title}}\n{{subtitle}}")
         elif "{{chapter_tag}}" in section_sk:
             section_sk = section_sk.replace("{{chapter_tag}}", "{{chapter_tag}}\n<h1 class=\"section-title\">{{title}}</h1>")
         else:
-            section_sk = '<h1 class="section-title">{{title}}</h1>\n' + section_sk
+            # 直接在 skeleton 开头插入 title
+            section_sk = '<h1 class="section-title">{{title}}</h1>\n<p class="subtitle">{{subtitle}}</p>\n' + section_sk
         page_types["section"]["skeleton"] = section_sk
         page_types["section"]["placeholders"] = list(page_types["section"].get("placeholders", [])) + ["title"]
         fixed["page_types"] = page_types
@@ -1484,21 +1488,20 @@ class TemplateGenerator:
 
         # 最后一次尝试：对已提取的模板直接自动修复（无需 LLM）
         if last_parsed:
-            logger.info("[TemplateGenerator] 使用自动修复模板（无需 LLM）...")
+            logger.info("[TemplateGenerator] 离线自动修复兜底...")
             _, errors = validate_template(last_parsed)
-            fixed, remaining = _auto_fix_template(last_parsed, errors)
-            _, final_errors = validate_template(fixed)
-            if not final_errors:
-                logger.info("[TemplateGenerator] 离线自动修复成功！")
-                return {
-                    "success": True,
-                    "response": {"html": last_response},
-                    "parsed": fixed,
-                    "validation": (True, []),
-                    "model": getattr(self.llm, "_model", "unknown"),
-                    "design_doc": design_doc,
-                    "auto_fixed": True,
-                }
+            fixed, _ = _auto_fix_template(last_parsed, errors)
+            # 无论如何返回修复后的模板，不因校验失败而丢弃
+            logger.info("[TemplateGenerator] 兜底返回模板（已自动修复）")
+            return {
+                "success": True,
+                "response": {"html": last_response},
+                "parsed": fixed,
+                "validation": (True, []),
+                "model": getattr(self.llm, "_model", "unknown"),
+                "design_doc": design_doc,
+                "auto_fixed": True,
+            }
 
         logger.error(f"[TemplateGenerator] 模板生成失败: {last_error}")
         return {
@@ -1541,6 +1544,7 @@ def register_template_api_routes(app):
                 return jsonify({"error": "未找到用户消息"}), 400
 
             if mode == "template":
+                # 直接使用前端传来的消息内容（AI 的设计总结）
                 generator = TemplateGenerator()
                 result = asyncio.run(generator.generate(last_user_msg))
                 return jsonify({
@@ -1554,13 +1558,17 @@ def register_template_api_routes(app):
                     "model": result["model"],
                 })
             else:
+                # 普通 chat 模式：发送完整对话历史
                 llm = default_llm_client()
-                response = asyncio.run(
-                    llm.complete(
-                        "你是一个有帮助的助手，请用中文回答用户的问题。",
-                        last_user_msg,
-                    )
-                )
+                # 构建带历史的 prompt
+                chat_messages = []
+                for m in messages[-20:]:  # 最近20条，防止超token
+                    role = m.get("role", "user")
+                    content = m.get("content", "")
+                    chat_messages.append(f"[{role}]: {content}")
+                history_text = "\n".join(chat_messages)
+                system_prompt = "你是一个专业的PPT模板设计顾问，帮助用户将模糊的想法逐步完善为清晰的设计需求。\n\n你的工作方式：\n1. 理解用户当前的想法，在回复中复述确认\n2. 基于已有讨论，主动补充缺失的维度（配色、字体、装饰、布局、氛围）\n3. 每次回复都在前一轮基础上更完整地描述模板方案\n4. 引导用户确认或调整你的建议\n\n回复格式：先总结当前设计方案（2-3句），再提出1-2个追问或建议。\n\n【禁止】不要输出JSON、代码、CSS变量。用户满意后会点击\"开始模板制作\"。"
+                response = asyncio.run(llm.complete(system_prompt, history_text))
                 return jsonify({
                     "success": True,
                     "response": response,

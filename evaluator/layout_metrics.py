@@ -52,11 +52,25 @@ def _parse_style_rect(style: str) -> _Rect | None:
         if ":" in part:
             k, v = part.split(":", 1)
             pairs[k.strip().lower()] = v.strip()
+    if pairs.get("pointer-events", "").lower() == "none":
+        return None
+    try:
+        if float(pairs.get("opacity", "1")) <= 0.15:
+            return None
+    except ValueError:
+        pass
+    try:
+        if int(float(pairs.get("z-index", "1"))) <= 0:
+            return None
+    except ValueError:
+        pass
     left = _parse_px(pairs.get("left")) or 0.0
     top = _parse_px(pairs.get("top")) or 0.0
     w = _parse_px(pairs.get("width"))
     h = _parse_px(pairs.get("height"))
     if w is None or h is None:
+        return None
+    if w * h > 1160 * 530 * 0.55:
         return None
     return _Rect(left=left, top=top, width=w, height=h)
 

@@ -100,6 +100,7 @@
                 <span class="message-time">{{ msg.time }}</span>
               </div>
               <div class="message-body" v-html="renderMarkdown(msg.content)"></div>
+              <!-- 模板已生成 -->
               <div v-if="msg.role === 'assistant' && msg.llmResponse?.parsed" class="message-template-preview">
                 <div class="mtp-label">
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -117,6 +118,25 @@
                   </button>
                 </div>
                 <pre v-if="msg.showFull" class="mtp-code">{{ formatJson(msg.llmResponse.parsed) }}</pre>
+              </div>
+              <!-- 未生成模板时显示制作按钮 -->
+              <div v-else-if="msg.role === 'assistant' && !msg.creating && !msg.llmResponse?.parsed" class="message-create-action">
+                <button class="btn-create-template" @click="createTemplateFromChat(idx)" :disabled="isTyping">
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                  </svg>
+                  开始模板制作
+                </button>
+                <span class="create-hint">基于当前对话需求生成完整模板</span>
+              </div>
+              <!-- 制作中 -->
+              <div v-else-if="msg.role === 'assistant' && msg.creating" class="message-create-action">
+                <div class="creating-indicator">
+                  <svg class="spin-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/>
+                  </svg>
+                  正在生成模板...
+                </div>
               </div>
             </div>
           </div>
@@ -996,23 +1016,18 @@ async function sendMessage() {
       content: m.content
     }))
 
-    const response = await callLLM(text, history)
+    // 普通聊天模式 - AI 帮助细化需求
+    const response = await callLLM(text, history, 'chat')
 
     const assistantMsg = {
       role: 'assistant',
-      content: extractTextFromResponse(response),
-      llmResponse: response,
-      parsedConfig: response.parsed,
+      content: typeof response.response === 'string' ? response.response : extractTextFromResponse(response),
+      llmResponse: null,  // 聊天不生成模板
+      parsedConfig: null,
       showFull: false,
       time: formatTime(new Date())
     }
     messages.value.push(assistantMsg)
-
-    // Apply parsed config from LLM response
-    if (response.parsed) {
-      mergeConfig(response.parsed)
-      store.showToastMessage('模板配置已更新')
-    }
   } catch (err) {
     messages.value.push({
       role: 'assistant',
@@ -1029,32 +1044,58 @@ async function sendMessage() {
   await scrollToBottom()
 }
 
-async function callLLM(message, history = []) {
+async function createTemplateFromChat(msgIdx) {
+  if (isTyping.value) return
+  const msg = messages.value[msgIdx]
+  if (!msg) return
+  msg.creating = true
+  isTyping.value = true
+
   try {
+    // 直接用该 AI 回复的内容作为模板需求描述
+    const designSummary = msg.content
+
+    const response = await callLLM(designSummary, [], 'template')
+
+    if (response.parsed) {
+      msg.llmResponse = response
+      msg.parsedConfig = response.parsed
+      mergeConfig(response.parsed)
+      store.showToastMessage('模板已生成！')
+    } else {
+      store.showToastMessage('模板生成失败，请重试')
+    }
+  } catch (e) {
+    store.showToastMessage('生成出错: ' + e.message)
+  } finally {
+    msg.creating = false
+    isTyping.value = false
+    await nextTick()
+  }
+}
+
+async function callLLM(message, history = [], mode = 'chat') {
+  try {
+    const msgs = [...history, { role: 'user', content: message }]
+    if (mode === 'template') {
+      msgs.unshift({ role: 'system', content: SYSTEM_PROMPT })
+    }
+    const body = { messages: msgs, mode: mode }
     const res = await fetch('/api/llm/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          ...history,
-          { role: 'user', content: message }
-        ],
-        mode: 'template'
-      })
+      body: JSON.stringify(body)
     })
     if (res.ok) {
       const data = await res.json()
       currentModel.value = data.model || 'deepseek-chat'
       return data
     }
-    console.warn(`LLM API 返回错误状态 ${res.status}，使用本地生成`)
+    console.warn(`LLM API error ${res.status}`)
   } catch (e) {
-    console.warn('LLM API 调用失败，将使用本地生成:', e)
+    console.warn('LLM API call failed:', e)
   }
-
-  // Fallback: generate locally based on keywords
-  return generateLocalFallback(message)
+  return mode === 'template' ? generateLocalFallback(message) : { response: '抱歉，请求失败，请重试。' }
 }
 
 function generateLocalFallback(message) {
@@ -2786,4 +2827,42 @@ onMounted(() => {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(128, 128, 128, 0.4);
 }
+
+.message-create-action {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.btn-create-template {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-purple));
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-create-template:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(99,102,241,0.4); }
+.btn-create-template:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.create-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.creating-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--accent);
+}
+.spin-icon { animation: spin 1.2s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>

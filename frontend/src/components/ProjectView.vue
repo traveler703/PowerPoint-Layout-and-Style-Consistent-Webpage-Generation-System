@@ -14,26 +14,7 @@
           <span>{{ store.currentProject?.name }}</span>
         </div>
       </div>
-      <div class="project-header-right">
-        <button class="btn btn-ghost">
-          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
-          </svg>
-          分享
-        </button>
-        <button class="btn btn-ghost" @click="handleExport">
-          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-          </svg>
-          导出
-        </button>
-        <button class="btn btn-primary" @click="generatePPT">
-          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-          </svg>
-          生成PPT
-        </button>
-      </div>
+      <div class="project-header-right"></div>
     </header>
 
     <!-- Layout -->
@@ -76,22 +57,37 @@
               上一步
             </button>
             <button
-              v-if="!isLastStep"
+              v-if="showNextButton"
               class="btn btn-primary"
               @click="handleNextStep"
             >
-              {{ isLastStep ? '生成PPT' : '下一步' }}
-              <svg v-if="!isLastStep" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              下一步
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
               </svg>
             </button>
             <button
-              v-if="isLastStep"
+              v-if="store.currentStep === 'preview'"
               class="btn btn-primary"
               :disabled="store.isGenerating"
               @click="generatePPTParallel"
             >
               生成PPT
+            </button>
+            <button
+              v-if="store.currentStep === 'preview'"
+              class="btn btn-ghost"
+              @click="store.setStep('report')"
+            >
+              查看报告
+            </button>
+            <button
+              v-if="store.currentStep === 'report'"
+              class="btn btn-primary"
+              :disabled="store.isEvaluating"
+              @click="store.evaluateGeneratedPresentation()"
+            >
+              {{ store.isEvaluating ? '评估中...' : '刷新报告' }}
             </button>
           </div>
         </div>
@@ -116,6 +112,11 @@
           <div class="step-panel" :class="{ active: store.currentStep === 'preview' }">
             <PreviewPanel />
           </div>
+
+          <!-- Step 5: Report -->
+          <div class="step-panel" :class="{ active: store.currentStep === 'report' }">
+            <ReportPanel />
+          </div>
         </div>
       </main>
     </div>
@@ -130,16 +131,19 @@ import OutlineEditorPanel from './OutlineEditorPanel.vue'
 import StyleSelectorPanel from './StyleSelectorPanel.vue'
 import PreviewPanel from './PreviewPanel.vue'
 import ProgressBar from './ProgressBar.vue'
+import ReportPanel from './ReportPanel.vue'
 
 const stepDescriptions = {
   input: '粘贴或上传文档',
   outline: '调整内容结构',
   style: '选择PPT模板',
-  preview: '查看并下载'
+  preview: '查看并下载',
+  report: '检查质量指标'
 }
 
 const currentStepIndex = computed(() => store.workflowSteps.indexOf(store.currentStep))
 const isLastStep = computed(() => currentStepIndex.value === store.workflowSteps.length - 1)
+const showNextButton = computed(() => !isLastStep.value && store.currentStep !== 'preview')
 
 const handleNextStep = () => {
   store.nextStep()
@@ -149,7 +153,4 @@ const generatePPTParallel = () => {
   store.generatePPTParallel()
 }
 
-const handleExport = () => {
-  store.showToastMessage('正在导出PPT...')
-}
 </script>

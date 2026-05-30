@@ -98,6 +98,12 @@ export async function rewriteSlide(data) {
   return response.data
 }
 
+// 评估生成结果
+export async function evaluatePresentation(data) {
+  const response = await apiClient.post('/evaluate-presentation', data)
+  return response.data
+}
+
 // 并行生成PPT（一次性返回所有页面）
 export async function generatePPTParallel(data) {
   const response = await apiClient.post('/generate-ppt-parallel', data)
@@ -140,11 +146,12 @@ export async function parseText(data) {
 // 模板生成 API (LLM 驱动)
 // ----------------------------------------
 
-// LLM 对话生成模板
-export async function llmGenerateTemplate(messages, mode = 'template') {
+// LLM 对话生成模板：后端生成 HTML，并解析为模板配置
+export async function llmGenerateTemplate(messages, mode = 'template', currentTemplate = null) {
   const response = await apiClient.post('/llm/chat', {
     messages: messages,
-    mode: mode
+    mode: mode,
+    current_template: currentTemplate
   })
   return response.data
 }
@@ -229,6 +236,7 @@ export default {
   generateOutline,
   generatePreview,
   rewriteSlide,
+  evaluatePresentation,
   generatePPTParallel,
   // PPT管理
   savePPT,

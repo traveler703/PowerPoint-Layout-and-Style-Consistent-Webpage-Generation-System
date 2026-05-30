@@ -1,6 +1,5 @@
 import { reactive, computed } from 'vue'
-import { io } from 'socket.io-client'
-import { getProjects, createProject, updateProject, deleteProject, createOutline, getOutline, updateOutline, getProjectOutlines, getProjectPPTs, getPPT, generatePPTParallel, getTemplates, updateTemplate, deleteTemplate, setDefaultTemplate, llmGenerateOnce, saveTemplateToFile } from '@/services/api'
+import { getProjects, createProject, updateProject, deleteProject, createOutline, getOutline, updateOutline, getProjectOutlines, getProjectPPTs, getPPT, evaluatePresentation, getTemplates, updateTemplate, deleteTemplate, setDefaultTemplate, llmGenerateOnce, saveTemplateToFile } from '@/services/api'
 
 // 项目类型图标映射
 const typeIcons = {
@@ -23,16 +22,14 @@ const typeNames = {
 }
 
 // 工作流步骤
-const workflowSteps = ['input', 'outline', 'style', 'preview']
+const workflowSteps = ['input', 'outline', 'style', 'preview', 'report']
 const stepTitles = {
   input: '输入文档',
   outline: '编辑大纲',
   style: '应用模板',
-  preview: '预览导出'
+  preview: '预览导出',
+  report: '查看报告'
 }
-
-let progressSocket = null
-let progressSocketInitialized = false
 
 // 全局状态
 export const store = reactive({
@@ -108,7 +105,12 @@ export const store = reactive({
   generatedSlides: [],  // 存储生成的幻灯片HTML
   currentGeneratingPage: 0,  // 当前正在生成的页码
   totalPagesToGenerate: 0,   // 总共要生成的页数
-  directSlideHtml: null,      // 实验性：直接加载的HTML
+  directSlideHtml: null,      // 后端生成并保存到 output 目录的完整演示文稿HTML
+  presentationOutputPath: null,
+  generationStartedAt: null,
+  lastGenerationDuration: 0,
+  evaluationReport: null,
+  isEvaluating: false,
 
   // 大纲状态
   currentOutlineId: null,  // 当前大纲ID
@@ -119,13 +121,6 @@ export const store = reactive({
   // 加载状态
   loading: false,
   error: null,
-
-  // 进度条状态
-  showProgressBar: false,
-  progressCurrent: 0,
-  progressTotal: 0,
-  progressStatus: '',
-  progressPageTitle: '',
 
   // 初始化 - 从数据库加载数据
   async init() {
@@ -159,15 +154,6 @@ export const store = reactive({
         console.log('获取统计数据失败')
       }
 
-      // 实验性：加载slide_1.html
-      try {
-        const res = await fetch('/output/slide_1.html')
-        if (res.ok) {
-          this.directSlideHtml = await res.text()
-        }
-      } catch (e) {
-        console.log('slide_1.html not found')
-      }
     } catch (err) {
       this.error = '加载项目失败'
       console.error('Load projects error:', err)
@@ -603,10 +589,6 @@ export const store = reactive({
       // 页面类型映射：支持 cover, toc, section, content, end
       layout: slide.slide_type || 'content',
       bullets: slide.content_points || slide.bullets || [],
-      description: slide.description || '',
-      highlights: slide.highlights || null,
-      steps: slide.steps || null,
-      compare: slide.compare || null,
       image: null,
       background: null,
       logo: null,
@@ -661,11 +643,7 @@ export const store = reactive({
       image: null,
       background: null,
       logo: null,
-      bullets: ['新内容'],
-      description: '',
-      highlights: null,
-      steps: null,
-      compare: null,
+      bullets: ['新内容']
     }
     this.pages.push(newPage)
     this.currentPageId = newPage.id
@@ -835,10 +813,6 @@ export const store = reactive({
           background: null,
           logo: null,
           bullets: p.bullets || p.items || [],
-          description: p.description || '',
-          highlights: p.highlights || null,
-          steps: p.steps || null,
-          compare: p.compare || null,
           generatedHtml: null
         })
       }
@@ -1107,92 +1081,42 @@ export const store = reactive({
     if (text) this.progressText = text
   },
 
-  initProgressSocket() {
-    if (progressSocketInitialized) return
-    progressSocketInitialized = true
+  updateStreamingProgress(event) {
+    const total = Number(event.total) || this.totalPagesToGenerate || 1
+    const current = Math.min(Number(event.current) || 0, total)
+    const title = event.page?.title ? `：${event.page.title}` : ''
+    const displayPage = current >= total ? total : current + 1
+    this.currentGeneratingPage = displayPage
+    this.totalPagesToGenerate = total
+    this.setProgress(Math.round((current / total) * 100), current >= total ? '生成完成' : `正在生成第 ${displayPage} / ${total} 页${title}`)
 
-    progressSocket = io('/', {
-      path: '/socket.io',
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: 5
-    })
-
-    progressSocket.on('ppt_generation_progress', (payload = {}) => {
-      const total = Number(payload.total) || this.progressTotal || 0
-      const current = Math.min(Number(payload.current) || 0, total || Number(payload.current) || 0)
-      const page = payload.page || {}
-
-      if (total > 0) {
-        this.progressTotal = total
-        if (current >= this.progressCurrent || page.status === 'completed' || page.status === 'started') {
-          this.progressCurrent = current
-        }
-        this.progressStatus = page.status || 'generating'
-        this.progressPageTitle = page.title || ''
-        this.progressPercent = Math.round((this.progressCurrent / total) * 100)
-        this.progressText = this.progressCurrent >= total ? 'PPT生成完成' : `正在生成PPT：${this.progressCurrent}/${total}`
-        // 不阻塞UI，只显示轻量进度
-        this.showProgressBar = true
-      }
-    })
-
-    // 监听流式页面推送
-    progressSocket.on('ppt_page_ready', (slide = {}) => {
-      const existing = this.generatedSlides.find(s => s.pageNumber === slide.page_number)
-      if (!existing) {
-        this.generatedSlides.push({
-          pageNumber: slide.page_number || this.generatedSlides.length + 1,
-          pageType: slide.page_type || 'content',
-          title: slide.title || '',
-          html: slide.html || '',
-        })
-        // 按页码排序
-        this.generatedSlides.sort((a, b) => a.pageNumber - b.pageNumber)
-      }
-      // 如果是当前预览的页面，触发更新
-      if (this.currentSlide === slide.page_number) {
-        this.currentSlide = slide.page_number  // 触发响应式
-      }
-    })
   },
 
-  startGenerationProgress(total) {
-    this.initProgressSocket()
-    this.progressCurrent = 0
-    this.progressTotal = total || 0
-    this.progressStatus = 'started'
-    this.progressPageTitle = ''
-    this.showProgressBar = total > 0
-  },
-
-  updateGenerationProgress(current, total, title = '') {
-    if (!total) return
-    this.progressCurrent = Math.min(current, total)
-    this.progressTotal = total
-    this.progressPageTitle = title
-    this.progressPercent = Math.round((this.progressCurrent / total) * 100)
-    this.progressText = this.progressCurrent >= total ? 'PPT生成完成' : `正在生成PPT：${this.progressCurrent}/${total}`
-    this.showProgressBar = true
-  },
-
-  finishGenerationProgress() {
-    if (this.progressTotal > 0) {
-      this.updateGenerationProgress(this.progressTotal, this.progressTotal)
+  async evaluateGeneratedPresentation() {
+    if (this.generatedSlides.length === 0) {
+      this.showToastMessage('请先生成PPT')
+      return false
     }
-    setTimeout(() => {
-      if (!this.isGenerating) {
-        this.showProgressBar = false
-      }
-    }, 1200)
-  },
 
-  resetGenerationProgress() {
-    this.showProgressBar = false
-    this.progressCurrent = 0
-    this.progressTotal = 0
-    this.progressStatus = ''
-    this.progressPageTitle = ''
+    this.isEvaluating = true
+    try {
+      const response = await evaluatePresentation({
+        slides: this.generatedSlides,
+        template: this.selectedStyle || 'tech',
+        total_generation_time: this.lastGenerationDuration || 0
+      })
+      if (response.success) {
+        this.evaluationReport = response.report
+        return true
+      }
+      throw new Error(response.error || '评估失败')
+    } catch (err) {
+      console.error('评估报告生成失败:', err)
+      this.showToastMessage('评估报告生成失败: ' + err.message)
+      return false
+    } finally {
+      this.isEvaluating = false
+    }
   },
 
   // 设置页面数据（用于打开项目时加载）
@@ -1238,28 +1162,29 @@ export const store = reactive({
 
     this.isGenerating = true
     this.generatedSlides = []
+    this.directSlideHtml = null
+    this.presentationOutputPath = null
+    this.evaluationReport = null
+    this.lastGenerationDuration = 0
     this.currentGeneratingPage = 0
     this.currentStep = 'preview'
 
-    if (!this.currentOutlineId) {
-      await this.saveOutline()
+    let outlineId = this.currentOutlineId
+    if (!outlineId) {
+      outlineId = await this.saveOutline()
     }
 
     try {
-      let llmPages = this.parseResult?.pages || []
+      let llmPages = this.pages.map(p => ({
+        type: p.layout || 'content',
+        title: p.title || '',
+        subtitle: p.subtitle || '',
+        summary: p.summary || p.subtitle || '',
+        bullets: p.bullets || p.items || []
+      }))
 
-      if (llmPages.length === 0 && this.pages.length > 0) {
-        llmPages = this.pages.map(p => ({
-          type: p.layout || 'content',
-          title: p.title || '',
-          subtitle: p.subtitle || '',
-          summary: p.subtitle || '',
-          bullets: p.bullets || [],
-          description: p.description || '',
-          highlights: p.highlights || null,
-          steps: p.steps || null,
-          compare: p.compare || null,
-        }))
+      if (llmPages.length === 0) {
+        llmPages = this.parseResult?.pages || []
       }
 
       if (llmPages.length === 0) {
@@ -1272,64 +1197,128 @@ export const store = reactive({
         subtitle: p.subtitle || p.summary || '',
         summary: p.summary || p.subtitle || '',
         bullets: p.bullets || p.items || [],
-        description: p.description || '',
-        highlights: p.highlights || null,
-        steps: p.steps || null,
-        compare: p.compare || null,
       }))
 
-      const progressTotal = Math.max(pages.length, 1)
       this.totalPagesToGenerate = pages.length
       this.setProgress(0, '正在并行生成所有页面...')
-      this.startGenerationProgress(progressTotal)
 
-      // 清空旧的生成结果
-      this.generatedSlides = []
+      const requestPayload = {
 
-      // 等待 SocketIO 连接就绪，避免丢失早期页面事件
-      await new Promise(r => setTimeout(r, 800))
-
-      // 调用并行生成接口（页面会通过 SocketIO ppt_page_ready 事件实时推送）
-      const result = await generatePPTParallel({
         pages: pages,
-        topic: this.parseResult.title || 'PPT演示文稿',
+        topic: this.parseResult?.title || 'PPT演示文稿',
         template: this.selectedStyle || 'tech',
-        save_pages: true,
-        progress_total: progressTotal
+        save_pages: true
+      }
+
+      this.generationStartedAt = performance.now()
+      const response = await fetch('/api/generate-ppt-progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestPayload)
       })
+
+      if (!response.ok || !response.body) {
+        throw new Error(`生成请求失败 (${response.status})`)
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let result = null
+
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (!line.trim()) continue
+          const event = JSON.parse(line)
+          if (event.type === 'progress') {
+            this.updateStreamingProgress(event)
+          } else if (event.type === 'slide' && event.slide) {
+            const slide = event.slide
+            const pageNumber = slide.page_number || this.generatedSlides.length + 1
+            const nextSlide = {
+              pageNumber,
+              pageType: slide.page_type || 'content',
+              title: slide.title || '',
+              layoutType: slide.layout_type || '',
+              pageUrl: slide.page_url || '',
+              html: slide.html || '',
+              evaluation: slide.evaluation || null
+            }
+            const existingIndex = this.generatedSlides.findIndex(s => s.pageNumber === pageNumber)
+            if (existingIndex >= 0) {
+              this.generatedSlides.splice(existingIndex, 1, nextSlide)
+            } else {
+              this.generatedSlides.push(nextSlide)
+              this.generatedSlides.sort((a, b) => a.pageNumber - b.pageNumber)
+            }
+            if (!this.currentSlide || this.generatedSlides.length === 1) {
+              this.currentSlide = pageNumber
+            }
+          } else if (event.type === 'complete') {
+            result = event.result
+          } else if (event.type === 'error') {
+            throw new Error(event.error || '生成失败')
+          }
+        }
+      }
+
+      if (buffer.trim()) {
+        const event = JSON.parse(buffer)
+        if (event.type === 'complete') result = event.result
+      }
+
+      if (!result) {
+        throw new Error('生成接口未返回结果')
+      }
 
       if (!result.success) {
         throw new Error(result.error || '生成失败')
       }
 
-      // 完整HTML
-      this.directSlideHtml = result.html
+      // 直接使用后端保存到 output 目录的完整HTML，保证预览/下载与生成文件一致
 
-      // SocketIO 已实时推送了各页面，如服务端返回的 slides 有补充则合并
-      if (result.slides && this.generatedSlides.length === 0) {
+      this.directSlideHtml = result.html
+      this.presentationOutputPath = result.output_path || null
+
+      // 解析页面信息
+      if (result.slides) {
+        this.generatedSlides = []
+
         for (const slide of result.slides) {
           this.generatedSlides.push({
             pageNumber: slide.page_number || this.generatedSlides.length + 1,
             pageType: slide.page_type || 'content',
             title: slide.title || '',
             layoutType: slide.layout_type || '',
-            html: slide.html || '',
+            pageUrl: slide.page_url || '',  // 页面文件路径
+            html: slide.html || '',  // 页面HTML内容
+            evaluation: slide.evaluation || null
+
           })
+        }
+        if (this.generatedSlides.length > 0) {
+          this.currentSlide = this.generatedSlides[0].pageNumber
         }
       }
 
-      this.updateGenerationProgress(progressTotal, progressTotal)
+      this.lastGenerationDuration = this.generationStartedAt ? (performance.now() - this.generationStartedAt) / 1000 : 0
+      await this.evaluateGeneratedPresentation()
       this.setProgress(100, '生成完成')
       this.showToastMessage('PPT生成完成！')
       this.isGenerating = false
-      this.finishGenerationProgress()
       return true
 
     } catch (err) {
       console.error('并行生成PPT失败:', err)
       this.showToastMessage('生成PPT失败: ' + err.message)
       this.isGenerating = false
-      this.resetGenerationProgress()
       return false
     }
   }

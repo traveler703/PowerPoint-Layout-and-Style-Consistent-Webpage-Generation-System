@@ -15,6 +15,52 @@ class TemplateRenderer:
     def __init__(self, template: Template) -> None:
         self.template = template
 
+    def _inject_runtime_overrides(self, html: str) -> str:
+        """Add safety CSS that keeps generated content inside the template canvas."""
+        css = """
+<style id="landppt-runtime-overrides">
+.slide .page-content{overflow:hidden;}
+.slide .page-content.allow-scroll{overflow:auto;scrollbar-width:thin;}
+.slide .page-content::-webkit-scrollbar{width:6px;height:6px;}
+.slide .page-content::-webkit-scrollbar-thumb{border-radius:10px;background:rgba(148,163,184,.45);}
+.slide .page-content .generated-toc{max-height:100%;overflow:hidden!important;padding:4px!important;box-sizing:border-box!important;}
+.slide.toc .page-content .generated-toc{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:16px 22px!important;align-content:center!important;width:100%!important;height:100%!important;}
+.slide.toc .page-content .generated-toc .toc-item{display:flex!important;align-items:center!important;gap:14px!important;width:auto!important;min-width:0!important;min-height:0!important;margin:0!important;padding:14px 18px!important;border-radius:22px!important;background:#fff!important;border:1px solid rgba(255,127,63,.18)!important;border-left:6px solid var(--color-primary,#FF7F3F)!important;box-shadow:0 8px 22px rgba(255,127,63,.08)!important;box-sizing:border-box!important;}
+.slide.toc .page-content .generated-toc .toc-number{display:flex!important;align-items:center!important;justify-content:center!important;width:48px!important;height:48px!important;flex:0 0 48px!important;border-radius:999px!important;background:rgba(255,127,63,.10)!important;color:var(--color-primary,#FF7F3F)!important;font-weight:800!important;font-size:18px!important;}
+.slide .page-content .generated-toc .toc-text{min-width:0!important;overflow:hidden!important;}
+.slide .page-content .generated-toc .toc-text h3{font-size:clamp(15px,1.55vw,20px)!important;line-height:1.35!important;margin:0!important;white-space:normal!important;overflow-wrap:anywhere!important;color:var(--color-text,#2D3436)!important;}
+.slide .page-content .generated-toc .toc-text p:empty{display:none!important;}
+.slide .page-content .generated-toc .toc-text p{font-size:12px!important;line-height:1.35!important;margin:4px 0 0!important;color:var(--color-text-muted,#6B7280)!important;}
+.slide.cover > h1:not(.main-title){position:absolute!important;left:80px!important;right:80px!important;top:190px!important;margin:0!important;font-size:clamp(44px,6vw,78px)!important;line-height:1.15!important;color:#fff!important;text-shadow:0 0 36px rgba(96,165,250,.38)!important;z-index:20!important;}
+.slide.cover > .subtitle{color:rgba(224,242,254,.9)!important;z-index:20!important;}
+.slides-track > .slide-container,
+.slides-track > .slide-container > .slide-wrapper{width:1280px!important;height:720px!important;min-width:1280px!important;min-height:720px!important;flex:0 0 1280px!important;}
+.slides-track > .slide-container > .slide-wrapper > .slide{width:1280px!important;height:720px!important;min-width:1280px!important;min-height:720px!important;}
+.slide .page-content .slide,
+.slide .page-content .slides-wrapper,
+.slide .page-content .slide-container,
+.slide .page-content .slide-wrapper{width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;box-shadow:none!important;border-radius:0!important;background:transparent!important;}
+</style>
+<script id="landppt-runtime-fixes">
+(function(){
+  function fixPageCount(){
+    var track=document.getElementById('slidesTrack');
+    var total=track ? track.querySelectorAll(':scope > .slide-container, :scope > .slide').length : document.querySelectorAll('.slide').length;
+    var totalEl=document.getElementById('totalPages');
+    if(totalEl && total) totalEl.textContent=String(total);
+    window.__totalSlides=total;
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',fixPageCount);
+  else fixPageCount();
+})();
+</script>
+"""
+        if "landppt-runtime-overrides" in html:
+            return html
+        if "</head>" in html:
+            return html.replace("</head>", css + "\n</head>", 1)
+        return css + html
+
     def render_page(
         self,
         page_type: str,
@@ -219,7 +265,7 @@ class TemplateRenderer:
             if not navigation:
                 base_html = re.sub(r'<div class="nav-dots"[^>]*></div>', '', base_html)
                 base_html = base_html.replace('<div class="nav-arrows">', '<div class="nav-arrows" style="display:none">')
-            return base_html
+            return self._inject_runtime_overrides(base_html)
 
         soup = BeautifulSoup(base_html, "html.parser")
 
@@ -262,7 +308,7 @@ class TemplateRenderer:
             base_html = re.sub(r'<div class="nav-dots"[^>]*></div>', '', base_html)
             base_html = base_html.replace('<div class="nav-arrows">', '<div class="nav-arrows" style="display:none">')
 
-        return base_html
+        return self._inject_runtime_overrides(base_html)
 
     def _render_default_page(
         self,
@@ -308,7 +354,7 @@ class TemplateRenderer:
                 f'<div class="toc-text"><h3>{title_esc}</h3><p>{desc_esc}</p></div>'
                 f'</div>'
             )
-        return "".join(html_parts)
+        return f'<div class="generated-toc">{"".join(html_parts)}</div>'
 
     def _render_comparison_items(self, items: list[dict[str, Any]]) -> str:
         if not items:
