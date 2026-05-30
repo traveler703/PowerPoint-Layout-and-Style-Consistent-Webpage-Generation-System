@@ -201,10 +201,15 @@ def build_content_html_prompt(
         "- 每个 div 必须有 `overflow: hidden` 或明确的 overflow 控制",
         "- 宽度和高度必须用具体数值（如 1160px, 100%）而不是 auto",
         "",
+        "【背景要求】",
+        "- **主容器不要设置背景色**，使用 `background: transparent` 或直接不设置 background",
+        "- 如需区分卡片和背景，卡片可使用半透明背景",
+        "- 不要使用深色实色背景（如 #0a0e1a），让模板本身的海蓝渐变背景透出来",
+        "",
         "示例：",
         "```html",
         "<div style=\"width:1160px;height:530px;overflow:hidden;display:flex;\">",
-        "  <div style=\"flex:1;background:rgba(0,0,0,0.05);overflow:hidden;\">内容...</div>",
+        "  <div style=\"flex:1;background:rgba(0,255,255,0.05);overflow:hidden;\">内容...</div>",
         "</div>",
         "```",
     ])
@@ -214,12 +219,12 @@ def build_content_html_prompt(
     bullet_lines = "\n".join(f"- {b}" for b in content.bullet_points)
     user_prompt = (
         f"请为内容区域生成创意布局。\n\n"
-        f"标题：{content.title}\n"
+        f"（参考）页面标题（模板已显示，内容区请勿重复）：{content.title}\n"
         f"副标题/摘要：{content.summary}\n"
         f"要点：\n{bullet_lines}\n\n"
         f"约束条件：\n"
         f"1. 内容区域：1160px x 530px，禁止溢出\n"
-        f"2. 不要生成 page-title\n"
+        f"2. **模板已显示标题，内容区不要重复生成标题文字**\n"
         f"3. 字体 14-18px，保持内容简洁\n"
         f"4. 不要使用统一的 4 宫格布局\n"
         f"5. 使用创意、独特的布局\n"
@@ -258,6 +263,15 @@ def parse_html_response(response: str) -> str:
 
     # Remove any inline overflow: visible declarations
     response = re.sub(r'overflow\s*:\s*visible\s*;?', '', response, flags=re.IGNORECASE)
+
+    # Remove solid background from outermost container to let template background show through
+    response = re.sub(
+        r'(<div\s[^>]*?)background\s*:\s*#[0-9a-fA-F]{3,8}\s*;',
+        r'\1',
+        response,
+        count=1,
+        flags=re.IGNORECASE,
+    )
 
     # Strip leading/trailing whitespace but preserve structure
     response = response.strip()
@@ -370,6 +384,11 @@ def build_html_generation_prompt(
         "- 每个 div 必须有 `overflow: hidden` 或明确的 overflow 控制",
         "- 宽度和高度必须用具体数值（如 1160px, 100%）而不是 auto",
         "",
+        "【背景要求】",
+        "- **主容器不要设置背景色**，使用 `background: transparent` 或直接不设置 background",
+        "- 如需区分卡片和背景，卡片可使用半透明背景",
+        "- 不要使用深色实色背景（如 #0a0e1a），让模板本身的海蓝渐变背景透出来",
+        "",
         "现在开始按照专家建议生成：",
     ])
 
@@ -377,21 +396,22 @@ def build_html_generation_prompt(
 
     user_prompt = (
         f"请严格按照布局专家的设计建议生成HTML。\n\n"
-        f"【标题】\n{page.title}\n\n"
+        f"（参考）页面标题（模板已显示，内容区请勿重复）：{page.title}\n"
         f"【副标题/摘要】\n{page.summary}\n\n"
         f"【要点列表】\n{bullet_lines}\n\n"
         f"【推荐布局类型】\n{layout_type}\n\n"
         f"【专家设计建议 - 必须遵循】\n{design_lines}\n\n"
         f"约束条件（必须严格遵守）：\n"
         f"1. 内容区域：1160px 宽 x 530px 高，**所有内容必须完整显示在此区域内**\n"
-        f"2. **禁止使用绝对定位**，使用 flex/grid 布局\n"
-        f"3. **禁止使用 text-overflow: ellipsis 截断文字**\n"
-        f"4. **文字必须简短**：\n"
+        f"2. **模板已显示标题，内容区不要重复生成标题文字**\n"
+        f"3. **禁止使用绝对定位**，使用 flex/grid 布局\n"
+        f"4. **禁止使用 text-overflow: ellipsis 截断文字**\n"
+        f"5. **文字必须简短**：\n"
         f"   - 每行最多12个中文字符\n"
         f"   - 每张卡片最多2行文字\n"
         f"   - 总内容行数控制在4-6行以内\n"
-        f"5. **卡片高度必须自适应内容**，不要设置固定max-height\n"
-        f"6. **内容必须全部可见**，不允许任何溢出或裁剪"
+        f"6. **卡片高度必须自适应内容**，不要设置固定max-height\n"
+        f"7. **内容必须全部可见**，不允许任何溢出或裁剪"
     )
 
     return system_prompt, user_prompt
