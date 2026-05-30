@@ -84,17 +84,15 @@
           </div>
         </div>
         <div class="preview-main-body">
-          <!-- 生成进度显示 -->
-          <div v-if="store.isGenerating" class="generating-overlay">
-            <div class="generating-progress">
-              <div class="progress-text">正在生成第 {{ store.currentGeneratingPage }} / {{ store.totalPagesToGenerate }} 页</div>
-              <div class="progress-bar">
-                <div class="progress-fill" :style="{ width: store.progressPercent + '%' }"></div>
-              </div>
+          <!-- 轻量进度条（不阻塞交互） -->
+          <div v-if="store.isGenerating" style="position:absolute;top:0;left:0;right:0;z-index:10;background:rgba(0,0,0,0.8);padding:6px 16px;display:flex;align-items:center;gap:12px;">
+            <span style="font-size:12px;color:#00ffff;white-space:nowrap;">生成中 {{ store.progressCurrent }}/{{ store.progressTotal }}</span>
+            <div style="flex:1;height:4px;background:rgba(0,255,255,0.15);border-radius:2px;overflow:hidden;">
+              <div :style="{ width: store.progressPercent + '%', height:'100%', background: '#00ffff', borderRadius:'2px', transition:'width 0.3s' }"></div>
             </div>
           </div>
 
-          <!-- 如果有生成的HTML，使用iframe显示 -->
+          <!-- 如果有生成的HTML，使用iframe显示（每页即时显示） -->
           <div v-if="currentSlideHtml" class="preview-slide-frame-container">
             <div class="preview-slide-frame-wrapper">
               <iframe

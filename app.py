@@ -651,6 +651,21 @@ def generate_ppt_parallel():
             # 让 Socket.IO 在线程模式下立即处理本次 emit，避免请求结束后前端才收到最终进度。
             socketio.sleep(0)
 
+        # 收集通过 SocketIO 流式推送的页面，最终也放入响应
+        streamed_slides = []
+
+        def emit_page_ready(page_number, page_type, title, html_content):
+            """每页生成完毕立即通过 SocketIO 推送给前端"""
+            slide_data = {
+                'page_number': page_number,
+                'page_type': page_type,
+                'title': title,
+                'html': html_content,
+            }
+            streamed_slides.append(slide_data)
+            socketio.emit('ppt_page_ready', slide_data)
+            socketio.sleep(0)
+
         emit_generation_progress(0, progress_total, {'status': 'started'})
         result = asyncio.run(generator.generate_presentation(
             outline=outline,
@@ -658,6 +673,7 @@ def generate_ppt_parallel():
             navigation=True,
             save_pages=save_pages,
             progress_callback=emit_generation_progress,
+            page_ready_callback=emit_page_ready,
         ))
 
         # 读取生成的 HTML
@@ -666,19 +682,14 @@ def generate_ppt_parallel():
             with open(result.output_path, "r", encoding="utf-8") as f:
                 html_content = f.read()
 
-        # 构建 slides 数组 - 直接使用 pipeline 返回的页面 HTML（无需文件 I/O）
+        # 使用流式推送时收集的 slides，并按 page_number 排序
+        streamed_slides.sort(key=lambda s: s['page_number'])
+        # 补充 layout_type（从 result.page_layouts 获取）
+        layout_map = {l.get('page_number', i+1): l.get('layout_type', '') for i, l in enumerate(result.page_layouts)}
         slides = []
-        for i, layout in enumerate(result.page_layouts):
-            page_num = layout.get('page_number', i + 1)
-            page_html = result.pages_html[i] if i < len(result.pages_html) else ""
-
-            slides.append({
-                'page_type': layout.get('type', ''),
-                'title': layout.get('title', ''),
-                'layout_type': layout.get('layout_type', ''),
-                'page_number': page_num,
-                'html': page_html,
-            })
+        for s in streamed_slides:
+            s['layout_type'] = layout_map.get(s['page_number'], '')
+            slides.append(s)
 
         emit_generation_progress(progress_total, progress_total, {'status': 'completed'})
         logger.info(f"[Parallel] 生成完成: {result.page_count} 页, {result.document_size} chars")

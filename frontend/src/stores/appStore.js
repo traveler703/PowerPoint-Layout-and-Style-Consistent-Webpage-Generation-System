@@ -1125,7 +1125,6 @@ export const store = reactive({
 
       if (total > 0) {
         this.progressTotal = total
-        // 防止 SocketIO 乱序导致进度条倒退
         if (current >= this.progressCurrent || page.status === 'completed' || page.status === 'started') {
           this.progressCurrent = current
         }
@@ -1133,7 +1132,27 @@ export const store = reactive({
         this.progressPageTitle = page.title || ''
         this.progressPercent = Math.round((this.progressCurrent / total) * 100)
         this.progressText = this.progressCurrent >= total ? 'PPT生成完成' : `正在生成PPT：${this.progressCurrent}/${total}`
+        // 不阻塞UI，只显示轻量进度
         this.showProgressBar = true
+      }
+    })
+
+    // 监听流式页面推送
+    progressSocket.on('ppt_page_ready', (slide = {}) => {
+      const existing = this.generatedSlides.find(s => s.pageNumber === slide.page_number)
+      if (!existing) {
+        this.generatedSlides.push({
+          pageNumber: slide.page_number || this.generatedSlides.length + 1,
+          pageType: slide.page_type || 'content',
+          title: slide.title || '',
+          html: slide.html || '',
+        })
+        // 按页码排序
+        this.generatedSlides.sort((a, b) => a.pageNumber - b.pageNumber)
+      }
+      // 如果是当前预览的页面，触发更新
+      if (this.currentSlide === slide.page_number) {
+        this.currentSlide = slide.page_number  // 触发响应式
       }
     })
   },
@@ -1264,7 +1283,13 @@ export const store = reactive({
       this.setProgress(0, '正在并行生成所有页面...')
       this.startGenerationProgress(progressTotal)
 
-      // 调用并行生成接口
+      // 清空旧的生成结果
+      this.generatedSlides = []
+
+      // 等待 SocketIO 连接就绪，避免丢失早期页面事件
+      await new Promise(r => setTimeout(r, 800))
+
+      // 调用并行生成接口（页面会通过 SocketIO ppt_page_ready 事件实时推送）
       const result = await generatePPTParallel({
         pages: pages,
         topic: this.parseResult.title || 'PPT演示文稿',
@@ -1277,19 +1302,18 @@ export const store = reactive({
         throw new Error(result.error || '生成失败')
       }
 
-      // 直接使用返回的HTML
+      // 完整HTML
       this.directSlideHtml = result.html
 
-      // 解析页面信息
-      if (result.slides) {
+      // SocketIO 已实时推送了各页面，如服务端返回的 slides 有补充则合并
+      if (result.slides && this.generatedSlides.length === 0) {
         for (const slide of result.slides) {
           this.generatedSlides.push({
             pageNumber: slide.page_number || this.generatedSlides.length + 1,
             pageType: slide.page_type || 'content',
             title: slide.title || '',
             layoutType: slide.layout_type || '',
-            pageUrl: slide.page_url || '',  // 页面文件路径
-            html: slide.html || ''  // 页面HTML内容
+            html: slide.html || '',
           })
         }
       }

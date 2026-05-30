@@ -252,6 +252,7 @@ class PresentationGenerator:
         content_pages: list[tuple[int, ContentPageInput]],
         total_pages: int,
         progress_callback: Callable[[int, int, dict[str, Any]], None] | None = None,
+        page_ready_callback: Callable[[int, str, str, str], None] | None = None,
     ) -> list[tuple[int, str, dict]]:
         """
         并行生成多个内容页 HTML
@@ -284,16 +285,20 @@ class PresentationGenerator:
         for task in asyncio.as_completed(tasks):
             page_num, html, layout_info = await task
             results.append((page_num, html, layout_info))
+            title = next((cp.title for pn, cp in content_pages if pn == page_num), "")
             if progress_callback:
                 progress_callback(
-                    page_num,
-                    total_pages,
-                    {
-                        "page_number": page_num,
-                        "page_type": "content",
-                        "title": next((cp.title for pn, cp in content_pages if pn == page_num), ""),
-                    },
+                    page_num, total_pages,
+                    {"page_number": page_num, "page_type": "content", "title": title},
                 )
+            if page_ready_callback:
+                # 先包模板骨架，再包完整HTML文档，确保与 output/pages 一致
+                skeleton = self.renderer.render_content_page(
+                    title=title, content=html, bullets=None,
+                    page_number=page_num, total_pages=total_pages,
+                )
+                standalone = self.render_standalone_page(skeleton, page_num)
+                page_ready_callback(page_num, "content", title, standalone)
         return results
 
     async def generate_presentation(
@@ -303,6 +308,7 @@ class PresentationGenerator:
         navigation: bool = True,
         save_pages: bool = False,
         progress_callback: Callable[[int, int, dict[str, Any]], None] | None = None,
+        page_ready_callback: Callable[[int, str, str, str], None] | None = None,
     ) -> GenerationResult:
         """
         生成完整演示文稿
@@ -355,10 +361,11 @@ class PresentationGenerator:
             pages_list.append((current_page_number, "cover", cover_page, {"type": "cover", "title": outline.title}))
             if progress_callback:
                 progress_callback(current_page_number, total_pages, {
-                    "page_number": current_page_number,
-                    "page_type": "cover",
-                    "title": outline.title,
+                    "page_number": current_page_number, "page_type": "cover", "title": outline.title,
                 })
+            if page_ready_callback:
+                page_ready_callback(current_page_number, "cover", outline.title,
+                                    self.render_standalone_page(cover_page, current_page_number))
             current_page_number += 1
 
             # Page 2: TOC
@@ -375,10 +382,11 @@ class PresentationGenerator:
             pages_list.append((current_page_number, "toc", toc_page, {"type": "toc", "title": "目录"}))
             if progress_callback:
                 progress_callback(current_page_number, total_pages, {
-                    "page_number": current_page_number,
-                    "page_type": "toc",
-                    "title": "目录",
+                    "page_number": current_page_number, "page_type": "toc", "title": "目录",
                 })
+            if page_ready_callback:
+                page_ready_callback(current_page_number, "toc", "目录",
+                                    self.render_standalone_page(toc_page, current_page_number))
             current_page_number += 1
 
             # 收集所有需要生成的内容页信息
@@ -397,10 +405,11 @@ class PresentationGenerator:
                 pages_list.append((current_page_number, "section", section_page, {"type": "section", "title": section.title}))
                 if progress_callback:
                     progress_callback(current_page_number, total_pages, {
-                        "page_number": current_page_number,
-                        "page_type": "section",
-                        "title": section.title,
+                        "page_number": current_page_number, "page_type": "section", "title": section.title,
                     })
+                if page_ready_callback:
+                    page_ready_callback(current_page_number, "section", section.title,
+                                        self.render_standalone_page(section_page, current_page_number))
                 current_page_number += 1
 
                 # Content Pages - 收集到并行队列
@@ -418,6 +427,7 @@ class PresentationGenerator:
                     content_pages_for_parallel,
                     total_pages,
                     progress_callback=progress_callback,
+                    page_ready_callback=page_ready_callback,
                 )
 
                 # 创建 page_number -> (html, layout_info) 的映射
@@ -459,10 +469,11 @@ class PresentationGenerator:
             }))
             if progress_callback:
                 progress_callback(current_page_number, total_pages, {
-                    "page_number": current_page_number,
-                    "page_type": "ending",
-                    "title": outline.ending_title,
+                    "page_number": current_page_number, "page_type": "ending", "title": outline.ending_title,
                 })
+            if page_ready_callback:
+                page_ready_callback(current_page_number, "ending", outline.ending_title,
+                                    self.render_standalone_page(ending_page, current_page_number))
 
             # 提取最终的 pages 和 page_layouts
             pages = [page_html for _, _, page_html, _ in pages_list]
@@ -515,6 +526,27 @@ class PresentationGenerator:
                 error=f"{type(e).__name__}: {e}\n{tb}",
             )
 
+    def render_standalone_page(
+        self,
+        page_html: str,
+        page_number: int,
+    ) -> str:
+        """将页面 HTML 片段包装为完整的独立 HTML 文档（与 _save_individual_pages 一致）。"""
+        if not self.template:
+            return page_html
+
+        slides_inner = f'''
+            <div class="slide-container">
+                <div class="slide-wrapper" data-page="{page_number}">
+                    {page_html}
+                </div>
+            </div>
+        '''
+
+        return self.template.raw_html.replace(
+            "{{SLIDES_CONTENT}}", slides_inner
+        )
+
     def _save_individual_pages(
         self,
         pages: list[str],
@@ -531,17 +563,8 @@ class PresentationGenerator:
             ptype = layout.get("type", "content")
             title = layout.get("title", "")
 
-            slides_inner = f'''
-                <div class="slide-container">
-                    <div class="slide-wrapper" data-page="{page_num}">
-                        {page_html}
-                    </div>
-                </div>
-            '''
-
-            # 使用模板 raw_html 作为基础
-            single_html = self.template.raw_html
-            single_html = single_html.replace("{{SLIDES_CONTENT}}", slides_inner)
+            # 使用统一的包装方法
+            single_html = self.render_standalone_page(page_html, page_num)
             single_html = single_html.replace("{{TOTAL_PAGES}}", str(total_pages))
 
             # 隐藏导航
