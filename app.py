@@ -560,7 +560,8 @@ def generate_ppt_parallel():
                 continue
             elif page_type == 'section':
                 current_section = {
-                    'title': p.get('subtitle', p.get('title', '')),
+                    'title': p.get('title', ''),
+                    'subtitle': p.get('subtitle', ''),
                     'content_pages': []
                 }
                 sections.append(current_section)

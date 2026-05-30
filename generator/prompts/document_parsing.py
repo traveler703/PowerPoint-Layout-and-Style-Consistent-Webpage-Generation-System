@@ -18,18 +18,18 @@ DOCUMENT_PARSING_SYSTEM_PROMPT = """你是一个专业的PPT结构分析助手�
   "pages": [
     {"type": "cover", "title": "PPT主标题", "subtitle": "副标题"},
     {"type": "toc", "title": "目录", "items": ["章节1", "章节2", "章节3"]},
-    {"type": "section", "title": "第一章 章节标题", "subtitle": ""},
+    {"type": "section", "title": "第一章 章节标题", "subtitle": "本章要点概述（一句话概括本章内容）"},
     {"type": "content", "title": "页面标题", "summary": "页面摘要", "bullets": ["要点1", "要点2", "要点3"]},
-    {"type": "section", "title": "第二章 章节标题", "subtitle": ""},
+    {"type": "section", "title": "第二章 章节标题", "subtitle": "本章要点概述"},
     {"type": "content", "title": "页面标题", "summary": "页面摘要", "bullets": ["要点1", "要点2"]},
     {"type": "end", "title": "谢谢观看", "subtitle": ""}
   ]
 }
 
 【页面类型说明】
-- cover: 封面页，只需要 title 和 subtitle
+- cover: 封面页，需要 title 和 subtitle
 - toc: 目录页，items 数组列出所有章节标题
-- section: 章节标题页，title 是"第X章 标题"
+- section: 章节分隔页，title 是"第X章 标题"，subtitle 是本章内容的一句话概述
 - content: 内容页，包含 title, summary, bullets
 - end: 结束页，只需要 title
 
@@ -38,6 +38,7 @@ DOCUMENT_PARSING_SYSTEM_PROMPT = """你是一个专业的PPT结构分析助手�
 - bullet points 应该简洁，每个不超过20字
 - 章节数量控制在2-5个为宜
 - 每个章节可以有1-2个内容页
+- section 页的 subtitle 要能概括本章核心内容，给读者明确的预期
 
 请直接输出JSON，不要有其他解释文字。"""
 

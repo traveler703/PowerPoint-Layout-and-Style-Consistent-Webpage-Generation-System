@@ -58,6 +58,7 @@ class SectionInput:
     """章节输入数据"""
     title: str
     content_pages: list[ContentPageInput]
+    subtitle: str = ""
 
 
 @dataclass
@@ -367,7 +368,7 @@ class PresentationGenerator:
                 section_page = self.renderer.render_page(
                     page_type="section",
                     title=section.title,
-                    subtitle="",
+                    subtitle=section.subtitle,
                     page_number=current_page_number,
                     total_pages=total_pages,
                     extra={"chapter_tag": f"第{_roman_numeral(section_idx)}章"},
@@ -573,6 +574,7 @@ def outline_from_dict(data: dict) -> PresentationOutline:
             ))
         sections.append(SectionInput(
             title=section_data["title"],
+            subtitle=section_data.get("subtitle", ""),
             content_pages=content_pages,
         ))
     return PresentationOutline(
