@@ -105,6 +105,36 @@ def _parse_by_extension(file_path: str, ext: str) -> tuple[list[ParsedNode], int
     raise ValueError(f"不支持的文件类型: {ext}")
 
 
+def _nodes_to_text(nodes: list[ParsedNode]) -> str:
+    """将 ParsedNode 列表还原为适合 LLM 解析的文本。"""
+    lines: list[str] = []
+    for node in nodes:
+        lines.append("")
+        prefix = "#" * min(node.level, 6)
+        lines.append(f"{prefix} {node.title}")
+        if node.raw_text:
+            lines.append(node.raw_text)
+        for b in node.bullets or []:
+            if isinstance(b, dict):
+                t = (b.get("title") or "").strip()
+                d = (b.get("description") or "").strip()
+                line = f"- {t}：{d}" if t and d else (f"- {t}" if t else "")
+            else:
+                line = f"- {str(b).strip()}"
+            if line:
+                lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def extract_text_from_file(file_path: str) -> str:
+    """从文件提取纯文本内容（供 LLM 解析使用）。"""
+    ext = Path(file_path).suffix.lower()
+    if ext in (".md", ".txt"):
+        return Path(file_path).read_text(encoding="utf-8", errors="ignore")
+    nodes, _ = _parse_by_extension(file_path, ext)
+    return _nodes_to_text(nodes)
+
+
 def _depth_from_numbered_title(title: str) -> int | None:
     m = TITLE_NUM_RE.match((title or "").strip())
     if not m:
