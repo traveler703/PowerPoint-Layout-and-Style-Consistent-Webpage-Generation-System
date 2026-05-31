@@ -150,13 +150,13 @@
         </svg>
         设为默认
       </div>
-      <div class="context-menu-item" @click="editTemplate" v-if="selectedTemplate?.template_type === 'user'">
+      <div class="context-menu-item" @click="editTemplate" v-if="menuTemplate?.template_type === 'user'">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
         </svg>
         编辑模板
       </div>
-      <div class="context-menu-item danger" @click="deleteTemplate" v-if="selectedTemplate?.template_type === 'user'">
+      <div class="context-menu-item danger" @click="deleteTemplate" v-if="menuTemplate?.template_type === 'user'">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
         </svg>
@@ -199,6 +199,38 @@
         <div class="modal-footer">
           <button class="btn btn-secondary" @click="showCreateModal = false">取消</button>
           <button class="btn btn-primary" @click="createTemplate">创建</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit Template Modal -->
+    <div v-if="showEditModal" class="modal-overlay active" @click.self="showEditModal = false">
+      <div class="modal" style="max-width: 480px;">
+        <div class="modal-header">
+          <h3 class="modal-title">编辑模板</h3>
+          <button class="modal-close" @click="showEditModal = false">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>模板名称</label>
+            <input class="form-input" v-model="editForm.template_name" placeholder="输入模板名称">
+          </div>
+          <div class="form-group">
+            <label>描述</label>
+            <textarea class="form-input" v-model="editForm.description" placeholder="简要描述模板风格" rows="2"></textarea>
+          </div>
+          <div class="form-group">
+            <label>标签（逗号分隔）</label>
+            <input class="form-input" v-model="editForm.tags" placeholder="商务, 科技, 简约">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="showEditModal = false">取消</button>
+          <button class="btn btn-primary" @click="confirmEdit">保存</button>
         </div>
       </div>
     </div>
@@ -271,6 +303,8 @@ const showMenu = ref(false)
 const menuPos = ref({ x: 0, y: 0 })
 const menuTemplate = ref(null)
 const showCreateModal = ref(false)
+const showEditModal = ref(false)
+const editForm = ref({ template_name: '', description: '', tags: '' })
 const previewingTemplate = ref(null)
 
 const newTemplate = ref({
@@ -418,7 +452,32 @@ function setAsDefault() {
 
 function editTemplate() {
   showMenu.value = false
-  store.showToastMessage('编辑功能开发中')
+  const tpl = menuTemplate.value
+  if (!tpl) return
+  editForm.value = {
+    template_name: tpl.template_name || '',
+    description: tpl.description || '',
+    tags: (tpl.tags || []).join(', '),
+  }
+  showEditModal.value = true
+}
+
+async function confirmEdit() {
+  const tpl = menuTemplate.value
+  if (!tpl) return
+  const data = {
+    template_name: editForm.value.template_name.trim(),
+    description: editForm.value.description.trim(),
+    tags: editForm.value.tags.split(/[,，]/).map(t => t.trim()).filter(Boolean),
+  }
+  if (!data.template_name) {
+    store.showToastMessage('模板名称不能为空')
+    return
+  }
+  const ok = await store.updateTemplate(tpl.template_id, data)
+  if (ok) {
+    showEditModal.value = false
+  }
 }
 
 function deleteTemplate() {

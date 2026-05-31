@@ -1174,8 +1174,17 @@ async function generateServerPreview(templateId) {
   previewProgressPercent.value = 0
   previewProgressText.value = '正在生成预览...'
   serverPreviewHtml.value = ''
-  serverSlides.value = []
   activeServerSlide.value = 0
+
+  // 预先创建 7 个空白占位缩略图
+  const TOTAL = FIXED_PREVIEW_OUTLINE.length
+  serverSlides.value = Array.from({ length: TOTAL }, (_, i) => ({
+    pageNumber: i + 1,
+    pageType: '',
+    title: '',
+    layoutType: '',
+    html: '',
+  }))
 
   // 清空旧预览文件
   fetch('/api/save-preview-html', {
@@ -1201,30 +1210,27 @@ async function generateServerPreview(templateId) {
       throw new Error(err.error || `HTTP ${res.status}`)
     }
 
-    // 流式读取 — 批量更新避免卡死 UI
+    // 流式读取 — rAF 批量更新 slide，进度直接更新
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
     let result = null
-    // 用普通数组累积 slide，rAF 时批量同步到响应式数组
     const pendingSlides = []
     let rafPending = false
-    let lastProgressUpdate = 0
 
     function flushSlides() {
       rafPending = false
       if (pendingSlides.length === 0) return
       for (const s of pendingSlides) {
-        const existingIdx = serverSlides.value.findIndex(x => x.pageNumber === s.pageNumber)
-        if (existingIdx >= 0) {
-          serverSlides.value[existingIdx] = s
-        } else {
-          serverSlides.value.push(s)
+        // 按 pageNumber 原地替换占位项
+        const idx = s.pageNumber - 1
+        if (idx >= 0 && idx < serverSlides.value.length) {
+          serverSlides.value[idx] = s
         }
       }
       pendingSlides.length = 0
-      serverSlides.value.sort((a, b) => a.pageNumber - b.pageNumber)
-      if (!activeServerSlide.value && serverSlides.value.length > 0) {
+      // 第一个 slide 收到 html 时自动展示
+      if (!activeServerSlide.value) {
         serverIframeKey.value++
       }
     }
@@ -1242,10 +1248,7 @@ async function generateServerPreview(templateId) {
           const event = JSON.parse(line)
 
           if (event.type === 'progress') {
-            const now = Date.now()
-            if (now - lastProgressUpdate < 200) continue  // 节流：200ms 最多一次
-            lastProgressUpdate = now
-            const total = event.total || FIXED_PREVIEW_OUTLINE.length
+            const total = event.total || TOTAL
             const current = Math.min(event.current || 0, total)
             previewProgressPercent.value = Math.round((current / total) * 100)
             const pageInfo = event.page || {}

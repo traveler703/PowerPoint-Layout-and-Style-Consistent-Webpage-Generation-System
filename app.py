@@ -1858,6 +1858,66 @@ def create_template():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/templates/<template_id>', methods=['PUT'])
+def update_template(template_id):
+    """更新模板的名称、描述、标签"""
+    try:
+        data = request.get_json() or {}
+        output_dir = os.path.join(os.path.dirname(__file__), 'templates', 'data', 'user_generated')
+        filepath = os.path.join(output_dir, f"{template_id}.json")
+        if not os.path.exists(filepath):
+            return jsonify({'error': '模板不存在'}), 404
+
+        with open(filepath, 'r', encoding='utf-8') as f:
+            tpl = json.load(f)
+
+        if 'template_name' in data:
+            tpl['template_name'] = data['template_name']
+        if 'description' in data:
+            tpl['description'] = data['description']
+        if 'tags' in data:
+            tpl['tags'] = data['tags']
+
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(tpl, f, ensure_ascii=False, indent=2)
+
+        from templates.template_loader import get_loader
+        get_loader().reload()
+
+        return jsonify({
+            'success': True,
+            'template': {
+                'template_id': template_id,
+                'template_name': tpl.get('template_name', ''),
+                'description': tpl.get('description', ''),
+                'tags': tpl.get('tags', []),
+            }
+        })
+    except Exception as e:
+        logger.error(f"更新模板失败: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/templates/<template_id>', methods=['DELETE'])
+def remove_template(template_id):
+    """删除用户模板"""
+    try:
+        output_dir = os.path.join(os.path.dirname(__file__), 'templates', 'data', 'user_generated')
+        filepath = os.path.join(output_dir, f"{template_id}.json")
+        if not os.path.exists(filepath):
+            return jsonify({'error': '模板不存在'}), 404
+
+        os.remove(filepath)
+
+        from templates.template_loader import get_loader
+        get_loader().reload()
+
+        return jsonify({'success': True, 'message': '模板已删除'})
+    except Exception as e:
+        logger.error(f"删除模板失败: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/save-preview-html', methods=['POST'])
 def save_preview_html():
     """保存 / 清空模板预览 HTML 到固定路径"""
