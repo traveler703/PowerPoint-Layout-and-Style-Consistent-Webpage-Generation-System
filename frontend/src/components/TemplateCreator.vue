@@ -201,48 +201,56 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
             </svg>
-            实时预览
+            模板预览
           </div>
           <div class="panel-actions">
-            <button class="icon-btn" :class="{ active: previewScale === 'fit' }" @click="previewScale = 'fit'" title="适应窗口">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/>
-              </svg>
-            </button>
-            <button class="icon-btn" :class="{ active: previewScale === '100' }" @click="previewScale = '100'" title="100%">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"/>
-              </svg>
-            </button>
-            <button class="icon-btn" @click="openFullscreen" title="全屏预览">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/>
-              </svg>
-            </button>
+            <span v-if="serverSlides.length > 0" class="slide-counter">
+              {{ activeServerSlide + 1 }} / {{ serverSlides.length }}
+            </span>
           </div>
         </div>
 
-        <div class="preview-container" :class="previewScale">
-          <iframe
-            ref="previewFrame"
-            class="preview-frame"
-            :srcdoc="previewHtml"
-            sandbox="allow-scripts"
-            @load="onPreviewLoad"
-          ></iframe>
+        <!-- Thin progress bar at top, no overlay blocking view -->
+        <div v-if="isGeneratingPreview" class="preview-progress-strip">
+          <div class="preview-progress-strip-fill" :style="{ width: previewProgressPercent + '%' }"></div>
+          <span class="preview-progress-strip-text">{{ previewProgressText }}</span>
+        </div>
+
+        <!-- Main preview area with scaling -->
+        <div class="preview-slide-frame-container" v-if="currentServerSlideHtml || previewHtml">
+          <div class="preview-slide-frame-wrapper" ref="previewWrapper">
+            <iframe
+              ref="previewFrame"
+              :key="serverIframeKey"
+              :srcdoc="currentServerSlideHtml || previewHtml"
+              class="preview-slide-frame"
+              sandbox="allow-same-origin allow-scripts"
+              @load="onPreviewLoad"
+            ></iframe>
+          </div>
+        </div>
+        <div v-else class="preview-empty">
+          <span>生成模板后将自动展示预览</span>
+        </div>
+
+        <!-- Navigation buttons -->
+        <div class="preview-nav-buttons" v-if="serverSlides.length > 1">
+          <button class="preview-nav-btn" @click="prevServerSlide" :disabled="activeServerSlide <= 0">◀</button>
+          <button class="preview-nav-btn" @click="nextServerSlide" :disabled="activeServerSlide >= serverSlides.length - 1">▶</button>
         </div>
 
         <!-- Slide Thumbnails -->
-        <div class="preview-slides" v-if="previewSlides.length > 0">
+        <div class="preview-slides" v-if="serverSlides.length > 0">
           <div
-            v-for="(slide, idx) in previewSlides"
-            :key="idx"
+            v-for="(slide, idx) in serverSlides"
+            :key="'srv'+idx"
             class="slide-thumb"
-            :class="{ active: activeSlide === idx }"
-            @click="selectSlide(idx)"
+            :class="{ active: activeServerSlide === idx, 'has-html': !!slide.html }"
+            @click="selectServerSlide(idx)"
           >
-            <div class="thumb-inner" :style="{ background: getSlideThumbStyle(slide) }">
+            <div class="thumb-inner" :style="{ background: getServerSlideThumbStyle(slide) }">
               <div class="thumb-number">{{ idx + 1 }}</div>
+              <div class="thumb-type">{{ slide.pageType || slide.page_type }}</div>
             </div>
           </div>
         </div>
@@ -541,6 +549,26 @@ const newColor = ref({ key: '', value: '#6366f1' })
 
 const saveConfig = ref({ name: '', description: '', tags: '' })
 
+// --- Server-side preview generation ---
+const isGeneratingPreview = ref(false)
+const previewProgressPercent = ref(0)
+const previewProgressText = ref('正在生成预览...')
+const serverPreviewHtml = ref('')
+const serverSlides = ref([])
+const activeServerSlide = ref(0)
+const serverIframeKey = ref(0)
+const previewWrapper = ref(null)
+
+const FIXED_PREVIEW_OUTLINE = [
+  { page_type: "cover",   title: "产品战略发布会", subtitle: "创新驱动增长", date_badge: "2026年6月" },
+  { page_type: "toc",     title: "目录", bullets: ["第一章 市场趋势与机遇", "第二章 核心产品矩阵", "第三章 技术架构升级", "第四章 战略规划与展望"] },
+  { page_type: "section", title: "第一章", subtitle: "市场趋势与机遇" },
+  { page_type: "content", title: "行业现状分析", bullets: ["全球数字化转型加速，AI技术深入各行各业", "2026年全球企业级SaaS市场规模预计突破3000亿美元", "AI Agent技术成为企业效率提升的关键驱动力", "数据安全与隐私合规需求持续增长"] },
+  { page_type: "section", title: "第二章", subtitle: "核心产品矩阵" },
+  { page_type: "content", title: "产品体系概览", bullets: ["SmartChat：新一代企业级AI对话平台", "DataPilot：智能数据分析与可视化工具", "FlowMaster：低代码业务流程自动化引擎", "三款产品深度集成，形成完整解决方案"] },
+  { page_type: "ending",  title: "谢谢观看", subtitle: "期待与您携手共创未来" },
+]
+
 const collapsedSections = ref({
   basic: false,
   colors: false,
@@ -656,6 +684,24 @@ const tagsString = computed({
   get: () => (config.value.tags || []).join(', '),
   set: (v) => { config.value.tags = v.split(',').map(t => t.trim()).filter(Boolean) }
 })
+
+const currentServerSlideHtml = computed(() => {
+  const slides = serverSlides.value
+  if (slides.length === 0) return null
+  const idx = Math.min(activeServerSlide.value, slides.length - 1)
+  return buildSlideDocument(slides[idx].html || '', idx)
+})
+
+function buildSlideDocument(slideHtml, slideIndex) {
+  if (!slideHtml) return ''
+  // Wrap single slide with minimal document
+  return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1280px;height:720px;overflow:hidden}
+.slide{width:1280px;height:720px;position:relative;overflow:hidden}
+</style></head><body>${slideHtml}</body></html>`
+}
 
 const previewSlides = computed(() => {
   const pt = config.value.page_types || {}
@@ -864,8 +910,25 @@ function getSlideThumbStyle(slide) {
   return bg
 }
 
-function onPreviewLoad() {
-  // Preview loaded
+function selectServerSlide(idx) {
+  activeServerSlide.value = idx
+  serverIframeKey.value++
+  nextTick(() => calculatePreviewScale())
+}
+
+function getServerSlideThumbStyle(slide) {
+  const css = config.value.css_variables || {}
+  const primary = css['color-primary'] || '#6366f1'
+  const secondary = css['color-secondary'] || '#8b5cf6'
+  const bg = css['color-background'] || css['color-surface'] || '#ffffff'
+  const pt = slide.page_type || 'content'
+  if (pt === 'cover' || pt === 'section' || pt === 'ending') {
+    return `linear-gradient(135deg, ${primary}, ${secondary})`
+  }
+  if (pt === 'toc') {
+    return `linear-gradient(135deg, ${bg}, ${css['color-surface'] || '#f8fafc'})`
+  }
+  return bg
 }
 
 function openFullscreen() {
@@ -901,6 +964,10 @@ function resetAll() {
       tags: [],
       template_type: 'user'
     }
+    // 清除服务端预览
+    serverPreviewHtml.value = ''
+    serverSlides.value = []
+    isGeneratingPreview.value = false
     store.showToastMessage('已重置')
   }
 }
@@ -926,7 +993,8 @@ function confirmSave() {
       ? saveConfig.value.tags.split(',').map(t => t.trim()).filter(Boolean)
       : config.value.tags || [],
     viewport: config.value.viewport || { width: 1280, height: 720 },
-    template_type: 'user'
+    template_type: 'user',
+    raw_html: config.value.raw_html || '',
   }
 
   store.createTemplate(templateData).then(() => {
@@ -1061,7 +1129,19 @@ async function createTemplateFromChat(msgIdx) {
       msg.llmResponse = response
       msg.parsedConfig = response.parsed
       mergeConfig(response.parsed)
-      store.showToastMessage('模板已生成！')
+      store.showToastMessage('模板已生成！正在保存并生成预览...')
+
+      // 自动保存模板到服务端
+      const templateData = buildTemplateData(response.parsed)
+      try {
+        await store.createTemplate(templateData)
+        store.showToastMessage('模板已保存！正在生成PPT预览...')
+      } catch (e) {
+        store.showToastMessage('模板保存失败: ' + (e.response?.data?.error || e.message))
+      }
+
+      // 自动生成服务端PPT预览
+      await generateServerPreview(response.parsed.template_id)
     } else {
       store.showToastMessage('模板生成失败，请重试')
     }
@@ -1072,6 +1152,209 @@ async function createTemplateFromChat(msgIdx) {
     isTyping.value = false
     await nextTick()
   }
+}
+
+function buildTemplateData(parsed) {
+  return {
+    template_id: parsed.template_id || 'custom_' + Date.now().toString(36).slice(-6),
+    template_name: parsed.template_name || '自定义模板',
+    description: parsed.description || '',
+    version: '1.0.0',
+    css_variables: parsed.css_variables || {},
+    page_types: parsed.page_types || {},
+    tags: parsed.tags || [],
+    viewport: parsed.viewport || { width: 1280, height: 720 },
+    template_type: 'user',
+    raw_html: parsed.raw_html || '',
+  }
+}
+
+async function generateServerPreview(templateId) {
+  isGeneratingPreview.value = true
+  previewProgressPercent.value = 0
+  previewProgressText.value = '正在生成预览...'
+  serverPreviewHtml.value = ''
+  serverSlides.value = []
+  activeServerSlide.value = 0
+
+  // 清空旧预览文件
+  fetch('/api/save-preview-html', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ template_id: templateId, html: '' }),
+  }).catch(() => {})
+
+  try {
+    const res = await fetch('/api/generate-ppt-progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pages: FIXED_PREVIEW_OUTLINE,
+        topic: '产品战略发布会',
+        template: templateId,
+        save_pages: true,
+      }),
+    })
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || `HTTP ${res.status}`)
+    }
+
+    // 流式读取 — 批量更新避免卡死 UI
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let result = null
+    // 用普通数组累积 slide，rAF 时批量同步到响应式数组
+    const pendingSlides = []
+    let rafPending = false
+    let lastProgressUpdate = 0
+
+    function flushSlides() {
+      rafPending = false
+      if (pendingSlides.length === 0) return
+      for (const s of pendingSlides) {
+        const existingIdx = serverSlides.value.findIndex(x => x.pageNumber === s.pageNumber)
+        if (existingIdx >= 0) {
+          serverSlides.value[existingIdx] = s
+        } else {
+          serverSlides.value.push(s)
+        }
+      }
+      pendingSlides.length = 0
+      serverSlides.value.sort((a, b) => a.pageNumber - b.pageNumber)
+      if (!activeServerSlide.value && serverSlides.value.length > 0) {
+        serverIframeKey.value++
+      }
+    }
+
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.trim()) continue
+        try {
+          const event = JSON.parse(line)
+
+          if (event.type === 'progress') {
+            const now = Date.now()
+            if (now - lastProgressUpdate < 200) continue  // 节流：200ms 最多一次
+            lastProgressUpdate = now
+            const total = event.total || FIXED_PREVIEW_OUTLINE.length
+            const current = Math.min(event.current || 0, total)
+            previewProgressPercent.value = Math.round((current / total) * 100)
+            const pageInfo = event.page || {}
+            previewProgressText.value = current >= total
+              ? '生成完成！'
+              : `正在生成第 ${Math.min(current + 1, total)} / ${total} 页${pageInfo.title ? '：' + pageInfo.title : ''}`
+          } else if (event.type === 'slide' && event.slide) {
+            const s = event.slide
+            pendingSlides.push({
+              pageNumber: s.page_number || pendingSlides.length + serverSlides.value.length + 1,
+              pageType: s.page_type || 'content',
+              title: s.title || '',
+              layoutType: s.layout_type || '',
+              html: s.html || '',
+            })
+            if (!rafPending) {
+              rafPending = true
+              requestAnimationFrame(flushSlides)
+            }
+          } else if (event.type === 'complete') {
+            result = event.result
+          } else if (event.type === 'error') {
+            throw new Error(event.error || '生成出错')
+          }
+        } catch (parseErr) {
+          if (parseErr.message && !parseErr.message.includes('JSON')) throw parseErr
+        }
+      }
+    }
+
+    // 确保最后一批 slide 被刷新
+    flushSlides()
+
+    if (buffer.trim()) {
+      try {
+        const event = JSON.parse(buffer)
+        if (event.type === 'complete') result = event.result
+      } catch (e) { /* ignore */ }
+    }
+
+    if (!result) throw new Error('未收到生成结果')
+    if (!result.success) throw new Error(result.error || '生成失败')
+
+    serverPreviewHtml.value = result.html || ''
+    // 用最终结果覆盖 slides（确保完整）
+    if (result.slides) {
+      serverSlides.value = result.slides.map(s => ({
+        pageNumber: s.page_number,
+        pageType: s.page_type || 'content',
+        title: s.title || '',
+        layoutType: s.layout_type || '',
+        html: s.html || '',
+      }))
+    }
+
+    previewProgressPercent.value = 100
+    previewProgressText.value = `预览完成！共 ${result.page_count} 页`
+    store.showToastMessage(`预览完成！共 ${result.page_count} 页`)
+
+    // 保存预览 HTML
+    fetch('/api/save-preview-html', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ template_id: templateId, html: result.html }),
+    }).catch(() => {})
+
+    // 缩放
+    await nextTick()
+    calculatePreviewScale()
+  } catch (e) {
+    store.showToastMessage('预览生成失败: ' + e.message)
+    console.error('Preview generation failed:', e)
+  } finally {
+    isGeneratingPreview.value = false
+  }
+}
+
+// --- Preview navigation ---
+function prevServerSlide() {
+  if (activeServerSlide.value > 0) {
+    activeServerSlide.value--
+    serverIframeKey.value++
+    nextTick(() => calculatePreviewScale())
+  }
+}
+function nextServerSlide() {
+  if (activeServerSlide.value < serverSlides.value.length - 1) {
+    activeServerSlide.value++
+    serverIframeKey.value++
+    nextTick(() => calculatePreviewScale())
+  }
+}
+
+// --- Preview scaling (same pattern as PreviewPanel) ---
+function calculatePreviewScale() {
+  nextTick(() => {
+    const wrapper = previewWrapper.value
+    if (!wrapper) return
+    const parent = wrapper.parentElement
+    if (!parent) return
+    const parentW = parent.clientWidth
+    const parentH = parent.clientHeight
+    const scale = Math.min(parentW / 1280, parentH / 720)
+    wrapper.style.transform = `scale(${scale})`
+  })
+}
+
+function onPreviewLoad() {
+  calculatePreviewScale()
 }
 
 async function callLLM(message, history = [], mode = 'chat') {
@@ -1133,6 +1416,7 @@ function mergeConfig(parsed) {
   }
   if (parsed.tags) config.value.tags = parsed.tags
   if (parsed.viewport) config.value.viewport = parsed.viewport
+  if (parsed.raw_html) config.value.raw_html = parsed.raw_html
 }
 
 function extractTextFromResponse(response) {
@@ -1577,10 +1861,32 @@ watch(messages, () => {
 }, { deep: true })
 
 // --- Lifecycle ---
+function handleResize() {
+  calculatePreviewScale()
+}
+
+function handleKeydown(e) {
+  if (serverSlides.value.length <= 1) return
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+    e.preventDefault()
+    nextServerSlide()
+  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+    e.preventDefault()
+    prevServerSlide()
+  }
+}
+
 onMounted(() => {
   if (inputRef.value) {
     inputRef.value.focus()
   }
+  window.addEventListener('resize', handleResize)
+  window.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  window.removeEventListener('keydown', handleKeydown)
 })
 </script>
 
@@ -2865,4 +3171,101 @@ onMounted(() => {
 }
 .spin-icon { animation: spin 1.2s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* --- Thin progress strip (no overlay blocking) --- */
+.preview-progress-strip {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 28px;
+  background: rgba(0,0,0,0.5);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+.preview-progress-strip-fill {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  background: var(--color-primary, #6366f1);
+  opacity: 0.3;
+  transition: width 0.3s ease;
+}
+.preview-progress-strip-text {
+  position: relative;
+  z-index: 1;
+  font-size: 12px;
+  color: #fff;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+/* --- Preview Frame with Scaling --- */
+.preview-slide-frame-container {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  background: var(--bg-panel, #0a0c14);
+  position: relative;
+}
+.preview-slide-frame-wrapper {
+  width: 1280px;
+  height: 720px;
+  transform-origin: center center;
+}
+.preview-slide-frame {
+  width: 1280px;
+  height: 720px;
+  border: none;
+  overflow: hidden;
+  background: white;
+}
+
+/* --- Slide Counter --- */
+.slide-counter {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Preview Nav Buttons --- */
+.preview-nav-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+.preview-nav-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #333);
+  background: var(--bg-surface, #1a1a2e);
+  color: var(--text-color, #ccc);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+.preview-nav-btn:hover:not(:disabled) {
+  background: var(--color-primary, #6366f1);
+  border-color: var(--color-primary, #6366f1);
+  color: #fff;
+}
+.preview-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.preview-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}
 </style>

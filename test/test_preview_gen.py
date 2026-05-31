@@ -1,7 +1,7 @@
 """
 端到端测试：模板生成 → PPT预览生成
 
-使用固定的9页大纲内容（不依赖LLM动态生成内容）：
+使用固定的7页大纲内容（不依赖LLM动态生成内容）：
   cover ×1, toc ×1, section ×2, content ×4, ending ×1
 
 测试流程:
@@ -38,24 +38,12 @@ FIXED_OUTLINE = [
         "AI Agent 技术成为企业效率提升的关键驱动力",
         "数据安全与隐私合规需求持续增长",
     ]},
-    {"page_type": "content", "title": "我们的竞争优势", "bullets": [
-        "自研大模型在垂直领域准确率领先行业15%",
-        "服务超过500家企业客户，覆盖金融、制造、医疗",
-        "获得ISO27001/SOC2国际安全认证",
-        "核心团队来自顶级互联网公司与研究机构",
-    ]},
     {"page_type": "section", "title": "第二章", "subtitle": "核心产品矩阵"},
     {"page_type": "content", "title": "产品体系概览", "bullets": [
         "SmartChat：新一代企业级AI对话平台",
         "DataPilot：智能数据分析与可视化工具",
         "FlowMaster：低代码业务流程自动化引擎",
         "三款产品深度集成，形成完整解决方案",
-    ]},
-    {"page_type": "content", "title": "技术路线图", "bullets": [
-        "Q1：完成大模型v3.0训练，上下文窗口扩展至1M",
-        "Q2：推出分布式推理引擎，推理成本降低60%",
-        "Q3：上线多模态理解能力，覆盖图像、音频、视频",
-        "Q4：开放API平台，支持第三方开发者生态",
     ]},
     {"page_type": "ending",  "title": "谢谢观看", "subtitle": "期待与您携手共创未来"},
 ]
@@ -248,8 +236,8 @@ def step3_generate_preview(template_id):
     # 预期的 slide class 顺序
     expected_classes = [
         "cover", "toc",
-        "section", "content", "content",
-        "section", "content", "content",
+        "section", "content",
+        "section", "content",
         "ending",
     ]
 
@@ -260,8 +248,8 @@ def step3_generate_preview(template_id):
     log(f"  实际 class 顺序: {actual_classes}")
 
     # 验证
-    assert len(actual_classes) == 9, \
-        f"预期 9 个 slide，实际找到 {len(actual_classes)} 个"
+    assert len(actual_classes) == 7, \
+        f"预期 7 个 slide，实际找到 {len(actual_classes)} 个"
     assert actual_classes == expected_classes, \
         f"slide class 不匹配!\n  预期: {expected_classes}\n  实际: {actual_classes}"
 
@@ -289,6 +277,8 @@ def step3_generate_preview(template_id):
     log("  [PASS] slide class 顺序正确")
     log("  [PASS] 导航结构完整")
 
+    # 保存到固定命名文件（每次新生成覆盖旧的）
+    save_html(f"preview_{template_id}.html", html)
     save_html("03_preview_ppt.html", html)
     save_json("04_preview_slides.json", slides)
 

@@ -1858,6 +1858,31 @@ def create_template():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/save-preview-html', methods=['POST'])
+def save_preview_html():
+    """保存 / 清空模板预览 HTML 到固定路径"""
+    try:
+        data = request.get_json() or {}
+        template_id = (data.get('template_id') or 'unknown').strip()
+        html = data.get('html') or ''
+        # 安全过滤：只允许字母数字下划线横线
+        safe_id = re.sub(r'[^a-zA-Z0-9_-]', '_', template_id) or 'unknown'
+        out_dir = os.path.join(os.path.dirname(__file__), 'test', 'output', 'preview_gen')
+        os.makedirs(out_dir, exist_ok=True)
+        filepath = os.path.join(out_dir, f'preview_{safe_id}.html')
+        if html:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(html)
+            return jsonify({'success': True, 'path': filepath, 'size': len(html)})
+        else:
+            # html 为空时删除旧预览文件
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            return jsonify({'success': True, 'cleared': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 # 注册模板生成 API（模块级，确保任何启动方式都生效）
 register_template_api_routes(app)
 
