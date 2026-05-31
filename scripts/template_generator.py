@@ -475,6 +475,15 @@ def _normalize_skeleton(ptype: str, skeleton: str) -> str:
                     count=1,
                     flags=re.DOTALL | re.IGNORECASE,
                 )
+        # 处理 .page-title 硬编码文字 → {{title}}（cover 页标题可能在 .page-title 或 h1 中）
+        pt_match = re.search(
+            r'<div[^>]*class="[^"]*\bpage-title\b[^"]*"[^>]*>(.*?)</div>',
+            skeleton, re.DOTALL | re.IGNORECASE,
+        )
+        if pt_match:
+            pt_inner = pt_match.group(1).strip()
+            if pt_inner and '{{title}}' not in pt_inner and '{{chapter_tag}}' not in pt_inner:
+                skeleton = skeleton[:pt_match.start(1)] + '{{title}}' + skeleton[pt_match.end(1):]
 
     if ptype == "toc":
         # toc 页（净化阶段已完成，内容已替换为 {{toc_items}}）：
@@ -493,61 +502,161 @@ def _normalize_skeleton(ptype: str, skeleton: str) -> str:
             if '{{toc_items}}' not in inner:
                 new_inner = "\n{{toc_items}}\n"
                 skeleton = skeleton[:pc_match.start()] + open_tag + new_inner + close_tag + skeleton[pc_match.end():]
-        # 确保 title 有 .page-title 包裹
-        if '{{title}}' in skeleton and '<div class="page-title">' not in skeleton:
+        # 确保 title 有 .page-title 包裹且内容是 {{title}} 占位符
+        pt_match = re.search(
+            r'<div[^>]*class="[^"]*\bpage-title\b[^"]*"[^>]*>(.*?)</div>',
+            skeleton, re.DOTALL | re.IGNORECASE,
+        )
+        if pt_match:
+            pt_inner = pt_match.group(1).strip()
+            if '{{title}}' not in pt_inner:
+                skeleton = skeleton[:pt_match.start(1)] + '{{title}}' + skeleton[pt_match.end(1):]
+        elif '{{title}}' in skeleton and '<div class="page-title">' not in skeleton:
             skeleton = skeleton.replace('{{title}}', '<div class="page-title">{{title}}</div>')
     elif ptype == "section":
         # section 页：chapter_tag 用 .page-title，title 用 <h1> 或 .section-title，subtitle 用 <p class="subtitle">
-        if '{{chapter_tag}}' in skeleton and '<div class="page-title">' not in skeleton:
+        # --- 修复 .page-title：确保内容是 {{chapter_tag}} ---
+        pt_match = re.search(
+            r'<div[^>]*class="[^"]*\bpage-title\b[^"]*"[^>]*>(.*?)</div>',
+            skeleton, re.DOTALL | re.IGNORECASE,
+        )
+        if pt_match:
+            pt_inner = pt_match.group(1).strip()
+            if '{{chapter_tag}}' not in pt_inner:
+                skeleton = skeleton[:pt_match.start(1)] + '{{chapter_tag}}' + skeleton[pt_match.end(1):]
+        elif '{{chapter_tag}}' in skeleton:
+            # chapter_tag 存在但没有 .page-title 包裹
             skeleton = skeleton.replace('{{chapter_tag}}', '<div class="page-title">{{chapter_tag}}</div>')
-        # 确保 title 有包裹
-        if '{{title}}' in skeleton:
-            if '<h1' not in skeleton and '<div class="page-title">' in skeleton:
-                # title 在 page-title 之后，不需要额外包裹
-                pass
-            elif '<h1' not in skeleton:
-                skeleton = skeleton.replace('{{title}}', '<h1 class="section-title">{{title}}</h1>')
-        # 确保 subtitle 有包裹
-        if '{{subtitle}}' in skeleton and '<p class="subtitle">' not in skeleton and '<p class="subtitle"' not in skeleton:
+        else:
+            # 没有 {{chapter_tag}}，插入 .page-title
+            h1_pos = skeleton.find('<h1')
+            if h1_pos > 0:
+                skeleton = skeleton[:h1_pos] + '<div class="page-title">{{chapter_tag}}</div>\n' + skeleton[h1_pos:]
+            else:
+                slide_close = skeleton.rfind('</div>')
+                skeleton = skeleton[:slide_close] + '<div class="page-title">{{chapter_tag}}</div>\n' + skeleton[slide_close:]
+        # --- 修复 h1：确保内容是 {{title}} ---
+        h1_match = re.search(r'<h1[^>]*>(.*?)</h1>', skeleton, re.DOTALL | re.IGNORECASE)
+        if h1_match:
+            h1_inner = h1_match.group(1).strip()
+            if '{{title}}' not in h1_inner:
+                skeleton = skeleton[:h1_match.start(1)] + '{{title}}' + skeleton[h1_match.end(1):]
+        elif '{{title}}' in skeleton:
+            skeleton = skeleton.replace('{{title}}', '<h1 class="section-title">{{title}}</h1>')
+        else:
+            # 没有 {{title}}，在 chapter_tag 后插入
+            skeleton = skeleton.replace('{{chapter_tag}}', '{{chapter_tag}}\n<h1 class="section-title">{{title}}</h1>')
+        # --- 修复 subtitle：确保内容是 {{subtitle}} ---
+        sub_match = re.search(
+            r'<p[^>]*class="[^"]*\bsubtitle\b[^"]*"[^>]*>(.*?)</p>',
+            skeleton, re.DOTALL | re.IGNORECASE,
+        )
+        if sub_match:
+            if '{{subtitle}}' not in sub_match.group(1):
+                skeleton = skeleton[:sub_match.start(1)] + '{{subtitle}}' + skeleton[sub_match.end(1):]
+        elif '{{subtitle}}' in skeleton:
             skeleton = skeleton.replace('{{subtitle}}', '<p class="subtitle">{{subtitle}}</p>')
+        else:
+            # 插入 subtitle 在 h1 之后
+            skeleton = re.sub(
+                r'(</h1>)',
+                r'\1\n<p class="subtitle">{{subtitle}}</p>',
+                skeleton, count=1,
+            )
     elif ptype == "content":
         # content 页：title 用 .page-title，content 用 .page-content
-        if '{{title}}' in skeleton and '<div class="page-title">' not in skeleton:
+        #
+        # 先检查 {{title}} 是否误放在 .page-content 内（LLM 常见错误）
+        pc_match = re.search(
+            r'(<div[^>]*class="[^"]*\bpage-content\b[^"]*"[^>]*>)(.*?)(</div>)',
+            skeleton, re.DOTALL | re.IGNORECASE,
+        )
+        if pc_match and '{{title}}' in pc_match.group(2):
+            # 把 {{title}} 从 .page-content 内提取出来，插入到 .page-content 之前
+            clean_inner = pc_match.group(2).replace('{{title}}', '').strip()
+            skeleton = skeleton[:pc_match.start(2)] + clean_inner + skeleton[pc_match.end(2):]
+            # 显式插入 .page-title 在 .page-content 之前
+            title_div = '<div class="page-title">{{title}}</div>'
+            pc_open = skeleton.find(pc_match.group(1))
+            skeleton = skeleton[:pc_open] + title_div + '\n' + skeleton[pc_open:]
+        # --- 修复 .page-title：确保内容是 {{title}} ---
+        pt_match = re.search(
+            r'<div[^>]*class="[^"]*\bpage-title\b[^"]*"[^>]*>(.*?)</div>',
+            skeleton, re.DOTALL | re.IGNORECASE,
+        )
+        if pt_match:
+            pt_inner = pt_match.group(1).strip()
+            if '{{title}}' not in pt_inner:
+                skeleton = skeleton[:pt_match.start(1)] + '{{title}}' + skeleton[pt_match.end(1):]
+        elif '{{title}}' in skeleton:
+            # title 占位符存在但没有 .page-title 包裹（且不在 .page-content 中）
             skeleton = skeleton.replace('{{title}}', '<div class="page-title">{{title}}</div>')
-        if '{{content}}' in skeleton and '<div class="page-content">' not in skeleton:
+        else:
+            # 没有 {{title}} 占位符，插入到 .page-content 之前
+            skeleton = re.sub(
+                r'(<div[^>]*class="[^"]*\bpage-content\b[^"]*"[^>]*>)',
+                r'<div class="page-title">{{title}}</div>\n\1',
+                skeleton, count=1, flags=re.IGNORECASE,
+            )
+        # --- 修复 .page-content：确保内容是 {{content}} ---
+        pc_match = re.search(
+            r'(<div[^>]*class="[^"]*\bpage-content\b[^"]*"[^>]*>)(.*?)(</div>)',
+            skeleton, re.DOTALL | re.IGNORECASE,
+        )
+        if pc_match:
+            inner = pc_match.group(2).strip()
+            if '{{content}}' not in inner:
+                skeleton = skeleton[:pc_match.start(2)] + '\n{{content}}\n' + skeleton[pc_match.end(2):]
+        elif '{{content}}' in skeleton:
             skeleton = skeleton.replace('{{content}}', '<div class="page-content">{{content}}</div>')
+        # --- 清理 .page-content 外的 {{content}} 残留 ---
+        skeleton = re.sub(
+            r'\{\{content\}\}\s*</div>\s*$',
+            '</div>',
+            skeleton,
+            flags=re.DOTALL,
+        )
     elif ptype == "ending":
         # ending 页：title 在 h1 中，message 在 p.ending-message 中，且在 .ending-content 内
-        if '<div class="ending-content">' not in skeleton and '{{title}}' in skeleton:
-            # 包裹 ending 内容
-            ending_content_match = re.search(r'(<div class="ending-content">)(.*?)(</div>)', skeleton, re.DOTALL)
-            if not ending_content_match:
-                # 用 ending-content 包裹 h1 和 ending-message
+        # 修复 h1 内硬编码文字 → {{title}}
+        h1_match = re.search(r'<h1[^>]*>(.*?)</h1>', skeleton, re.DOTALL | re.IGNORECASE)
+        if h1_match:
+            if '{{title}}' not in h1_match.group(1):
+                skeleton = skeleton[:h1_match.start(1)] + '{{title}}' + skeleton[h1_match.end(1):]
+        # 修复 ending-message 内硬编码文字 → {{message}}
+        em_match = re.search(
+            r'<p[^>]*class="[^"]*\bending-message\b[^"]*"[^>]*>(.*?)</p>',
+            skeleton, re.DOTALL | re.IGNORECASE,
+        )
+        if em_match:
+            if '{{message}}' not in em_match.group(1):
+                skeleton = skeleton[:em_match.start(1)] + '{{message}}' + skeleton[em_match.end(1):]
+        # 确保 ending-content 包裹
+        if '<div class="ending-content">' not in skeleton:
+            skeleton = re.sub(
+                r'(<h1[^>]*>{{title}}</h1>\s*<p[^>]*class="[^"]*\bending-message\b[^"]*">{{message}}</p>)',
+                r'<div class="ending-content">\1</div>',
+                skeleton,
+                flags=re.DOTALL | re.IGNORECASE,
+            )
+            if '<div class="ending-content">' not in skeleton:
                 skeleton = re.sub(
-                    r'(<h1[^>]*>.*?</h1>\s*<p[^>]*class="[^"]*\bending-message\b[^"]*>[^<]*</p>)',
-                    r'<div class="ending-content">\1</div>',
+                    r'(<h1[^>]*>.*?</h1>)',
+                    r'<div class="ending-content">\1',
                     skeleton,
                     flags=re.DOTALL | re.IGNORECASE,
                 )
-                # 如果还没包裹，直接构造
-                if '<div class="ending-content">' not in skeleton:
-                    skeleton = re.sub(
-                        r'(<h1[^>]*>)({{title}})(</h1>)',
-                        r'\1\2\3\n    <p class="ending-message">{{message}}</p>',
-                        skeleton,
-                    )
-                    skeleton = re.sub(
-                        r'(<p[^>]*class="[^"]*\bending-message\b[^>]*>)({{message}})(</p>)',
-                        r'<div class="ending-content">\1\2\3</div>',
-                        skeleton,
-                    )
-                    # 兜底
-                    if '<div class="ending-content">' not in skeleton:
-                        skeleton = re.sub(
-                            r'(<p[^>]*>[^<]*{{message}}[^<]*</p>)',
-                            r'<div class="ending-content">\1</div>',
-                            skeleton,
-                        )
+
+    # --- 全局清理（所有 page_type） ---
+    # 清除硬编码的 footer-brand / footer-tag 文本
+    skeleton = re.sub(
+        r'<span[^>]*class="[^"]*\b(?:footer-brand|footer-tag)\b[^"]*"[^>]*>.*?</span>',
+        '', skeleton, flags=re.DOTALL | re.IGNORECASE,
+    )
+    # 清除 HTML 注释
+    skeleton = re.sub(r'<!--.*?-->', '', skeleton, flags=re.DOTALL)
+    # 清除空的装饰 span（含 emoji/特殊字符的装饰性空 span）
+    skeleton = re.sub(r'<span[^>]*>\s*(?:✦|✧|◆|◇|●|○|△|▲|▽|▼|★|☆|→|⇒|⟶|·|•|\.)\s*</span>', '', skeleton)
 
     return skeleton
 
@@ -864,64 +973,60 @@ def extract_template_from_response(response: str, user_description: str = "") ->
         }
 
     # 重点校验：content 页的 {{title}} 必须在 {{content}} 之前
+    # 改为 warn 而非 raise，让 auto-fix 有机会修复
     content_skeleton = page_types.get("content", {}).get("skeleton", "")
     if content_skeleton:
         title_pos = content_skeleton.find("{{title}}")
         content_pos = content_skeleton.find("{{content}}")
         if title_pos != -1 and content_pos != -1 and title_pos > content_pos:
-            raise ValueError(
+            logger.warning(
                 "content 页中 {{title}} 出现在 {{content}} 之后，"
-                "违反了\"标题在上、内容在下\"的布局要求。"
-                f"请确保 LLM 生成的 HTML 中标题在内容之上。"
+                "将尝试自动修复"
             )
-        # 同时检查 content 页必须包含 {{title}} 占位符
         if title_pos == -1:
-            raise ValueError(
-                "content 页缺少 {{title}} 占位符。"
-                "内容页的标题必须使用 {{title}} 占位符，不能硬编码。"
+            logger.warning(
+                "content 页缺少 {{title}} 占位符，将尝试自动修复"
             )
     # section 页的 title 也必须存在
     section_skeleton = page_types.get("section", {}).get("skeleton", "")
     if section_skeleton:
         if "{{title}}" not in section_skeleton:
-            raise ValueError(
-                "section 页缺少 {{title}} 占位符。"
-                "章节标题必须使用 {{title}} 占位符，不能硬编码。"
+            logger.warning(
+                "section 页缺少 {{title}} 占位符，将尝试自动修复"
             )
 
-    # 导航结构检查
+    # 导航结构检查 — 降级为 warn，让 auto-fix 修复
     nav_errors = _check_navigation_structure(html)
     if nav_errors:
-        raise ValueError(
-            "HTML 导航结构不符合标准规范：\n"
+        logger.warning(
+            "HTML 导航结构不符合标准规范，将尝试自动修复：\n"
             + "\n".join(f"  - {e}" for e in nav_errors)
         )
 
-    # slide 尺寸检查
+    # slide 尺寸检查 — 降级为 warn，让 auto-fix 修复
     dim_errors = _validate_slide_dimensions(html)
     if dim_errors:
-        raise ValueError(
-            "HTML slide 尺寸 CSS 不符合标准规范：\n"
+        logger.warning(
+            "HTML slide 尺寸 CSS 不符合标准规范，将尝试自动修复：\n"
             + "\n".join(f"  - {e}" for e in dim_errors)
         )
 
-    # 布局方式检查：禁止 flex column 布局
+    # 布局方式检查 — 降级为 warn，让 auto-fix 修复
     layout_errors = _validate_layout_positioning(html)
     if layout_errors:
-        raise ValueError(
-            "HTML 布局方式不符合标准规范：\n"
+        logger.warning(
+            "HTML 布局方式不符合标准规范，将尝试自动修复：\n"
             + "\n".join(f"  - {e}" for e in layout_errors)
         )
 
-    # content/toc 区域清洁度检查（提前到提取阶段，拒绝污染 skeleton）
-    # 注意：content 页必须完全空白；toc 页允许保留示例列表结构（供 CSS 样式参考）
+    # content/toc 区域清洁度检查 — 降级为 warn，让 auto-fix 修复
     for ptype in ("content",):
         if ptype in page_types:
             sk = page_types[ptype]["skeleton"]
             clean_errors = _validate_content_cleanliness(sk, ptype)
             if clean_errors:
-                raise ValueError(
-                    f"HTML 中 {ptype} 页的骨架结构不符合规范：\n"
+                logger.warning(
+                    f"HTML 中 {ptype} 页的骨架结构不符合规范，将尝试自动修复：\n"
                     + "\n".join(f"  - {e}" for e in clean_errors)
                 )
 
@@ -1243,21 +1348,38 @@ def _auto_fix_template(parsed: dict[str, Any], errors: list[str]) -> tuple[dict[
     raw_html = fixed.get("raw_html", "")
     page_types = fixed.get("page_types", {})
 
-    # 1. 修复 content 页缺少 {{title}}
+    def _add_placeholder(page_types, ptype, ph_name):
+        """安全追加占位符，避免重复。"""
+        existing = list(page_types.get(ptype, {}).get("placeholders", []))
+        if ph_name not in existing:
+            page_types[ptype]["placeholders"] = existing + [ph_name]
+
+    # 1. 修复 content 页缺少 {{title}} 或 title 在 content 之后
     content_sk = page_types.get("content", {}).get("skeleton", "")
-    if content_sk and "{{title}}" not in content_sk:
-        if "{{content}}" in content_sk:
-            content_sk = content_sk.replace("{{content}}", '<div class="page-title">{{title}}</div>\n{{content}}')
-        else:
-            content_sk = '<div class="page-title">{{title}}</div>\n' + content_sk
-        page_types["content"]["skeleton"] = content_sk
-        page_types["content"]["placeholders"] = list(page_types["content"].get("placeholders", [])) + ["title"]
-        fixed["page_types"] = page_types
-        remaining = [e for e in remaining if "content 页缺少" not in e]
-        if raw_html:
-            if "{{content}}" in raw_html:
-                raw_html = raw_html.replace("{{content}}", '<div class="page-title">{{title}}</div>\n{{content}}', 1)
-            fixed["raw_html"] = raw_html
+    if content_sk:
+        title_pos = content_sk.find("{{title}}")
+        content_pos = content_sk.find("{{content}}")
+        if title_pos > content_pos and content_pos != -1:
+            # title 出现在 content 之后 — 提取 {{title}} 移到 content 之前
+            content_sk = content_sk.replace("{{title}}", "")
+            content_sk = content_sk.replace("{{content}}", '<div class="page-title">{{title}}</div>\n{{content}}', 1)
+            page_types["content"]["skeleton"] = content_sk
+            _add_placeholder(page_types, "content", "title")
+            fixed["page_types"] = page_types
+            remaining = [e for e in remaining if "出现在.*之后" not in e and "content 页缺少" not in e]
+        elif title_pos == -1:
+            if content_pos != -1:
+                content_sk = content_sk.replace("{{content}}", '<div class="page-title">{{title}}</div>\n{{content}}', 1)
+            else:
+                content_sk = '<div class="page-title">{{title}}</div>\n' + content_sk
+            page_types["content"]["skeleton"] = content_sk
+            _add_placeholder(page_types, "content", "title")
+            fixed["page_types"] = page_types
+            remaining = [e for e in remaining if "content 页缺少" not in e and "出现在.*之后" not in e]
+            if raw_html:
+                if "{{content}}" in raw_html:
+                    raw_html = raw_html.replace("{{content}}", '<div class="page-title">{{title}}</div>\n{{content}}', 1)
+                fixed["raw_html"] = raw_html
 
     # 2. 修复 section 页缺少 {{title}}
     section_sk = page_types.get("section", {}).get("skeleton", "")
@@ -1267,10 +1389,9 @@ def _auto_fix_template(parsed: dict[str, Any], errors: list[str]) -> tuple[dict[
         elif "{{chapter_tag}}" in section_sk:
             section_sk = section_sk.replace("{{chapter_tag}}", "{{chapter_tag}}\n<h1 class=\"section-title\">{{title}}</h1>")
         else:
-            # 直接在 skeleton 开头插入 title
             section_sk = '<h1 class="section-title">{{title}}</h1>\n<p class="subtitle">{{subtitle}}</p>\n' + section_sk
         page_types["section"]["skeleton"] = section_sk
-        page_types["section"]["placeholders"] = list(page_types["section"].get("placeholders", [])) + ["title"]
+        _add_placeholder(page_types, "section", "title")
         fixed["page_types"] = page_types
         remaining = [e for e in remaining if "section 页缺少" not in e]
 
@@ -1296,7 +1417,18 @@ def _auto_fix_template(parsed: dict[str, Any], errors: list[str]) -> tuple[dict[
                 fixed["page_types"] = page_types
                 remaining = [e for e in remaining if "装饰" not in e and ptype not in e]
 
-    # 5. 修复缺少 slide-footer
+    # 5. 全局清理所有 skeleton 中的 footer-brand 硬编码文本
+    for ptype, pconfig in list(page_types.items()):
+        sk = pconfig.get("skeleton", "")
+        if sk and re.search(r'footer-brand|footer-tag', sk):
+            clean_sk = re.sub(
+                r'<span[^>]*class="[^"]*\b(?:footer-brand|footer-tag)\b[^"]*"[^>]*>.*?</span>',
+                '', sk, flags=re.DOTALL | re.IGNORECASE,
+            )
+            page_types[ptype]["skeleton"] = clean_sk
+            fixed["page_types"] = page_types
+
+    # 6. 修复缺少 slide-footer
     for ptype, pconfig in page_types.items():
         sk = pconfig.get("skeleton", "")
         if sk and "slide-footer" not in sk:
@@ -1429,14 +1561,22 @@ class TemplateGenerator:
 
         for attempt in range(MAX_RETRIES):
             if attempt > 0:
+                # 只传递 auto-fix 无法修复的错误和关键的结构约束
                 retry_prompt = stage2_prompt + (
                     f"\n\n## 重试提示（第 {attempt + 1} 次）\n"
-                    f"上一次校验失败原因：{last_error}\n"
-                    "请修正上述问题后重新生成完整HTML。"
+                    f"上一次生成校验失败，以下问题无法自动修复，请修正后重新生成：\n"
+                    f"{last_error}\n\n"
+                    "请特别注意以下约束：\n"
+                    "1. 每种 page_type (cover/toc/section/content/ending) 都必须有对应的示例页面\n"
+                    "2. content 页的 .page-content 内只能有 {{content}} 占位符，禁止任何装饰元素\n"
+                    "3. .slide 必须使用 position:relative + position:absolute 布局，禁止 flex column\n"
+                    "4. .slide 必须使用 width:1280px; height:720px 固定尺寸\n"
+                    "5. .nav-dots 容器必须留空，禁止硬编码导航点\n"
+                    "6. 导航点必须由 JS 动态生成\n"
                 )
-                response = await self.llm.complete(retry_prompt, "")
+                response = await self.llm.complete(retry_prompt, "请生成完整的PPT模板HTML代码。")
             else:
-                response = await self.llm.complete(stage2_prompt, "")
+                response = await self.llm.complete(stage2_prompt, "请生成完整的PPT模板HTML代码。")
 
             last_response = response
 

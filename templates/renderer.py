@@ -6,7 +6,7 @@ import re
 import html as html_lib
 from typing import Any
 
-from templates.template import Template, PageType
+from templates.template import Template, PageType, PageTypeConfig
 
 
 class TemplateRenderer:
@@ -77,11 +77,10 @@ class TemplateRenderer:
 
         if page_config is None:
             if page_type == "section":
-                fallback = self.template.get_page_type_config("cover")
-                if fallback is not None:
-                    page_config = fallback
+                page_config = self._create_section_fallback_config()
             if page_config is None:
                 return self._render_default_page(
+                    page_type=page_type,
                     title=title,
                     content=content,
                     bullets=bullets,
@@ -312,6 +311,7 @@ class TemplateRenderer:
 
     def _render_default_page(
         self,
+        page_type: str,
         title: str,
         content: str,
         bullets: list[str] | None,
@@ -322,13 +322,54 @@ class TemplateRenderer:
         combined_content = f"{content}\n{bullets_html}" if content else bullets_html
 
         return (
-            f'<div class="slide content">'
+            f'<div class="slide {page_type}">'
             f'<div class="page-title">{html_lib.escape(title)}</div>'
             f'<div class="page-content">{combined_content}</div>'
-            f'<div class="pagination">'
-            f'<span class="current-page">{page_number}</span> / <span class="total-pages">{total_pages}</span>'
+            f'<div class="slide-footer">'
+            f'<span class="page-num">{page_number}</span>'
             f'</div>'
             f'</div>'
+        )
+
+    def _create_section_fallback_config(self) -> "PageTypeConfig":
+        """Create a proper section page skeleton from template CSS variables.
+
+        When a template lacks a section page type, generate one that inherits
+        the template's color scheme and typography, instead of falling back to
+        the cover page which has completely different semantics.
+        """
+        css = self.template.css_variables or {}
+        bg = css.get("color-background", "#0a0a0a")
+        text = css.get("color-text", "#e0e0e0")
+        accent = css.get("color-accent", css.get("color-primary", "#6366f1"))
+        muted = css.get("color-text-muted", "#888")
+        heading_font = css.get("font-heading", css.get("font-body", "sans-serif"))
+
+        skeleton = (
+            f'<div class="slide section" style="background:{bg};color:{text};'
+            'position:relative;overflow:hidden;width:1280px;height:720px;">'
+            f'<div class="page-title" style="position:absolute;top:60px;left:80px;'
+            f'font-size:18px;color:{accent};letter-spacing:6px;text-transform:uppercase;">'
+            '{{chapter_tag}}</div>'
+            f'<h1 class="section-title" style="position:absolute;top:50%;left:50%;'
+            'transform:translate(-50%,-50%);margin:0;'
+            f'font-family:{heading_font};font-size:52px;color:{text};'
+            'font-weight:700;text-align:center;line-height:1.3;width:80%;">'
+            '{{title}}</h1>'
+            f'<p class="subtitle" style="position:absolute;top:calc(50% + 80px);'
+            'left:50%;transform:translateX(-50%);margin:0;'
+            f'font-size:20px;color:{muted};">'
+            '{{subtitle}}</p>'
+            '<div class="slide-footer" style="position:absolute;bottom:15px;'
+            'left:0;right:0;text-align:center;">'
+            '<span class="page-num">{{page_number}}</span>'
+            '</div>'
+            '</div>'
+        )
+        return PageTypeConfig(
+            type_name=PageType.SECTION,
+            skeleton=skeleton,
+            placeholders=["chapter_tag", "title", "subtitle", "page_number"],
         )
 
     def _render_bullets(self, bullets: list[str]) -> str:

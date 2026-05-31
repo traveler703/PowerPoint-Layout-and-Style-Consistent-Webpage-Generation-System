@@ -1858,10 +1858,11 @@ def create_template():
         return jsonify({'error': str(e)}), 500
 
 
+# 注册模板生成 API（模块级，确保任何启动方式都生效）
+register_template_api_routes(app)
+
 def main():
     """主函数"""
-    # 注册模板生成 API
-    register_template_api_routes(app)
     logger.info(f"启动LandPPT Demo服务: http://{APP_HOST}:{APP_PORT}")
     app.run(host=APP_HOST, port=APP_PORT, debug=DEBUG)
 

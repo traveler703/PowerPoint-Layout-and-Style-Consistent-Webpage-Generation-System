@@ -79,8 +79,97 @@ class TemplateLoader:
             page_types["content"] = PageTypeConfig(
                 type_name=PageType.CONTENT,
                 skeleton=self._extract_default_skeleton(data.get("raw_html", "")),
-                placeholders=["title", "content"],
+                placeholders=["title", "content", "page_number"],
                 content_patterns={}
+            )
+
+        # Auto-generate default skeletons for missing page types
+        css_vars = data.get("css_variables", {})
+        bg = css_vars.get("color-background", "#0a0a0a")
+        text = css_vars.get("color-text", "#e0e0e0")
+        accent = css_vars.get("color-accent", css_vars.get("color-primary", "#6366f1"))
+        muted = css_vars.get("color-text-muted", "#888")
+        heading = css_vars.get("font-heading", css_vars.get("font-body", "sans-serif"))
+
+        if "cover" not in page_types:
+            page_types["cover"] = PageTypeConfig(
+                type_name=PageType.COVER,
+                skeleton=(
+                    f'<div class="slide cover" style="background:{bg};position:relative;'
+                    'overflow:hidden;width:1280px;height:720px;">'
+                    f'<h1 class="main-title" style="position:absolute;top:45%;left:50%;'
+                    'transform:translate(-50%,-50%);font-size:56px;'
+                    f'font-family:{heading};color:{text};text-align:center;">'
+                    '{{title}}</h1>'
+                    f'<p class="subtitle" style="position:absolute;top:calc(45% + 70px);'
+                    'left:50%;transform:translateX(-50%);font-size:24px;color:{muted};">'
+                    '{{subtitle}}</p>'
+                    f'<div class="date-badge" style="position:absolute;bottom:120px;'
+                    'left:50%;transform:translateX(-50%);font-size:16px;color:{accent};">'
+                    '{{date_badge}}</div>'
+                    '<div class="slide-footer" style="position:absolute;bottom:15px;'
+                    'left:0;right:0;text-align:center;">'
+                    '<span class="page-num">{{page_number}}</span></div>'
+                    '</div>'
+                ),
+                placeholders=["title", "subtitle", "date_badge", "page_number"],
+            )
+        if "toc" not in page_types:
+            page_types["toc"] = PageTypeConfig(
+                type_name=PageType.TOC,
+                skeleton=(
+                    f'<div class="slide toc" style="background:{bg};position:relative;'
+                    'overflow:hidden;width:1280px;height:720px;">'
+                    f'<div class="page-title" style="position:absolute;top:40px;left:60px;'
+                    f'font-size:32px;color:{accent};font-weight:700;">{{title}}</div>'
+                    f'<div class="page-content" style="position:absolute;top:130px;'
+                    'left:60px;right:60px;bottom:60px;">{{toc_items}}</div>'
+                    '<div class="slide-footer" style="position:absolute;bottom:15px;'
+                    'left:0;right:0;text-align:center;">'
+                    '<span class="page-num">{{page_number}}</span></div>'
+                    '</div>'
+                ),
+                placeholders=["title", "toc_items", "page_number"],
+            )
+        if "section" not in page_types:
+            page_types["section"] = PageTypeConfig(
+                type_name=PageType.SECTION,
+                skeleton=(
+                    f'<div class="slide section" style="background:{bg};position:relative;'
+                    'overflow:hidden;width:1280px;height:720px;">'
+                    f'<div class="page-title" style="position:absolute;top:60px;left:80px;'
+                    f'font-size:18px;color:{accent};letter-spacing:6px;">{{chapter_tag}}</div>'
+                    f'<h1 class="section-title" style="position:absolute;top:50%;left:50%;'
+                    'transform:translate(-50%,-50%);font-size:48px;'
+                    f'font-family:{heading};color:{text};text-align:center;">{{title}}</h1>'
+                    f'<p class="subtitle" style="position:absolute;top:calc(50% + 70px);'
+                    'left:50%;transform:translateX(-50%);font-size:20px;color:{muted};">'
+                    '{{subtitle}}</p>'
+                    '<div class="slide-footer" style="position:absolute;bottom:15px;'
+                    'left:0;right:0;text-align:center;">'
+                    '<span class="page-num">{{page_number}}</span></div>'
+                    '</div>'
+                ),
+                placeholders=["chapter_tag", "title", "subtitle", "page_number"],
+            )
+        if "ending" not in page_types:
+            page_types["ending"] = PageTypeConfig(
+                type_name=PageType.ENDING,
+                skeleton=(
+                    f'<div class="slide ending" style="background:{bg};position:relative;'
+                    'overflow:hidden;width:1280px;height:720px;">'
+                    f'<div class="ending-content" style="position:absolute;top:50%;left:50%;'
+                    'transform:translate(-50%,-50%);text-align:center;">'
+                    f'<h1 style="font-size:48px;font-family:{heading};color:{text};">{{title}}</h1>'
+                    f'<p class="ending-message" style="font-size:20px;color:{muted};'
+                    'margin-top:16px;">{{message}}</p>'
+                    '</div>'
+                    '<div class="slide-footer" style="position:absolute;bottom:15px;'
+                    'left:0;right:0;text-align:center;">'
+                    '<span class="page-num">{{page_number}}</span></div>'
+                    '</div>'
+                ),
+                placeholders=["title", "message", "page_number"],
             )
 
         viewport_w, viewport_h = self._extract_viewport(data.get("raw_html", ""))
