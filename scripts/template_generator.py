@@ -26,6 +26,8 @@ import re
 import time
 from typing import Any
 
+from bs4 import BeautifulSoup
+
 sys_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if sys_path not in __import__("sys").path:
     __import__("sys").path.insert(0, sys_path)

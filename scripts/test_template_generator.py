@@ -17,16 +17,14 @@ import json
 import os
 import sys
 import time
+from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scripts.template_generator import (
-    TemplateGenerator,
-    validate_template,
-    extract_json_from_response,
-    merge_with_defaults,
     REQUIRED_FIELDS,
     REQUIRED_PAGE_TYPES,
+    TemplateGenerator,
 )
 
 # ============================================================

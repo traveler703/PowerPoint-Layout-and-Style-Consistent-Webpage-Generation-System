@@ -19,6 +19,10 @@ class TemplateRenderer:
         """Add safety CSS that keeps generated content inside the template canvas."""
         css = """
 <style id="landppt-runtime-overrides">
+html,body{width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;overflow:hidden!important;}
+body{display:flex!important;align-items:center!important;justify-content:center!important;margin:0!important;padding:0!important;}
+#slidesWrapper,.slides-wrapper{width:1280px!important;height:720px!important;min-width:1280px!important;min-height:720px!important;flex:0 0 1280px!important;transform-origin:center center!important;}
+#slidesTrack,.slides-track{width:1280px!important;height:720px!important;min-width:1280px!important;min-height:720px!important;}
 .slide .page-content{overflow:hidden;}
 .slide .page-content.allow-scroll{overflow:auto;scrollbar-width:thin;}
 .slide .page-content::-webkit-scrollbar{width:6px;height:6px;}
@@ -50,8 +54,21 @@ class TemplateRenderer:
     if(totalEl && total) totalEl.textContent=String(total);
     window.__totalSlides=total;
   }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',fixPageCount);
-  else fixPageCount();
+  function fitPresentation(){
+    var wrapper=document.getElementById('slidesWrapper') || document.querySelector('.slides-wrapper');
+    if(!wrapper) return;
+    var scale=Math.min(window.innerWidth / 1280, window.innerHeight / 720, 1);
+    wrapper.style.setProperty('transform','scale(' + scale + ')','important');
+    wrapper.style.setProperty('transform-origin','center center','important');
+  }
+  function initializeRuntime(){
+    fixPageCount();
+    fitPresentation();
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',initializeRuntime);
+  else initializeRuntime();
+  window.addEventListener('load',fitPresentation);
+  window.addEventListener('resize',fitPresentation);
 })();
 </script>
 """

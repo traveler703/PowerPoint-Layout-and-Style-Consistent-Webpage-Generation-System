@@ -1,5 +1,12 @@
 import { reactive, computed } from 'vue'
 import { getProjects, createProject, updateProject, deleteProject, createOutline, getOutline, updateOutline, getProjectOutlines, getProjectPPTs, getPPT, evaluatePresentation, getTemplates, updateTemplate, deleteTemplate, setDefaultTemplate, llmGenerateOnce, saveTemplateToFile } from '@/services/api'
+import {
+  PAGE_TYPE_ICONS,
+  PAGE_TYPE_LABELS,
+  PAGE_TYPES,
+  getPageType,
+  normalizePageType
+} from '@/constants/pageTypes'
 
 // 项目类型图标映射
 const typeIcons = {
@@ -230,7 +237,7 @@ export const store = reactive({
             title: slide.title || '未命名页面',
             subtitle: slide.subtitle || '',
             // 页面类型映射：支持 cover, toc, section, content, end
-            layout: slide.slide_type || 'content',
+            layout: getPageType(slide),
             bullets: slide.content_points || slide.bullets || [],
             image: null,
             background: null,
@@ -243,7 +250,7 @@ export const store = reactive({
             title: latestOutline.title || projectData.project.name || '未命名文档',
             summary: '',
             sections: outlineData.slides
-              .filter(slide => slide.slide_type !== 'title')
+              .filter(slide => getPageType(slide) !== PAGE_TYPES.COVER)
               .map(slide => ({
                 title: slide.title,
                 content: slide.subtitle || '',
@@ -416,8 +423,8 @@ export const store = reactive({
           title: page.title,
           subtitle: page.subtitle || '',
           content_points: page.bullets || [],
-          // 保持 layout 原样传递（cover, toc, section, content, end）
-          slide_type: page.layout || 'content',
+          // API 边界统一写入规范页面类型，读取时仍兼容历史别名。
+          slide_type: normalizePageType(page.layout),
           bullets: page.bullets || []
         }))
       }
@@ -482,8 +489,7 @@ export const store = reactive({
             pageNumber: slide.page_number || (index + 1),
             title: slide.title || '未命名页面',
             subtitle: slide.subtitle || '',
-            // 页面类型映射：支持 cover, toc, section, content, end
-            layout: slide.slide_type || 'content',
+            layout: getPageType(slide),
             bullets: slide.content_points || slide.bullets || [],
             image: null,
             background: null,
@@ -587,7 +593,7 @@ export const store = reactive({
       title: slide.title || '未命名页面',
       subtitle: slide.subtitle || '',
       // 页面类型映射：支持 cover, toc, section, content, end
-      layout: slide.slide_type || 'content',
+      layout: getPageType(slide),
       bullets: slide.content_points || slide.bullets || [],
       image: null,
       background: null,
@@ -808,7 +814,7 @@ export const store = reactive({
           pageNumber: pageIndex++,
           title: p.title || '未命名页面',
           subtitle: p.subtitle || p.summary || '',
-          layout: p.type || 'content',  // cover, toc, section, content, end
+          layout: getPageType(p),
           image: null,
           background: null,
           logo: null,
@@ -915,17 +921,21 @@ export const store = reactive({
     return false
   },
 
-  async createTemplate(data) {
+  async createTemplate(data, options = {}) {
     try {
       const response = await saveTemplateToFile(data)
       if (response.success) {
         this.templates.push(response.template)
-        this.showToastMessage('模板创建成功')
+        if (!options.silent) {
+          this.showToastMessage('模板创建成功')
+        }
         return response.template
       }
     } catch (err) {
       console.error('创建模板失败:', err)
-      this.showToastMessage('创建模板失败')
+      if (!options.silent) {
+        this.showToastMessage('创建模板失败')
+      }
     }
     return null
   },
@@ -1176,7 +1186,7 @@ export const store = reactive({
 
     try {
       let llmPages = this.pages.map(p => ({
-        type: p.layout || 'content',
+        type: normalizePageType(p.layout),
         title: p.title || '',
         subtitle: p.subtitle || '',
         summary: p.summary || p.subtitle || '',
@@ -1192,7 +1202,7 @@ export const store = reactive({
       }
 
       const pages = llmPages.map(p => ({
-        page_type: p.type || 'content',
+        page_type: normalizePageType(p.type),
         title: p.title || '',
         subtitle: p.subtitle || p.summary || '',
         summary: p.summary || p.subtitle || '',
@@ -1368,25 +1378,27 @@ export const formatTime = (timestamp) => {
 }
 
 export const getPageIcon = (layout) => {
-  const icons = { cover: '📄', title: '📑', 'points-2': '📝', 'points-3': '📋', stat: '📊', 'image-text': '🖼️', text: '📃' }
-  return icons[layout] || '📄'
+  const icons = {
+    ...PAGE_TYPE_ICONS,
+    'points-2': '📝',
+    'points-3': '📋',
+    stat: '📊',
+    'image-text': '🖼️',
+    text: '📃'
+  }
+  return icons[normalizePageType(layout)] || '📄'
 }
 
 export const getLayoutName = (layout) => {
   const names = {
-    cover: '封面页',
-    toc: '目录页',
-    section: '章节页',
-    content: '内容页',
-    end: '结束页',
-    title: '标题版式',
+    ...PAGE_TYPE_LABELS,
     'points-2': '双列版式',
     'points-3': '三列版式',
     stat: '数据卡片',
     'image-text': '图文版式',
     text: '纯文版式'
   }
-  return names[layout] || '标准版式'
+  return names[normalizePageType(layout)] || '标准版式'
 }
 
 export { typeIcons, typeNames }

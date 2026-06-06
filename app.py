@@ -11,26 +11,29 @@ import re
 import threading
 import time
 from pathlib import Path
-from flask import Flask, render_template, request, jsonify, send_file, Response, stream_with_context
-from flask_cors import CORS
-from config import APP_HOST, APP_PORT, DEBUG
-from services.project_service import (
-    ProjectService, OutlineService, GeneratedPptService
-)
-from scripts.template_generator import register_template_api_routes
-from engine.content import parse_user_document
-from engine.types import SemanticPageInput
-from pipeline import run_pipeline
+
 from bs4 import BeautifulSoup
+from flask import Flask, Response, jsonify, request, send_file, stream_with_context
+from flask_cors import CORS
+
+from config import APP_HOST, APP_PORT, DEBUG
+from engine.content import parse_user_document
+from engine.page_types import PageType, normalize_page_payload, page_type_from_mapping
 from evaluator.layout_metrics import overlap_ratio_from_html
-from evaluator.style_metrics import aggregate_color_deviation, color_consistency_from_html, extract_colors_from_html
+from evaluator.style_metrics import (
+    aggregate_color_deviation,
+    color_consistency_from_html,
+    extract_colors_from_html,
+)
 from generator.llm_client import default_llm_client
 from parsers import (
     extract_text_from_file,
-    parse_document_to_json,
     parsed_json_to_outline,
-    parsed_json_to_frontend_pages,
 )
+from pipeline import run_pipeline
+from routes import project_api, template_api
+from scripts.template_generator import register_template_api_routes
+from services.project_service import ProjectService
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,6 +44,8 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'landppt-demo-secret-key'
 CORS(app)
+app.register_blueprint(project_api)
+app.register_blueprint(template_api)
 
 MAX_LLM_INPUT_CHARS = 20000
 SUPPORTED_DOCUMENT_EXTENSIONS = {".docx", ".pptx", ".txt", ".md", ".pdf"}
@@ -107,7 +112,7 @@ def _build_outline_from_parse_result(parse_result: dict) -> dict:
             "page_number": 1,
             "title": title,
             "content_points": [],
-            "slide_type": "title",
+            "slide_type": PageType.COVER.value,
         }
     ]
     for idx, section in enumerate(parse_result.get("sections", []), start=2):
@@ -137,7 +142,7 @@ def _load_parsed_json_payload(data: dict) -> dict:
     candidates.append(os.path.join(base, "output", os.path.basename(json_path)))
     for c in candidates:
         if c and os.path.isfile(c):
-            with open(c, "r", encoding="utf-8") as f:
+            with open(c, encoding="utf-8") as f:
                 return json.load(f)
     raise FileNotFoundError(f"找不到解析 JSON 文件: {json_path}")
 
@@ -152,7 +157,7 @@ def _load_page_html_from_outputs(page_number: int) -> tuple[str, str]:
     for pattern in (f"{page_number:02d}_*.html", f"*{page_number}*.html"):
         for path in glob.glob(os.path.join(output_dir, pattern)):
             try:
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     return f.read(), path
             except OSError:
                 return "", path
@@ -208,7 +213,7 @@ def _update_presentation_file(output_path: str | None, page_number: int, page_ht
     if not new_slide:
         return "", resolved_path
 
-    with open(resolved_path, "r", encoding="utf-8") as f:
+    with open(resolved_path, encoding="utf-8") as f:
         presentation_html = f.read()
 
     soup = BeautifulSoup(presentation_html, "html.parser")
@@ -337,7 +342,7 @@ def _build_outline_from_pages_data(pages_data: list[dict], topic: str) -> dict:
     current_section = None
 
     for p in pages_data:
-        page_type = p.get("page_type", "content")
+        page_type = page_type_from_mapping(p)
         if page_type == "cover":
             title = p.get("title", title)
             subtitle = p.get("subtitle", "")
@@ -350,7 +355,7 @@ def _build_outline_from_pages_data(pages_data: list[dict], topic: str) -> dict:
                 for item in raw_items
                 if str(item).strip()
             ]
-        elif page_type in ("end", "ending"):
+        elif page_type == PageType.ENDING.value:
             include_ending = True
             ending_title = p.get("title") or "谢谢观看"
             ending_message = p.get("subtitle") or p.get("summary") or ""
@@ -413,7 +418,7 @@ def _build_outline_from_pages_data(pages_data: list[dict], topic: str) -> dict:
 def _presentation_result_payload(result) -> dict:
     html_content = ""
     if result.success and result.output_path:
-        with open(result.output_path, "r", encoding="utf-8") as f:
+        with open(result.output_path, encoding="utf-8") as f:
             html_content = f.read()
 
     pages_dir = os.path.join(os.path.dirname(result.output_path), "pages") if result.output_path else ""
@@ -427,7 +432,7 @@ def _presentation_result_payload(result) -> dict:
             page_path = result.page_paths[i]
         if page_path and os.path.isfile(page_path):
             page_url = f"/output/pages/{os.path.basename(page_path)}"
-            with open(page_path, "r", encoding="utf-8") as pf:
+            with open(page_path, encoding="utf-8") as pf:
                 page_html = pf.read()
         elif pages_dir and os.path.isdir(pages_dir):
             prefix = f"{int(page_num):02d}_{layout.get('type', '')}_"
@@ -442,7 +447,7 @@ def _presentation_result_payload(result) -> dict:
             if matches:
                 newest = max(matches, key=lambda name: os.path.getmtime(os.path.join(pages_dir, name)))
                 page_url = f"/output/pages/{newest}"
-                with open(os.path.join(pages_dir, newest), "r", encoding="utf-8") as pf:
+                with open(os.path.join(pages_dir, newest), encoding="utf-8") as pf:
                     page_html = pf.read()
         slides.append(
             {
@@ -507,11 +512,11 @@ def parse_text():
         )
         
         # 使用 LLM 智能解析
+        from generator.llm_client import default_llm_client
         from generator.prompts import (
             build_document_parsing_prompt,
             parse_document_parsing_response,
         )
-        from generator.llm_client import default_llm_client
         
         llm_client = default_llm_client()
         system_prompt, user_prompt = build_document_parsing_prompt(text)
@@ -528,7 +533,7 @@ def parse_text():
         if not pages:
             pages = [
                 {"type": "cover", "title": parse_result.get('title', 'PPT演示文稿'), "subtitle": parse_result.get('subtitle', '')},
-                {"type": "end", "title": "谢谢观看", "subtitle": ""}
+                {"type": PageType.ENDING.value, "title": "谢谢观看", "subtitle": ""}
             ]
         
         result = {
@@ -604,7 +609,7 @@ def parse_document():
         if not frontend_pages:
             frontend_pages = [
                 {"type": "cover", "title": parse_result.get("title") or Path(upload.filename).stem, "subtitle": parse_result.get("subtitle", "")},
-                {"type": "end", "title": "谢谢观看", "subtitle": ""},
+                {"type": PageType.ENDING.value, "title": "谢谢观看", "subtitle": ""},
             ]
         result = {
             "title": parse_result.get("title") or Path(upload.filename).stem or "未命名文档",
@@ -750,7 +755,7 @@ def get_parse_result(project_id):
         if sections_json:
             try:
                 parse_result['sections'] = json.loads(sections_json)
-            except:
+            except json.JSONDecodeError:
                 parse_result['sections'] = []
 
         return jsonify({
@@ -821,7 +826,10 @@ def generate_ppt_parallel():
         if not data:
             return jsonify({'error': '请求数据不能为空'}), 400
 
-        pages_data = data.get('pages', [])
+        pages_data = [
+            normalize_page_payload(page)
+            for page in data.get("pages", [])
+        ]
         topic = data.get('topic', 'PPT演示文稿')
         template_name = data.get('template', 'tech')
         save_pages = data.get('save_pages', False)
@@ -857,7 +865,7 @@ def generate_ppt_parallel():
                     for item in raw_items
                     if str(item).strip()
                 ]
-            elif page_type in ('end', 'ending'):
+            elif page_type == PageType.ENDING.value:
                 include_ending = True
                 ending_title = p.get('title') or '谢谢观看'
                 ending_message = p.get('subtitle') or p.get('summary') or ''
@@ -959,10 +967,14 @@ def generate_ppt_parallel():
 def generate_ppt_progress():
     """流式生成 PPT，按 NDJSON 持续返回进度和最终结果。"""
     data = request.get_json() or {}
-    pages_data = data.get("pages", [])
+    pages_data = [
+        normalize_page_payload(page)
+        for page in data.get("pages", [])
+    ]
     topic = data.get("topic", "PPT演示文稿")
     template_name = data.get("template", "tech")
     save_pages = data.get("save_pages", False)
+    preview_template_id = (data.get("preview_template_id") or "").strip()
 
     if not pages_data:
         return jsonify({"error": "pages 数组不能为空"}), 400
@@ -976,7 +988,24 @@ def generate_ppt_progress():
 
                 outline = _build_outline_from_pages_data(pages_data, topic)
                 generator = PresentationGenerator(template_name=template_name)
-                output_filename = f"parallel_{int(time.time())}.html"
+                output_dir = None
+                generate_content_with_llm = True
+                if preview_template_id:
+                    safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", preview_template_id)
+                    if not safe_id:
+                        raise ValueError("preview_template_id 无效")
+                    output_dir = os.path.join(
+                        os.path.dirname(__file__),
+                        "templates",
+                        "data",
+                        "user_generated_html",
+                    )
+                    output_filename = f"{safe_id}.html"
+                    save_pages_for_request = False
+                    generate_content_with_llm = False
+                else:
+                    output_filename = f"parallel_{int(time.time())}.html"
+                    save_pages_for_request = save_pages
                 completed_pages: set[int] = set()
                 progress_total = (
                     1
@@ -1021,8 +1050,10 @@ def generate_ppt_progress():
                     generator.generate_presentation(
                         outline=outline,
                         output_filename=output_filename,
+                        output_dir=output_dir,
                         navigation=True,
-                        save_pages=save_pages,
+                        save_pages=save_pages_for_request,
+                        generate_content_with_llm=generate_content_with_llm,
                         progress_callback=progress_callback,
                     )
                 )
@@ -1279,7 +1310,7 @@ def evaluate_presentation():
                     "average_generation_time_seconds": average_generation_time,
                     "summary": summary.strip(),
                     "metric_notes": {
-                        "color_deviation": "每页色彩偏差率=该页中偏离模板调色板的颜色数量占比；全局色彩偏差率=各页色彩偏差率的平均值。",
+                        "color_deviation": "每页色彩偏差率=该页作者样式中偏离模板调色板的颜色使用次数占比；运行时辅助样式不参与统计。全局色彩偏差率=各页色彩偏差率的平均值。",
                         "overlap_ratio": "元素重叠率基于内联绝对定位元素的矩形交叠面积估算，并忽略背景层、低透明度装饰和 pointer-events:none 的装饰元素。",
                     },
                 },
@@ -1307,8 +1338,6 @@ def regenerate_page():
         # 构建 SemanticPageInput
         from engine.types import SemanticPageInput
         from pipeline import PresentationGenerator
-        from generator.prompts.content_html import generate_color_scheme_from_template
-        from templates.template_loader import load_template as _load_template
 
         sem_page = SemanticPageInput(
             page_index=page_number - 1,
@@ -1324,7 +1353,7 @@ def regenerate_page():
 
         # 用 pipeline 重新生成内容页 HTML
         gen = PresentationGenerator(template_name=template_name)
-        await_gen = asyncio.run(gen.initialize())
+        asyncio.run(gen.initialize())
 
         # 单页生成（两阶段）
         html_fragment, layout_info = asyncio.run(gen.generate_content_page_html(sem_page))
@@ -1398,8 +1427,8 @@ def serve_output(filename):
 @app.route('/api/pages')
 def list_pages():
     """列出pages目录下的所有HTML文件"""
-    import os
     import glob
+    import os
     pages_dir = os.path.join(os.path.dirname(__file__), 'output', 'pages')
     if not os.path.exists(pages_dir):
         return jsonify({'files': []})
@@ -1427,7 +1456,7 @@ def get_page_content():
         return jsonify({'error': '文件不存在', 'path': decoded_path}), 404
     
     try:
-        with open(decoded_path, 'r', encoding='utf-8') as f:
+        with open(decoded_path, encoding='utf-8') as f:
             content = f.read()
         return jsonify({'success': True, 'content': content})
     except Exception as e:
@@ -1439,508 +1468,6 @@ def get_page_content():
 def health():
     """健康检查"""
     return jsonify({'status': 'ok'})
-
-
-@app.route('/api/projects', methods=['GET'])
-def get_projects():
-    """获取所有项目"""
-    try:
-        limit = request.args.get('limit', 100, type=int)
-        offset = request.args.get('offset', 0, type=int)
-        projects = ProjectService.get_all_projects(limit=limit, offset=offset)
-        for p in projects:
-            if p.get('created_at'):
-                p['created_at'] = p['created_at'].isoformat() if hasattr(p['created_at'], 'isoformat') else str(p['created_at'])
-            if p.get('updated_at'):
-                p['updated_at'] = p['updated_at'].isoformat() if hasattr(p['updated_at'], 'isoformat') else str(p['updated_at'])
-        return jsonify({
-            'success': True,
-            'projects': projects,
-            'count': len(projects)
-        })
-    except Exception as e:
-        logger.error(f"获取项目列表失败: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/projects/<int:project_id>', methods=['GET'])
-def get_project(project_id):
-    """获取单个项目"""
-    try:
-        project = ProjectService.get_project(project_id)
-        if not project:
-            return jsonify({'error': '项目不存在'}), 404
-        if project.get('created_at'):
-            project['created_at'] = project['created_at'].isoformat() if hasattr(project['created_at'], 'isoformat') else str(project['created_at'])
-        if project.get('updated_at'):
-            project['updated_at'] = project['updated_at'].isoformat() if hasattr(project['updated_at'], 'isoformat') else str(project['updated_at'])
-        return jsonify({
-            'success': True,
-            'project': project
-        })
-    except Exception as e:
-        logger.error(f"获取项目失败: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/projects', methods=['POST'])
-def create_project():
-    """创建项目"""
-    try:
-        data = request.get_json()
-        name = data.get('name', '未命名项目')
-        description = data.get('description', '')
-        project_type = data.get('type', 'business')
-        icon = data.get('icon', '📊')
-
-        project_id = ProjectService.create_project(
-            name=name,
-            description=description,
-            type=project_type,
-            icon=icon
-        )
-
-        return jsonify({
-            'success': True,
-            'project_id': project_id,
-            'message': '项目创建成功'
-        }), 201
-
-    except Exception as e:
-        logger.error(f"创建项目失败: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/projects/<int:project_id>', methods=['PUT'])
-def update_project(project_id):
-    """更新项目"""
-    try:
-        data = request.get_json()
-        updates = {k: v for k, v in data.items() if k in [
-            'name', 'description', 'type', 'icon', 'page_count'
-        ]}
-
-        if not updates:
-            return jsonify({'error': '没有有效的更新字段'}), 400
-
-        success = ProjectService.update_project(project_id, **updates)
-        if not success:
-            return jsonify({'error': '项目不存在'}), 404
-
-        return jsonify({
-            'success': True,
-            'message': '项目更新成功'
-        })
-
-    except Exception as e:
-        logger.error(f"更新项目失败: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/projects/<int:project_id>', methods=['DELETE'])
-def delete_project(project_id):
-    """删除项目"""
-    try:
-        success = ProjectService.delete_project(project_id)
-        if not success:
-            return jsonify({'error': '项目不存在'}), 404
-
-        return jsonify({
-            'success': True,
-            'message': '项目删除成功'
-        })
-
-    except Exception as e:
-        logger.error(f"删除项目失败: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/projects/search', methods=['GET'])
-def search_projects():
-    """搜索项目"""
-    try:
-        keyword = request.args.get('q', '')
-        if not keyword:
-            return jsonify({'success': True, 'projects': [], 'count': 0})
-
-        projects = ProjectService.search_projects(keyword)
-        return jsonify({
-            'success': True,
-            'projects': projects,
-            'count': len(projects)
-        })
-
-    except Exception as e:
-        logger.error(f"搜索项目失败: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/projects/<int:project_id>/outlines', methods=['GET'])
-def get_project_outlines(project_id):
-    """获取项目的所有大纲"""
-    try:
-        outlines = OutlineService.get_outlines_by_project(project_id)
-        return jsonify({
-            'success': True,
-            'outlines': outlines,
-            'count': len(outlines)
-        })
-    except Exception as e:
-        logger.error(f"获取大纲失败: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/outlines', methods=['POST'])
-def create_outline():
-    """创建大纲"""
-    try:
-        data = request.get_json()
-        project_id = data.get('project_id')
-        title = data.get('title', '未命名大纲')
-        page_count = data.get('page_count', 0)
-        outline_data = data.get('outline_data')
-
-        if not project_id:
-            return jsonify({'error': '项目ID不能为空'}), 400
-
-        outline_id = OutlineService.create_outline(
-            project_id=project_id,
-            title=title,
-            outline_data=outline_data
-        )
-
-        ProjectService.update_project(project_id, page_count=page_count)
-
-        return jsonify({
-            'success': True,
-            'outline_id': outline_id,
-            'message': '大纲创建成功'
-        }), 201
-
-    except Exception as e:
-        logger.error(f"创建大纲失败: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/outlines/<int:outline_id>', methods=['GET'])
-def get_outline(outline_id):
-    """获取大纲"""
-    try:
-        outline = OutlineService.get_outline(outline_id)
-        if not outline:
-            return jsonify({'error': '大纲不存在'}), 404
-        return jsonify({
-            'success': True,
-            'outline': outline
-        })
-    except Exception as e:
-        logger.error(f"获取大纲失败: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/outlines/<int:outline_id>', methods=['PUT'])
-def update_outline(outline_id):
-    """更新大纲"""
-    try:
-        data = request.get_json()
-        updates = {k: v for k, v in data.items() if k in [
-            'title', 'page_count', 'outline_data'
-        ]}
-
-        if not updates:
-            return jsonify({'error': '没有有效的更新字段'}), 400
-
-        success = OutlineService.update_outline(outline_id, **updates)
-        if not success:
-            return jsonify({'error': '大纲不存在'}), 404
-
-        return jsonify({
-            'success': True,
-            'message': '大纲更新成功'
-        })
-
-    except Exception as e:
-        logger.error(f"更新大纲失败: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/ppts', methods=['POST'])
-def create_ppt():
-    """保存生成的PPT"""
-    try:
-        data = request.get_json()
-        project_id = data.get('project_id')
-        outline_id = data.get('outline_id')
-        style = data.get('style', 'modern')
-        title = data.get('title', '')
-        html_content = data.get('html_content', '')
-        slide_count = data.get('slide_count', 0)
-        status = data.get('status', 'completed')
-
-        if not project_id:
-            return jsonify({'error': '项目ID不能为空'}), 400
-
-        ppt_id = GeneratedPptService.create_ppt(
-            project_id=project_id,
-            outline_id=outline_id,
-            style=style,
-            title=title,
-            html_content=html_content,
-            slide_count=slide_count,
-            status=status
-        )
-
-        return jsonify({
-            'success': True,
-            'ppt_id': ppt_id,
-            'message': 'PPT保存成功'
-        }), 201
-
-    except Exception as e:
-        logger.error(f"保存PPT失败: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/projects/<int:project_id>/ppts', methods=['GET'])
-def get_project_ppts(project_id):
-    """获取项目的所有PPT"""
-    try:
-        limit = request.args.get('limit', 10, type=int)
-        ppts = GeneratedPptService.get_ppts_by_project(project_id, limit=limit)
-        return jsonify({
-            'success': True,
-            'ppts': ppts,
-            'count': len(ppts)
-        })
-    except Exception as e:
-        logger.error(f"获取PPT列表失败: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/ppts/<int:ppt_id>', methods=['GET'])
-def get_ppt(ppt_id):
-    """获取PPT"""
-    try:
-        ppt = GeneratedPptService.get_ppt(ppt_id)
-        if not ppt:
-            return jsonify({'error': 'PPT不存在'}), 404
-        return jsonify({
-            'success': True,
-            'ppt': ppt
-        })
-    except Exception as e:
-        logger.error(f"获取PPT失败: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/db-test', methods=['GET'])
-def db_test():
-    """数据库连接测试"""
-    from database import test_connection
-    result = test_connection()
-    return jsonify(result)
-
-
-@app.route('/api/stats', methods=['GET'])
-def get_stats():
-    """获取统计数据"""
-    try:
-        total_slides = GeneratedPptService.get_total_slides()
-        project_count = len(ProjectService.get_all_projects(limit=1000))
-        return jsonify({
-            'success': True,
-            'total_slides': total_slides,
-            'project_count': project_count
-        })
-    except Exception as e:
-        logger.error(f"获取统计数据失败: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/templates', methods=['GET'])
-def get_templates():
-    """获取模板列表"""
-    try:
-        import os
-        templates_dir = os.path.join(os.path.dirname(__file__), 'templates', 'data')
-        templates = []
-        seen_template_ids = set()
-
-        def load_template_summaries(directory, default_type):
-            if not os.path.exists(directory):
-                return
-            for filename in os.listdir(directory):
-                if filename.endswith('.json'):
-                    filepath = os.path.join(directory, filename)
-                    try:
-                        with open(filepath, 'r', encoding='utf-8') as f:
-                            template_data = json.load(f)
-                            template_id = template_data.get('template_id') or os.path.splitext(filename)[0]
-                            if template_id in seen_template_ids:
-                                continue
-                            seen_template_ids.add(template_id)
-                            templates.append({
-                                'template_id': template_id,
-                                'template_name': template_data.get('template_name'),
-                                'description': template_data.get('description'),
-                                'css_variables': template_data.get('css_variables'),
-                                'tags': template_data.get('tags', []),
-                                'is_default': template_data.get('is_default', False),
-                                'page_types': list(template_data.get('page_types', {}).keys()),
-                                'template_type': template_data.get('template_type', default_type)
-                            })
-                    except Exception as e:
-                        logger.error(f"加载模板文件 {filepath} 失败: {e}")
-
-        load_template_summaries(templates_dir, 'preset')
-        load_template_summaries(os.path.join(templates_dir, 'user_generated'), 'user')
-
-        return jsonify({
-            'success': True,
-            'templates': templates
-        })
-    except Exception as e:
-        logger.error(f"获取模板列表失败: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/templates', methods=['POST'])
-def create_template():
-    """创建新模板 - 保存用户生成的模板"""
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({'error': '请求数据不能为空'}), 400
-
-        template_data = data.get('template_data') or data
-
-        template_id = template_data.get('template_id')
-        if not template_id:
-            return jsonify({'error': 'template_id 不能为空'}), 400
-
-        logger.info(f"创建模板: {template_id}")
-
-        output_dir = os.path.join(
-            os.path.dirname(__file__), 'templates', 'data', 'user_generated'
-        )
-        os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, f"{template_id}.json")
-
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(template_data, f, ensure_ascii=False, indent=2)
-
-        logger.info(f"模板已保存: {output_path}")
-
-        # 刷新模板加载器缓存，使新模板立即可用
-        from templates.template_loader import get_loader
-        get_loader().reload()
-        logger.info("模板加载器已刷新")
-
-        return jsonify({
-            'success': True,
-            'message': '模板保存成功',
-            'template': {
-                'template_id': template_id,
-                'template_name': template_data.get('template_name', ''),
-                'description': template_data.get('description', ''),
-                'css_variables': template_data.get('css_variables'),
-                'tags': template_data.get('tags', []),
-                'page_types': list(template_data.get('page_types', {}).keys()),
-                'template_type': template_data.get('template_type', 'user'),
-                'is_default': False
-            }
-        }), 201
-
-    except Exception as e:
-        logger.error(f"创建模板失败: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/templates/<template_id>', methods=['PUT'])
-def update_template(template_id):
-    """更新模板的名称、描述、标签"""
-    try:
-        data = request.get_json() or {}
-        output_dir = os.path.join(os.path.dirname(__file__), 'templates', 'data', 'user_generated')
-        filepath = os.path.join(output_dir, f"{template_id}.json")
-        if not os.path.exists(filepath):
-            return jsonify({'error': '模板不存在'}), 404
-
-        with open(filepath, 'r', encoding='utf-8') as f:
-            tpl = json.load(f)
-
-        if 'template_name' in data:
-            tpl['template_name'] = data['template_name']
-        if 'description' in data:
-            tpl['description'] = data['description']
-        if 'tags' in data:
-            tpl['tags'] = data['tags']
-
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(tpl, f, ensure_ascii=False, indent=2)
-
-        from templates.template_loader import get_loader
-        get_loader().reload()
-
-        return jsonify({
-            'success': True,
-            'template': {
-                'template_id': template_id,
-                'template_name': tpl.get('template_name', ''),
-                'description': tpl.get('description', ''),
-                'tags': tpl.get('tags', []),
-            }
-        })
-    except Exception as e:
-        logger.error(f"更新模板失败: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/templates/<template_id>', methods=['DELETE'])
-def remove_template(template_id):
-    """删除用户模板"""
-    try:
-        output_dir = os.path.join(os.path.dirname(__file__), 'templates', 'data', 'user_generated')
-        filepath = os.path.join(output_dir, f"{template_id}.json")
-        if not os.path.exists(filepath):
-            return jsonify({'error': '模板不存在'}), 404
-
-        os.remove(filepath)
-
-        from templates.template_loader import get_loader
-        get_loader().reload()
-
-        return jsonify({'success': True, 'message': '模板已删除'})
-    except Exception as e:
-        logger.error(f"删除模板失败: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/save-preview-html', methods=['POST'])
-def save_preview_html():
-    """保存 / 清空模板预览 HTML 到固定路径"""
-    try:
-        data = request.get_json() or {}
-        template_id = (data.get('template_id') or 'unknown').strip()
-        html = data.get('html') or ''
-        # 安全过滤：只允许字母数字下划线横线
-        safe_id = re.sub(r'[^a-zA-Z0-9_-]', '_', template_id) or 'unknown'
-        out_dir = os.path.join(os.path.dirname(__file__), 'test', 'output', 'preview_gen')
-        os.makedirs(out_dir, exist_ok=True)
-        filepath = os.path.join(out_dir, f'preview_{safe_id}.html')
-        if html:
-            with open(filepath, 'w', encoding='utf-8') as f:
-                f.write(html)
-            return jsonify({'success': True, 'path': filepath, 'size': len(html)})
-        else:
-            # html 为空时删除旧预览文件
-            if os.path.exists(filepath):
-                os.remove(filepath)
-            return jsonify({'success': True, 'cleared': True})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 
 # 注册模板生成 API（模块级，确保任何启动方式都生效）

@@ -3,11 +3,12 @@ HTML验证与修复服务 - LandPPT原版
 步骤9: HTML验证与修复
 参考: slide_html_inspection_service.py, layout_repair_service.py
 """
-import re
 import logging
-from typing import Dict, Any, Tuple
-from bs4 import BeautifulSoup
+import re
 from collections import Counter
+from typing import Any
+
+from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ class HtmlValidatorService:
         self._critical_tags = {'html', 'head', 'body', 'div', 'p', 'span'}
         self._self_closing_tags = {'meta', 'link', 'img', 'br', 'hr', 'input', 'area', 'base', 'col', 'embed', 'source', 'track', 'wbr'}
     
-    def validate_html(self, html: str) -> Dict[str, Any]:
+    def validate_html(self, html: str) -> dict[str, Any]:
         """
         验证HTML完整性
         
@@ -85,7 +86,7 @@ class HtmlValidatorService:
         
         return result
     
-    def _check_html_well_formedness(self, html: str, result: Dict) -> None:
+    def _check_html_well_formedness(self, html: str, result: dict[str, Any]) -> None:
         """检查HTML语法"""
         try:
             from lxml import etree
@@ -98,7 +99,7 @@ class HtmlValidatorService:
         except Exception as e:
             result['errors'].append(f'HTML语法错误: {str(e)}')
     
-    def _basic_html_syntax_check(self, html: str, result: Dict) -> None:
+    def _basic_html_syntax_check(self, html: str, result: dict[str, Any]) -> None:
         """基础HTML语法检查"""
         # 检查格式错误的标签
         malformed_tags = re.findall(r'<[^>]*<[^>]*>', html)
@@ -117,7 +118,7 @@ class HtmlValidatorService:
             if open_count > close_count:
                 result['errors'].append(f'未闭合的关键HTML标签: {tag}')
     
-    def _check_required_elements(self, html: str, result: Dict) -> None:
+    def _check_required_elements(self, html: str, result: dict[str, Any]) -> None:
         """检查必需元素"""
         soup = BeautifulSoup(html, 'html.parser')
         
@@ -167,7 +168,7 @@ class HtmlValidatorService:
                 etree.fromstring(encoded_html, strict_parser)
                 logger.debug('HTML已经是有效的，无需修复')
                 return html
-            except:
+            except (ValueError, etree.XMLSyntaxError):
                 pass
             
             # 使用恢复模式解析
@@ -234,7 +235,7 @@ class HtmlValidatorService:
         
         return html
     
-    def validate_and_fix(self, html: str) -> Tuple[str, Dict[str, Any]]:
+    def validate_and_fix(self, html: str) -> tuple[str, dict[str, Any]]:
         """
         验证并修复HTML
         

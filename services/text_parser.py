@@ -2,9 +2,9 @@
 文本解析服务 - LandPPT
 将用户输入的文本解析为结构化的大纲数据
 """
-import re
 import logging
-from typing import Dict, Any
+import re
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class TextParser:
     """文本解析器"""
     
-    def parse(self, text: str) -> Dict[str, Any]:
+    def parse(self, text: str) -> dict[str, Any]:
         """
         解析文本内容
         
@@ -43,7 +43,7 @@ class TextParser:
         # 解析普通文本
         return self._parse_plain_text(text)
     
-    def _empty_result(self) -> Dict[str, Any]:
+    def _empty_result(self) -> dict[str, Any]:
         """返回空结果"""
         return {
             'title': '未命名文档',
@@ -59,12 +59,12 @@ class TextParser:
             r'^[-*+]\s+',        # 无序列表
             r'^\[\s*[xX]?\s*\]',# 复选框
         ]
-        for pattern in markdown_indicators:
-            if re.search(pattern, text, re.MULTILINE):
-                return True
-        return False
+        return any(
+            re.search(pattern, text, re.MULTILINE)
+            for pattern in markdown_indicators
+        )
     
-    def _parse_markdown(self, text: str) -> Dict[str, Any]:
+    def _parse_markdown(self, text: str) -> dict[str, Any]:
         """解析Markdown格式文本"""
         lines = text.split('\n')
         
@@ -167,7 +167,7 @@ class TextParser:
             'sections': sections
         }
     
-    def _parse_plain_text(self, text: str) -> Dict[str, Any]:
+    def _parse_plain_text(self, text: str) -> dict[str, Any]:
         """解析普通文本格式"""
         lines = text.split('\n')
         
@@ -177,7 +177,7 @@ class TextParser:
         current_section = None
         current_bullets = []
         
-        for i, line in enumerate(lines):
+        for line in lines:
             line = line.strip()
             if not line:
                 continue
@@ -269,7 +269,7 @@ class TextParser:
             'sections': sections
         }
     
-    def _process_structured_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _process_structured_data(self, data: dict[str, Any] | list[Any]) -> dict[str, Any]:
         """处理已经是结构化的数据"""
         if isinstance(data, dict):
             return {

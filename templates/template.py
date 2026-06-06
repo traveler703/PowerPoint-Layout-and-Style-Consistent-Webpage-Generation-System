@@ -4,35 +4,10 @@ from __future__ import annotations
 
 import re
 from typing import Any
-from enum import Enum
 
 from pydantic import BaseModel, Field
 
-
-class PageType(str, Enum):
-    """Supported page/slide types in a template."""
-
-    COVER = "cover"      # Title/cover page
-    CONTENT = "content"  # Regular content page
-    TOC = "toc"          # Table of contents
-    COMPARE = "compare"  # Comparison page
-    CHART = "chart"     # Chart/data visualization
-    TIMELINE = "timeline" # Timeline page
-    QA = "qa"           # Q&A page
-    ENDING = "ending"   # Ending/thank you page
-    SECTION = "section"  # Section divider page
-    HERO_TITLE_BODY = "hero-title-body"
-    TWO_COLUMN = "two-column"
-    THREE_COLUMN = "three-column"
-    IMAGE_TEXT_LEFT = "image-text-left"
-    IMAGE_TEXT_TOP = "image-text-top"
-    CHART_FOCUS = "chart-focus"
-    TABLE_FOCUS = "table-focus"
-    TITLE_ONLY = "title-only"
-    QUOTE_HIGHLIGHT = "quote-highlight"
-    COMPARISON = "comparison"
-    STATISTICS = "statistics"
-    UNKNOWN = "unknown"  # Auto-detected or fallback
+from engine.page_types import PageType
 
 
 class Placeholder(BaseModel):

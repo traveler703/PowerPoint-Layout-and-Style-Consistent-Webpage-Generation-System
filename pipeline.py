@@ -24,12 +24,14 @@ import asyncio
 import logging
 import os
 import traceback
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
-logger = logging.getLogger(__name__)
-
+from engine.page_types import PageType
 from engine.types import SemanticPageInput
+from evaluator.layout_metrics import overlap_ratio_from_html
+from evaluator.style_metrics import color_consistency_from_html
 from generator.llm_client import LLMClient, default_llm_client
 from generator.prompts import (
     build_html_generation_prompt,
@@ -39,9 +41,12 @@ from generator.prompts import (
 )
 from templates.renderer import TemplateRenderer
 from templates.template_loader import Template, load_template
-from evaluator.layout_metrics import overlap_ratio_from_html
-from evaluator.style_metrics import color_consistency_from_html
 
+logger = logging.getLogger(__name__)
+
+MAX_CONTENT_GENERATION_ATTEMPTS = 4
+MAX_COLOR_DEVIATION_PERCENT = 5.0
+MAX_OVERLAP_RATIO = 0.0
 
 # ============================================================
 # 数据类型
@@ -205,7 +210,7 @@ class PresentationGenerator:
         sys_prompt, user_prompt = build_layout_analysis_prompt(
             page, css_variables=self.template.css_variables, template_info=self._build_template_info()
         )
-        logger.info(f"[Pipeline] [Stage1] ===== 布局专家分析 =====")
+        logger.info("[Pipeline] [Stage1] ===== 布局专家分析 =====")
         logger.info(f"[Pipeline] [Stage1] 主题: {page.title}")
         logger.info(f"[Pipeline] [Stage1] sys_prompt:\n{sys_prompt}")
         logger.info(f"[Pipeline] [Stage1] user_prompt:\n{user_prompt}")
@@ -229,7 +234,7 @@ class PresentationGenerator:
         html = ""
         quality_issues: list[str] = []
         prompt_page = page
-        for attempt in range(2):
+        for attempt in range(MAX_CONTENT_GENERATION_ATTEMPTS):
             # Stage 2: HTML 生成（传入CSS变量和模板风格信息）
             sys_prompt, user_prompt = build_html_generation_prompt(
                 page=prompt_page,
@@ -251,10 +256,13 @@ class PresentationGenerator:
             if not quality_issues:
                 break
             logger.warning(
-                "[Pipeline] 内容页质量检查未通过，将重试: page=%s issues=%s",
+                "[Pipeline] 内容页质量检查未通过%s: page=%s issues=%s",
+                "，将重试" if attempt + 1 < MAX_CONTENT_GENERATION_ATTEMPTS else "，已达到重试上限",
                 page.title,
                 "；".join(quality_issues),
             )
+            if attempt + 1 >= MAX_CONTENT_GENERATION_ATTEMPTS:
+                break
             prompt_page = SemanticPageInput(
                 page_index=page.page_index,
                 title=page.title,
@@ -262,7 +270,8 @@ class PresentationGenerator:
                     (page.summary or "")
                     + "\n\n上一版页面质量检查未通过，请重新生成。必须修复："
                     + "；".join(quality_issues)
-                    + "。不要重复标题，不要生成幻灯片外壳，不要让元素重叠。"
+                    + "。不要重复标题，不要生成幻灯片外壳。元素重叠率必须为0，"
+                    + "所有显式颜色必须来自模板CSS变量，色彩偏差率必须不超过5%。"
                 ),
                 page_type=page.page_type,
                 bullet_points=page.bullet_points,
@@ -282,7 +291,7 @@ class PresentationGenerator:
         return html, layout_info
 
     def _content_quality_issues(self, html: str) -> list[str]:
-        """对 LLM 生成的内容片段做轻量质量检查，失败时触发一次重生成。"""
+        """Check a generated content fragment against the report thresholds."""
         issues: list[str] = []
         if not html.strip():
             return ["内容为空"]
@@ -291,15 +300,18 @@ class PresentationGenerator:
         try:
             overlap_report = overlap_ratio_from_html(html)
             overlap = float(overlap_report.overlap_ratio or 0)
-            if overlap >= 0.08:
-                issues.append(f"元素重叠比例过高({overlap:.0%})")
+            if overlap > MAX_OVERLAP_RATIO:
+                issues.append(f"元素重叠率为{overlap:.2%}，要求为0")
         except Exception as exc:
             logger.debug("[Pipeline] overlap check skipped: %s", exc)
         try:
             color_report = color_consistency_from_html(html, self.template.css_variables if self.template else {})
             deviation = float(color_report.global_color_deviation_percent or 0)
-            if deviation >= 35:
-                issues.append(f"颜色偏离模板过高({deviation:.0f}%)")
+            if deviation > MAX_COLOR_DEVIATION_PERCENT:
+                issues.append(
+                    f"色彩偏差率为{deviation:.1f}%，要求不超过"
+                    f"{MAX_COLOR_DEVIATION_PERCENT:.0f}%"
+                )
         except Exception as exc:
             logger.debug("[Pipeline] color check skipped: %s", exc)
         return issues
@@ -374,8 +386,10 @@ class PresentationGenerator:
         self,
         outline: PresentationOutline | dict,
         output_filename: str = "presentation.html",
+        output_dir: str | None = None,
         navigation: bool = True,
         save_pages: bool = False,
+        generate_content_with_llm: bool = True,
         progress_callback: Callable[[int, int, dict[str, Any]], None] | None = None,
         page_ready_callback: Callable[[int, str, str, str], None] | None = None,
     ) -> GenerationResult:
@@ -385,8 +399,10 @@ class PresentationGenerator:
         Args:
             outline: 演示文稿大纲（dict 或 PresentationOutline）
             output_filename: 输出文件名
+            output_dir: 输出目录；未指定时使用项目 output 目录
             navigation: 是否启用导航
             save_pages: 是否保存单页文件
+            generate_content_with_llm: 内容页是否调用 LLM 生成；模板快速预览可关闭
 
         Returns:
             GenerationResult: 生成结果
@@ -428,7 +444,7 @@ class PresentationGenerator:
             if progress_callback:
                 progress_callback(current_page_number, total_pages, {
                     "page_number": current_page_number,
-                    "page_type": "cover",
+                    "page_type": PageType.COVER.value,
                     "title": outline.title,
                     "html": self._make_single_page_document(cover_page, current_page_number, total_pages),
 
@@ -454,7 +470,7 @@ class PresentationGenerator:
                 if progress_callback:
                     progress_callback(current_page_number, total_pages, {
                         "page_number": current_page_number,
-                        "page_type": "toc",
+                        "page_type": PageType.TOC.value,
                         "title": "目录",
                         "html": self._make_single_page_document(toc_page, current_page_number, total_pages),
                     })
@@ -479,7 +495,7 @@ class PresentationGenerator:
                     if progress_callback:
                         progress_callback(current_page_number, total_pages, {
                             "page_number": current_page_number,
-                            "page_type": "section",
+                            "page_type": PageType.SECTION.value,
                             "title": section.title,
                             "html": self._make_single_page_document(section_page, current_page_number, total_pages),
                         })
@@ -497,12 +513,40 @@ class PresentationGenerator:
             # 并行生成所有内容页
             # ============================================================
             if content_pages_for_parallel:
-                results = await self.generate_content_pages_parallel(
-                    content_pages_for_parallel,
-                    total_pages,
-                    progress_callback=progress_callback,
-                    page_ready_callback=page_ready_callback,
-                )
+                if generate_content_with_llm:
+                    results = await self.generate_content_pages_parallel(
+                        content_pages_for_parallel,
+                        total_pages,
+                        progress_callback=progress_callback,
+                        page_ready_callback=page_ready_callback,
+                    )
+                else:
+                    results = []
+                    for page_num, content_page in content_pages_for_parallel:
+                        bullets_html = self.renderer._render_bullets(content_page.bullet_points)
+                        content_html = bullets_html or content_page.summary
+                        results.append((page_num, content_html, {"layout_type": "template"}))
+                        if progress_callback:
+                            rendered_html = self.renderer.render_content_page(
+                                title=content_page.title,
+                                content=content_html,
+                                bullets=None,
+                                page_number=page_num,
+                                total_pages=total_pages,
+                            )
+                            progress_callback(
+                                page_num,
+                                total_pages,
+                                {
+                                    "page_number": page_num,
+                                    "page_type": PageType.CONTENT.value,
+                                    "title": content_page.title,
+                                    "html": self._make_single_page_document(
+                                        rendered_html, page_num, total_pages
+                                    ),
+                                    "layout_type": "template",
+                                },
+                            )
 
                 # 创建 page_number -> (html, layout_info) 的映射
                 results_map = {pn: (html, layout) for pn, html, layout in results}
@@ -545,7 +589,7 @@ class PresentationGenerator:
                 if progress_callback:
                     progress_callback(current_page_number, total_pages, {
                         "page_number": current_page_number,
-                        "page_type": "ending",
+                        "page_type": PageType.ENDING.value,
                         "title": outline.ending_title,
                         "html": self._make_single_page_document(ending_page, current_page_number, total_pages),
                     })
@@ -554,7 +598,7 @@ class PresentationGenerator:
             # 提取最终的 pages 和 page_layouts
             pages = [page_html for _, _, page_html, _ in pages_list]
             page_layouts = []
-            for pn, ptype, page_html, layout in pages_list:
+            for pn, _, _, layout in pages_list:
                 layout_with_page = {"page_number": pn, **layout}
                 page_layouts.append(layout_with_page)
 
@@ -567,11 +611,11 @@ class PresentationGenerator:
                 navigation=navigation,
             )
 
-            output_path = os.path.join(
+            resolved_output_dir = output_dir or os.path.join(
                 os.path.dirname(__file__) if __file__ else ".",
                 "output",
-                output_filename,
             )
+            output_path = os.path.join(resolved_output_dir, output_filename)
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
             with open(output_path, "w", encoding="utf-8") as f:
@@ -627,7 +671,9 @@ class PresentationGenerator:
             return []
 
         page_paths: list[str] = []
-        for idx, (page_html, layout) in enumerate(zip(pages, page_layouts)):
+        for idx, (page_html, layout) in enumerate(
+            zip(pages, page_layouts, strict=False)
+        ):
             page_num = idx + 1
             ptype = layout.get("type", "content")
             title = layout.get("title", "")
@@ -874,10 +920,7 @@ async def run_pipeline(
         }
 
     # 构建大纲
-    if isinstance(input_data, dict):
-        outline = outline_from_dict(input_data)
-    else:
-        outline = input_data
+    outline = outline_from_dict(input_data) if isinstance(input_data, dict) else input_data
 
     # 生成
     result = await generate_presentation(outline)
@@ -885,7 +928,7 @@ async def run_pipeline(
     # 读取生成的 HTML 文件
     html_content = ""
     if result.success and result.output_path:
-        with open(result.output_path, "r", encoding="utf-8") as f:
+        with open(result.output_path, encoding="utf-8") as f:
             html_content = f.read()
 
     return html_content, result

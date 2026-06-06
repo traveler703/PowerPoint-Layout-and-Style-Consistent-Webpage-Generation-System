@@ -31,6 +31,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { PAGE_TYPE_LABELS, getPageType } from '@/constants/pageTypes'
 
 const props = defineProps({
   slide: {
@@ -44,20 +45,16 @@ const props = defineProps({
 })
 
 const typeLabels = {
-  'cover': '封面',
-  'toc': '目录',
-  'section': '章节',
-  'content': '内容',
-  'end': '结束',
-  'title': '标题',
-  'agenda': '目录',
-  'section_header': '章节',
-  'conclusion': '结论',
-  'thankyou': '感谢'
+  ...PAGE_TYPE_LABELS,
+  agenda: '目录',
+  section_header: '章节',
+  conclusion: '结论',
+  thankyou: '感谢'
 }
 
 const typeLabel = computed(() => {
-  return typeLabels[props.slide?.slide_type] || props.slide?.slide_type || '内容'
+  const pageType = getPageType(props.slide)
+  return typeLabels[pageType] || pageType || '内容'
 })
 
 const points = computed(() => {

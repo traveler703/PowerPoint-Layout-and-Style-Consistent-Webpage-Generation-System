@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>樱花学术汇报模板</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&amp;family=Source+Han+Sans+SC:wght@300;400;500;700&amp;display=swap" rel="stylesheet"/>
+<style>
+        /* ===== 全局重置 & 基础 ===== */
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --color-background: #FFFFFF;
+            --color-text: #333333;
+            --color-text-muted: #666666;
+            --color-primary: #F5A0B5;
+            --color-secondary: #A8D8B9;
+            --color-accent: #F5A0B5;
+            --color-card: #FCE4EC;
+            --color-surface: #FFF5F5;
+            --font-body: 'Microsoft YaHei', 'Source Han Sans SC', 'Noto Sans SC', sans-serif;
+            --font-heading: 'Source Han Sans SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+        }
+
+        body {
+            background: #f0ebe7;
+            font-family: var(--font-body);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* ===== 幻灯片容器 ===== */
+        .slides-wrapper {
+            position: relative;
+            width: 1280px;
+            height: 720px;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+            background: #fff;
+        }
+
+        .slides-track {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: translateX(0);
+        }
+
+        /* ===== 单个 Slide ===== */
+        .slide {
+            position: relative;
+            width: 1280px;
+            height: 720px;
+            flex-shrink: 0;
+            overflow: hidden;
+            background: var(--color-background);
+        }
+
+        /* ===== 通用组件 ===== */
+        .page-title {
+            position: absolute;
+            top: 40px;
+            left: 60px;
+            font-family: var(--font-heading);
+            font-weight: 700;
+            font-size: 28px;
+            color: var(--color-text);
+            letter-spacing: 1px;
+            z-index: 2;
+        }
+        .page-title::after {
+            content: '';
+            display: block;
+            width: 40px;
+            height: 4px;
+            background: var(--color-primary);
+            border-radius: 2px;
+            margin-top: 8px;
+        }
+
+        .page-content {
+            position: absolute;
+            top: 130px;
+            left: 60px;
+            right: 60px;
+            bottom: 60px;
+            z-index: 1;
+            overflow-y: auto;
+        }
+
+        .slide-footer {
+            position: absolute;
+            bottom: 15px;
+            left: 60px;
+            right: 60px;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            z-index: 5;
+            border-top: 1px solid rgba(0, 0, 0, 0.06);
+            padding-top: 8px;
+        }
+
+        .page-num {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--color-primary);
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: var(--font-heading);
+            box-shadow: 0 2px 8px rgba(245, 160, 181, 0.35);
+        }
+
+        /* ===== 花瓣装饰 (通用) ===== */
+        .petal {
+            position: absolute;
+            border-radius: 50% 0 50% 50%;
+            opacity: 0.25;
+            pointer-events: none;
+            z-index: 0;
+            background: var(--color-primary);
+        }
+        .petal-1 {
+            width: 40px;
+            height: 30px;
+            top: 40px;
+            right: 80px;
+            transform: rotate(25deg);
+            opacity: 0.18;
+        }
+        .petal-2 {
+            width: 55px;
+            height: 40px;
+            bottom: 100px;
+            left: 20px;
+            transform: rotate(-15deg);
+            opacity: 0.12;
+            background: var(--color-accent);
+        }
+        .petal-3 {
+            width: 35px;
+            height: 25px;
+            top: 300px;
+            right: 30px;
+            transform: rotate(60deg);
+            opacity: 0.20;
+            background: var(--color-primary);
+        }
+        .petal-4 {
+            width: 48px;
+            height: 32px;
+            bottom: 50px;
+            right: 150px;
+            transform: rotate(-40deg);
+            opacity: 0.15;
+            background: var(--color-accent);
+        }
+        .petal-5 {
+            width: 30px;
+            height: 22px;
+            top: 180px;
+            left: 40px;
+            transform: rotate(75deg);
+            opacity: 0.18;
+            background: var(--color-primary);
+        }
+        .petal-6 {
+            width: 42px;
+            height: 28px;
+            top: 500px;
+            right: 60px;
+            transform: rotate(-65deg);
+            opacity: 0.10;
+            background: var(--color-accent);
+        }
+
+        /* ================================================================
+                   1. COVER 封面
+                   ================================================================ */
+        .slide.cover {
+            background: radial-gradient(ellipse at 50% 40%, #FFF5F5 0%, #FFFFFF 70%);
+        }
+
+        .cover .cover-bg-sakura {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .cover .cover-bg-sakura svg {
+            width: 100%;
+            height: 100%;
+            opacity: 0.35;
+        }
+
+        .cover .cover-content {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1;
+            text-align: center;
+            padding: 0 100px;
+        }
+
+        .cover .cover-content h1 {
+            font-family: var(--font-heading);
+            font-weight: 900;
+            font-size: 54px;
+            color: var(--color-text);
+            letter-spacing: 6px;
+            margin-bottom: 16px;
+            text-shadow: 0 2px 12px rgba(245, 160, 181, 0.15);
+        }
+        .cover .cover-content h1 .highlight {
+            color: var(--color-primary);
+        }
+
+        .cover .cover-content .subtitle {
+            font-family: var(--font-body);
+            font-weight: 300;
+            font-size: 22px;
+            color: var(--color-text-muted);
+            letter-spacing: 4px;
+            margin-bottom: 40px;
+            border-bottom: 2px solid rgba(245, 160, 181, 0.25);
+            padding-bottom: 20px;
+        }
+
+        .cover .cover-content .meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 24px 48px;
+            justify-content: center;
+            font-size: 16px;
+            color: var(--color-text-muted);
+            font-weight: 400;
+            margin-top: 8px;
+        }
+        .cover .cover-content .meta span {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .cover .cover-content .meta .icon {
+            font-size: 18px;
+        }
+
+        .cover .cover-content .date-badge {
+            display: inline-block;
+            background: var(--color-primary);
+            color: #fff;
+            padding: 6px 28px;
+            border-radius: 30px;
+            font-size: 15px;
+            font-weight: 500;
+            letter-spacing: 2px;
+            margin-top: 12px;
+            box-shadow: 0 4px 16px rgba(245, 160, 181, 0.30);
+        }
+
+        .cover .slide-footer {
+            border-top-color: rgba(245, 160, 181, 0.15);
+        }
+
+        /* ================================================================
+                   2. TOC 目录
+                   ================================================================ */
+        .slide.toc {
+            background: radial-gradient(ellipse at 30% 50%, #FFF5F5 0%, #FFFFFF 70%);
+        }
+
+        .toc .page-content {
+            display: flex;
+            gap: 40px;
+            align-items: stretch;
+        }
+
+        .toc .toc-list {
+            flex: 1.2;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            justify-content: center;
+        }
+
+        .toc .toc-item {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            padding: 16px 24px;
+            background: rgba(255, 255, 255, 0.70);
+            border-radius: 12px;
+            border-left: 4px solid var(--color-primary);
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+            transition: all 0.25s ease;
+            cursor: default;
+            backdrop-filter: blur(4px);
+        }
+        .toc .toc-item:hover {
+            transform: translateX(6px);
+            box-shadow: 0 4px 20px rgba(245, 160, 181, 0.18);
+            border-left-color: var(--color-secondary);
+        }
+        .toc .toc-item .num {
+            font-family: var(--font-heading);
+            font-weight: 700;
+            font-size: 20px;
+            color: var(--color-primary);
+            width: 36px;
+            text-align: center;
+        }
+        .toc .toc-item .text {
+            font-size: 18px;
+            font-weight: 500;
+            color: var(--color-text);
+        }
+        .toc .toc-item .text small {
+            font-weight: 300;
+            color: var(--color-text-muted);
+            font-size: 14px;
+            margin-left: 12px;
+        }
+
+        .toc .toc-deco {
+            flex: 0.8;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        .toc .toc-deco .circle-deco {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 40% 40%, rgba(245, 160, 181, 0.15), rgba(168, 216, 185, 0.10));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 80px;
+            opacity: 0.8;
+            box-shadow: 0 0 60px rgba(245, 160, 181, 0.08);
+        }
+        .toc .toc-deco .circle-deco span {
+            filter: drop-shadow(0 4px 12px rgba(245, 160, 181, 0.20));
+        }
+
+        /* ================================================================
+                   3. SECTION 章节
+                   ================================================================ */
+        .slide.section {
+            background: radial-gradient(ellipse at 50% 30%, #FCE4EC 0%, #FFFFFF 75%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .section .page-title {
+            position: absolute;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 18px;
+            font-weight: 500;
+            color: var(--color-primary);
+            letter-spacing: 6px;
+            text-transform: uppercase;
+            background: rgba(245, 160, 181, 0.12);
+            padding: 6px 30px;
+            border-radius: 30px;
+            display: inline-block;
+            width: auto;
+            border: 1px solid rgba(245, 160, 181, 0.15);
+        }
+        .section .page-title::after {
+            display: none;
+        }
+
+        .section .section-title {
+            position: absolute;
+            top: 180px;
+            left: 100px;
+            right: 100px;
+            font-family: var(--font-heading);
+            font-weight: 900;
+            font-size: 52px;
+            color: var(--color-text);
+            letter-spacing: 4px;
+            text-align: center;
+            z-index: 2;
+        }
+
+        .section .subtitle {
+            position: absolute;
+            top: 270px;
+            left: 200px;
+            right: 200px;
+            font-family: var(--font-body);
+            font-weight: 300;
+            font-size: 22px;
+            color: var(--color-text-muted);
+            letter-spacing: 2px;
+            text-align: center;
+            z-index: 2;
+            line-height: 1.6;
+        }
+
+        .section .section-petals {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 320px;
+            z-index: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .section .section-petals .petal-s {
+            position: absolute;
+            border-radius: 50% 0 50% 50%;
+            background: var(--color-primary);
+            opacity: 0.12;
+        }
+        .section .section-petals .ps1 {
+            width: 70px;
+            height: 50px;
+            bottom: 20px;
+            left: 10%;
+            transform: rotate(30deg);
+        }
+        .section .section-petals .ps2 {
+            width: 55px;
+            height: 38px;
+            bottom: 80px;
+            left: 30%;
+            transform: rotate(-20deg);
+            opacity: 0.08;
+            background: var(--color-accent);
+        }
+        .section .section-petals .ps3 {
+            width: 80px;
+            height: 55px;
+            bottom: 10px;
+            right: 20%;
+            transform: rotate(50deg);
+            opacity: 0.10;
+        }
+        .section .section-petals .ps4 {
+            width: 45px;
+            height: 32px;
+            bottom: 100px;
+            right: 8%;
+            transform: rotate(-35deg);
+            opacity: 0.15;
+            background: var(--color-accent);
+        }
+        .section .section-petals .ps5 {
+            width: 60px;
+            height: 42px;
+            bottom: 50px;
+            left: 55%;
+            transform: rotate(10deg);
+            opacity: 0.07;
+        }
+        .section .section-petals .ps6 {
+            width: 35px;
+            height: 25px;
+            bottom: 140px;
+            left: 5%;
+            transform: rotate(-55deg);
+            opacity: 0.12;
+        }
+
+        /* ================================================================
+                   4. CONTENT 内容
+                   ================================================================ */
+        .slide.content {
+            background: #FFFFFF;
+        }
+
+        .content .page-content {
+            
+            
+            
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-heading);
+            font-size: 18px;
+            color: var(--color-text-muted);
+            letter-spacing: 1px;
+            min-height: 200px;
+            
+        }
+
+        .content .page-content::before {
+            content: "🌸 在此处填充您的内容";
+            font-weight: 300;
+            opacity: 0.45;
+        }
+
+        /* content 内的装饰只通过伪元素呈现，不占用 .page-content 内部空间 */
+        .content .content-deco {
+            position: absolute;
+            top: 100px;
+            right: 40px;
+            font-size: 40px;
+            opacity: 0.10;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* ================================================================
+                   5. ENDING 结尾
+                   ================================================================ */
+        .slide.ending {
+            background: radial-gradient(ellipse at 50% 60%, #FFF5F5 0%, #FFFFFF 80%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .ending .ending-content {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 2;
+            padding: 0 120px;
+        }
+
+        .ending .ending-content h1 {
+            font-family: var(--font-heading);
+            font-weight: 900;
+            font-size: 56px;
+            color: var(--color-text);
+            letter-spacing: 6px;
+            margin-bottom: 20px;
+        }
+        .ending .ending-content h1 .highlight {
+            color: var(--color-primary);
+        }
+
+        .ending .ending-content .ending-message {
+            font-family: var(--font-body);
+            font-weight: 300;
+            font-size: 24px;
+            color: var(--color-text-muted);
+            letter-spacing: 3px;
+            line-height: 1.8;
+            max-width: 700px;
+            border-top: 2px solid rgba(245, 160, 181, 0.15);
+            padding-top: 24px;
+            margin-top: 8px;
+        }
+
+        .ending .ending-petals {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 200px;
+            z-index: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .ending .ending-petals .petal-e {
+            position: absolute;
+            border-radius: 50% 0 50% 50%;
+            background: var(--color-primary);
+            opacity: 0.10;
+        }
+        .ending .ending-petals .pe1 {
+            width: 60px;
+            height: 42px;
+            bottom: 10px;
+            left: 15%;
+            transform: rotate(40deg);
+        }
+        .ending .ending-petals .pe2 {
+            width: 45px;
+            height: 30px;
+            bottom: 60px;
+            left: 40%;
+            transform: rotate(-25deg);
+            opacity: 0.07;
+            background: var(--color-accent);
+        }
+        .ending .ending-petals .pe3 {
+            width: 70px;
+            height: 48px;
+            bottom: 5px;
+            right: 25%;
+            transform: rotate(60deg);
+            opacity: 0.12;
+        }
+        .ending .ending-petals .pe4 {
+            width: 38px;
+            height: 26px;
+            bottom: 80px;
+            right: 12%;
+            transform: rotate(-45deg);
+            opacity: 0.08;
+        }
+
+        /* ===== 导航点 ===== */
+        .nav-dots {
+            position: absolute;
+            bottom: -36px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 20;
+        }
+        .nav-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.15);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+            outline: none;
+        }
+        .nav-dot.active {
+            background: var(--color-primary);
+            width: 28px;
+            border-radius: 6px;
+            box-shadow: 0 0 12px rgba(245, 160, 181, 0.30);
+        }
+        .nav-dot:hover {
+            background: rgba(245, 160, 181, 0.5);
+        }
+
+        /* ===== 箭头 ===== */
+        .nav-arrows {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            transform: translateY(-50%);
+            display: flex;
+            justify-content: space-between;
+            padding: 0 18px;
+            z-index: 15;
+            pointer-events: none;
+        }
+        .nav-arrow {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(8px);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: var(--color-text-muted);
+            cursor: pointer;
+            pointer-events: auto;
+            transition: all 0.25s ease;
+            border: 1px solid rgba(245, 160, 181, 0.12);
+            user-select: none;
+        }
+        .nav-arrow:hover {
+            background: var(--color-primary);
+            color: #fff;
+            box-shadow: 0 6px 24px rgba(245, 160, 181, 0.30);
+            border-color: var(--color-primary);
+        }
+        .nav-arrow:active {
+            transform: scale(0.92);
+        }
+
+        /* ===== 页码指示器 ===== */
+        .page-indicator {
+            position: absolute;
+            bottom: -34px;
+            right: 20px;
+            font-family: var(--font-body);
+            font-size: 13px;
+            color: var(--color-text-muted);
+            letter-spacing: 1px;
+            z-index: 20;
+            background: rgba(255, 255, 255, 0.70);
+            padding: 2px 14px;
+            border-radius: 20px;
+            backdrop-filter: blur(4px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        }
+        .page-indicator .current {
+            font-weight: 700;
+            color: var(--color-primary);
+        }
+
+        /* ===== 滚动条美化 ===== */
+        .page-content::-webkit-scrollbar {
+            width: 4px;
+        }
+        .page-content::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .page-content::-webkit-scrollbar-thumb {
+            background: var(--color-primary);
+            border-radius: 4px;
+            opacity: 0.4;
+        }
+
+        /* ===== 响应式缩放 ===== */
+        @media (max-width: 1320px) {
+            body {
+                transform: scale(0.85);
+                transform-origin: center center;
+            }
+        }
+        @media (max-width: 1100px) {
+            body {
+                transform: scale(0.70);
+                transform-origin: center center;
+            }
+        }
+        @media (max-width: 900px) {
+            body {
+                transform: scale(0.55);
+                transform-origin: center center;
+            }
+        }
+    </style>
+
+<style id="landppt-runtime-overrides">
+html,body{width:1280px!important;height:720px!important;min-width:1280px!important;min-height:720px!important;overflow:hidden!important;}
+#slidesWrapper,.slides-wrapper{width:1280px!important;height:720px!important;min-width:1280px!important;min-height:720px!important;}
+#slidesTrack,.slides-track{width:1280px!important;height:720px!important;min-width:1280px!important;min-height:720px!important;}
+.slide .page-content{overflow:hidden;}
+.slide .page-content.allow-scroll{overflow:auto;scrollbar-width:thin;}
+.slide .page-content::-webkit-scrollbar{width:6px;height:6px;}
+.slide .page-content::-webkit-scrollbar-thumb{border-radius:10px;background:rgba(148,163,184,.45);}
+.slide .page-content .generated-toc{max-height:100%;overflow:hidden!important;padding:4px!important;box-sizing:border-box!important;}
+.slide.toc .page-content .generated-toc{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:16px 22px!important;align-content:center!important;width:100%!important;height:100%!important;}
+.slide.toc .page-content .generated-toc .toc-item{display:flex!important;align-items:center!important;gap:14px!important;width:auto!important;min-width:0!important;min-height:0!important;margin:0!important;padding:14px 18px!important;border-radius:22px!important;background:#fff!important;border:1px solid rgba(255,127,63,.18)!important;border-left:6px solid var(--color-primary,#FF7F3F)!important;box-shadow:0 8px 22px rgba(255,127,63,.08)!important;box-sizing:border-box!important;}
+.slide.toc .page-content .generated-toc .toc-number{display:flex!important;align-items:center!important;justify-content:center!important;width:48px!important;height:48px!important;flex:0 0 48px!important;border-radius:999px!important;background:rgba(255,127,63,.10)!important;color:var(--color-primary,#FF7F3F)!important;font-weight:800!important;font-size:18px!important;}
+.slide .page-content .generated-toc .toc-text{min-width:0!important;overflow:hidden!important;}
+.slide .page-content .generated-toc .toc-text h3{font-size:clamp(15px,1.55vw,20px)!important;line-height:1.35!important;margin:0!important;white-space:normal!important;overflow-wrap:anywhere!important;color:var(--color-text,#2D3436)!important;}
+.slide .page-content .generated-toc .toc-text p:empty{display:none!important;}
+.slide .page-content .generated-toc .toc-text p{font-size:12px!important;line-height:1.35!important;margin:4px 0 0!important;color:var(--color-text-muted,#6B7280)!important;}
+.slide.cover > h1:not(.main-title){position:absolute!important;left:80px!important;right:80px!important;top:190px!important;margin:0!important;font-size:clamp(44px,6vw,78px)!important;line-height:1.15!important;color:#fff!important;text-shadow:0 0 36px rgba(96,165,250,.38)!important;z-index:20!important;}
+.slide.cover > .subtitle{color:rgba(224,242,254,.9)!important;z-index:20!important;}
+.slides-track > .slide-container,
+.slides-track > .slide-container > .slide-wrapper{width:1280px!important;height:720px!important;min-width:1280px!important;min-height:720px!important;flex:0 0 1280px!important;}
+.slides-track > .slide-container > .slide-wrapper > .slide{width:1280px!important;height:720px!important;min-width:1280px!important;min-height:720px!important;}
+.slide .page-content .slide,
+.slide .page-content .slides-wrapper,
+.slide .page-content .slide-container,
+.slide .page-content .slide-wrapper{width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;box-shadow:none!important;border-radius:0!important;background:transparent!important;}
+</style>
+<script id="landppt-runtime-fixes">
+(function(){
+  function fixPageCount(){
+    var track=document.getElementById('slidesTrack');
+    var total=track ? track.querySelectorAll(':scope > .slide-container, :scope > .slide').length : document.querySelectorAll('.slide').length;
+    var totalEl=document.getElementById('totalPages');
+    if(totalEl && total) totalEl.textContent=String(total);
+    window.__totalSlides=total;
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',fixPageCount);
+  else fixPageCount();
+})();
+</script>
+
+</head>
+<body>
+<div class="slides-wrapper" id="slidesWrapper">
+<div class="slides-track" id="slidesTrack"><div class="slide-container"><div class="slide-wrapper" data-page="1"><div class="slide cover">
+<div class="cover-bg-sakura">
+<svg fill="none" preserveaspectratio="none" viewbox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg">
+<path d="M-40 480 Q 160 400 240 280 Q 320 160 500 220" fill="none" opacity="0.50" stroke="url(#sakuraGrad1)" stroke-linecap="round" stroke-width="2.5"></path>
+<path d="M1320 340 Q 1100 280 980 180 Q 860 80 700 140" fill="none" opacity="0.50" stroke="url(#sakuraGrad2)" stroke-linecap="round" stroke-width="2.5"></path>
+<circle cx="240" cy="280" fill="#F5A0B5" opacity="0.30" r="9"></circle>
+<circle cx="310" cy="210" fill="#F5A0B5" opacity="0.20" r="6"></circle>
+<circle cx="480" cy="225" fill="#F5A0B5" opacity="0.25" r="7"></circle>
+<circle cx="980" cy="180" fill="#F5A0B5" opacity="0.28" r="8"></circle>
+<circle cx="1050" cy="130" fill="#D4C5F9" opacity="0.25" r="5"></circle>
+<circle cx="700" cy="140" fill="#F5A0B5" opacity="0.22" r="7"></circle>
+<defs>
+<lineargradient id="sakuraGrad1" x1="0" x2="1" y1="0" y2="0">
+<stop offset="0%" stop-color="#F5A0B5" stop-opacity="0.1"></stop>
+<stop offset="50%" stop-color="#F5A0B5" stop-opacity="0.5"></stop>
+<stop offset="100%" stop-color="#A8D8B9" stop-opacity="0.3"></stop>
+</lineargradient>
+<lineargradient id="sakuraGrad2" x1="0" x2="1" y1="0" y2="0">
+<stop offset="0%" stop-color="#A8D8B9" stop-opacity="0.3"></stop>
+<stop offset="50%" stop-color="#F5A0B5" stop-opacity="0.5"></stop>
+<stop offset="100%" stop-color="#F5A0B5" stop-opacity="0.1"></stop>
+</lineargradient>
+</defs>
+<ellipse cx="80" cy="160" fill="#F5A0B5" opacity="0.08" rx="14" ry="10" transform="rotate(30 80 160)"></ellipse>
+<ellipse cx="1180" cy="520" fill="#D4C5F9" opacity="0.08" rx="18" ry="12" transform="rotate(-40 1180 520)"></ellipse>
+<ellipse cx="200" cy="600" fill="#F5A0B5" opacity="0.06" rx="12" ry="8" transform="rotate(60 200 600)"></ellipse>
+</svg>
+</div>
+<div class="petal petal-1" style="top:60px;right:100px;"></div>
+<div class="petal petal-2" style="bottom:130px;left:30px;"></div>
+<div class="petal petal-4" style="top:350px;right:40px;"></div>
+<div class="petal petal-5" style="top:140px;left:50px;"></div>
+<div class="cover-content">
+<h1>产品战略发布会</h1>
+<p class="subtitle">2025 年度研究进展与展望</p>
+<div class="meta">
+<span><span class="icon">🧑‍🔬</span> 汇报人：张樱花</span>
+<span><span class="icon">🏛️</span> 樱花大学 · 计算机视觉实验室</span>
+<span><span class="icon">📅</span> 2025年4月 · 春</span>
+</div>
+<div class="date-badge">2026年6月</div>
+</div>
+<div class="slide-footer"><span class="page-num">1</span></div>
+</div></div></div><div class="slide-container"><div class="slide-wrapper" data-page="2"><div class="slide toc">
+<div class="page-title">目录</div>
+<div class="page-content"><div class="generated-toc"><div class="toc-item"><div class="toc-number">01</div><div class="toc-text"><h3>第一章 市场趋势与机遇</h3><p></p></div></div><div class="toc-item"><div class="toc-number">02</div><div class="toc-text"><h3>第二章 核心产品矩阵</h3><p></p></div></div><div class="toc-item"><div class="toc-number">03</div><div class="toc-text"><h3>第三章 技术架构升级</h3><p></p></div></div><div class="toc-item"><div class="toc-number">04</div><div class="toc-text"><h3>第四章 战略规划与展望</h3><p></p></div></div></div></div>
+<div class="petal petal-3" style="top:200px;right:20px;"></div>
+<div class="petal petal-6" style="top:450px;left:15px;"></div>
+<div class="slide-footer"><span class="page-num">2</span></div>
+</div></div></div><div class="slide-container"><div class="slide-wrapper" data-page="3"><div class="slide section">
+<div class="page-title">第I章</div>
+<h1 class="section-title">市场趋势与机遇</h1>
+<p class="subtitle"></p>
+<div class="section-petals">
+<div class="petal-s ps1"></div>
+<div class="petal-s ps2"></div>
+<div class="petal-s ps3"></div>
+<div class="petal-s ps4"></div>
+<div class="petal-s ps5"></div>
+<div class="petal-s ps6"></div>
+</div>
+<div class="petal petal-2" style="top:100px;right:60px;"></div>
+<div class="petal petal-5" style="bottom:200px;left:40px;"></div>
+<div class="slide-footer"><span class="page-num">3</span></div>
+</div></div></div><div class="slide-container"><div class="slide-wrapper" data-page="4"><div class="slide content">
+<div class="page-title">行业现状分析</div>
+<div class="content-deco">🌸</div>
+<div class="page-content"><ul><li>全球数字化转型加速，AI技术深入各行各业</li><li>2026年全球企业级SaaS市场规模预计突破3000亿美元</li><li>AI Agent技术成为企业效率提升的关键驱动力</li><li>数据安全与隐私合规需求持续增长</li></ul></div>
+<div class="petal petal-1" style="top:80px;right:30px;"></div>
+<div class="petal petal-4" style="bottom:150px;left:20px;"></div>
+<div class="petal petal-3" style="top:380px;right:50px;"></div>
+<div class="slide-footer"><span class="page-num">4</span></div>
+</div></div></div><div class="slide-container"><div class="slide-wrapper" data-page="5"><div class="slide section">
+<div class="page-title">第II章</div>
+<h1 class="section-title">核心产品矩阵</h1>
+<p class="subtitle"></p>
+<div class="section-petals">
+<div class="petal-s ps1"></div>
+<div class="petal-s ps2"></div>
+<div class="petal-s ps3"></div>
+<div class="petal-s ps4"></div>
+<div class="petal-s ps5"></div>
+<div class="petal-s ps6"></div>
+</div>
+<div class="petal petal-2" style="top:100px;right:60px;"></div>
+<div class="petal petal-5" style="bottom:200px;left:40px;"></div>
+<div class="slide-footer"><span class="page-num">5</span></div>
+</div></div></div><div class="slide-container"><div class="slide-wrapper" data-page="6"><div class="slide content">
+<div class="page-title">产品体系概览</div>
+<div class="content-deco">🌸</div>
+<div class="page-content"><ul><li>SmartChat：新一代企业级AI对话平台</li><li>DataPilot：智能数据分析与可视化工具</li><li>FlowMaster：低代码业务流程自动化引擎</li><li>三款产品深度集成，形成完整解决方案</li></ul></div>
+<div class="petal petal-1" style="top:80px;right:30px;"></div>
+<div class="petal petal-4" style="bottom:150px;left:20px;"></div>
+<div class="petal petal-3" style="top:380px;right:50px;"></div>
+<div class="slide-footer"><span class="page-num">6</span></div>
+</div></div></div><div class="slide-container"><div class="slide-wrapper" data-page="7"><div class="slide ending">
+<div class="ending-content">
+<h1>谢谢观看</h1>
+<p class="ending-message">期待与您携手共创未来</p>
+</div>
+<div class="ending-petals">
+<div class="petal-e pe1"></div>
+<div class="petal-e pe2"></div>
+<div class="petal-e pe3"></div>
+<div class="petal-e pe4"></div>
+</div>
+<div class="petal petal-6" style="top:120px;right:80px;"></div>
+<div class="petal petal-2" style="bottom:220px;left:30px;"></div>
+<div class="petal petal-5" style="top:300px;left:120px;"></div>
+<div class="slide-footer"><span class="page-num">7</span></div>
+</div></div></div></div><!-- /slides-track -->
+<!-- 导航点 (JS动态生成) -->
+<div class="nav-dots" id="navDots"></div>
+<!-- 箭头 -->
+<div class="nav-arrows">
+<div class="nav-arrow" id="prevBtn" onclick="prevSlide()">◀</div>
+<div class="nav-arrow" id="nextBtn" onclick="nextSlide()">▶</div>
+</div>
+<!-- 页码指示器 -->
+<div class="page-indicator"><span class="current" id="currentPage">1</span> / <span id="totalPages">5</span></div>
+</div><!-- /slides-wrapper -->
+<script>
+        (function() {
+            // ----- 配置 -----
+            const track = document.getElementById('slidesTrack');
+            const slides = track.querySelectorAll('.slide');
+            const totalSlides = slides.length;
+            let currentIndex = 0;
+            let isAnimating = false;
+
+            // 更新 totalPages 显示
+            document.getElementById('totalPages').textContent = totalSlides;
+
+            // ----- 动态生成导航点 -----
+            const navDots = document.getElementById('navDots');
+            for (let i = 0; i < totalSlides; i++) {
+                const dot = document.createElement('div');
+                dot.className = 'nav-dot' + (i === 0 ? ' active' : '');
+                dot.setAttribute('data-index', i);
+                dot.addEventListener('click', function() {
+                    const idx = parseInt(this.getAttribute('data-index'));
+                    goToSlide(idx);
+                });
+                navDots.appendChild(dot);
+            }
+
+            // ----- 更新状态 -----
+            function updateSlide(index) {
+                if (isAnimating) return;
+                if (index < 0 || index >= totalSlides) return;
+                isAnimating = true;
+
+                currentIndex = index;
+                track.style.transform = 'translateX(-' + (currentIndex * 1280) + 'px)';
+
+                // 更新导航点
+                const dots = navDots.querySelectorAll('.nav-dot');
+                dots.forEach(function(d, i) {
+                    d.classList.toggle('active', i === currentIndex);
+                });
+
+                // 更新页码
+                document.getElementById('currentPage').textContent = currentIndex + 1;
+
+                setTimeout(function() {
+                    isAnimating = false;
+                }, 620);
+            }
+
+            // ----- 全局暴露 -----
+            window.goToSlide = function(index) {
+                updateSlide(index);
+            };
+
+            window.prevSlide = function() {
+                if (currentIndex > 0) {
+                    updateSlide(currentIndex - 1);
+                }
+            };
+
+            window.nextSlide = function() {
+                if (currentIndex < totalSlides - 1) {
+                    updateSlide(currentIndex + 1);
+                }
+            };
+
+            // ----- 键盘支持 -----
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    window.nextSlide();
+                } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    window.prevSlide();
+                }
+            });
+
+            // ----- 触摸支持 (简单) -----
+            let touchStartX = 0;
+            let touchEndX = 0;
+            const wrapper = document.getElementById('slidesWrapper');
+
+            wrapper.addEventListener('touchstart', function(e) {
+                touchStartX = e.changedTouches[0].screenX;
+            }, { passive: true });
+
+            wrapper.addEventListener('touchend', function(e) {
+                touchEndX = e.changedTouches[0].screenX;
+                const diff = touchStartX - touchEndX;
+                if (Math.abs(diff) > 50) {
+                    if (diff > 0) {
+                        window.nextSlide();
+                    } else {
+                        window.prevSlide();
+                    }
+                }
+            }, { passive: true });
+
+            // 初始化
+            updateSlide(0);
+        })();
+    </script>
+</body>
+</html>

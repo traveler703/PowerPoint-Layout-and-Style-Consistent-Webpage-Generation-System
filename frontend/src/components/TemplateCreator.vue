@@ -106,7 +106,15 @@
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                   </svg>
-                  模板「{{ msg.llmResponse.parsed.template_name || '自定义' }}」已生成
+                  <template v-if="msg.previewReady">
+                    模板「{{ msg.llmResponse.parsed.template_name || '自定义' }}」已生成
+                  </template>
+                  <template v-else-if="msg.previewError">
+                    模板配置已生成，但预览生成失败
+                  </template>
+                  <template v-else>
+                    模板配置已生成，正在生成预览...
+                  </template>
                 </div>
                 <div class="mtp-meta">
                   <span class="mtp-tag" v-for="tag in (msg.llmResponse.parsed.tags || []).slice(0, 4)" :key="tag">{{ tag }}</span>
@@ -217,12 +225,13 @@
         </div>
 
         <!-- Main preview area with scaling -->
-        <div class="preview-slide-frame-container" v-if="currentServerSlideHtml || previewHtml">
+        <div class="preview-slide-frame-container" v-if="serverPreviewUrl || currentServerSlideHtml || previewHtml">
           <div class="preview-slide-frame-wrapper" ref="previewWrapper">
             <iframe
               ref="previewFrame"
               :key="serverIframeKey"
-              :srcdoc="currentServerSlideHtml || previewHtml"
+              :src="serverPreviewUrl || undefined"
+              :srcdoc="serverPreviewUrl ? undefined : (currentServerSlideHtml || previewHtml)"
               class="preview-slide-frame"
               sandbox="allow-same-origin allow-scripts"
               @load="onPreviewLoad"
@@ -524,9 +533,25 @@
 
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import {
+  PAGE_TYPE_ICONS,
+  PAGE_TYPES,
+  normalizePageType
+} from '@/constants/pageTypes'
+import {
+  COLOR_PRESETS,
+  FIXED_PREVIEW_OUTLINE,
+  createDefaultTemplateConfig
+} from '@/features/templateCreator/config'
+import {
+  adjustBrightness,
+  escapeHtml,
+  isColorDark,
+  renderMarkdown
+} from '@/features/templateCreator/formatters'
 import { store } from '../stores/appStore'
 
-// --- State ---
+// 组件只维护界面交互状态；默认配置和纯函数位于 feature 模块。
 const chatContainer = ref(null)
 const inputRef = ref(null)
 const previewFrame = ref(null)
@@ -549,25 +574,15 @@ const newColor = ref({ key: '', value: '#6366f1' })
 
 const saveConfig = ref({ name: '', description: '', tags: '' })
 
-// --- Server-side preview generation ---
 const isGeneratingPreview = ref(false)
 const previewProgressPercent = ref(0)
 const previewProgressText = ref('正在生成预览...')
 const serverPreviewHtml = ref('')
+const serverPreviewUrl = ref('')
 const serverSlides = ref([])
 const activeServerSlide = ref(0)
 const serverIframeKey = ref(0)
 const previewWrapper = ref(null)
-
-const FIXED_PREVIEW_OUTLINE = [
-  { page_type: "cover",   title: "产品战略发布会", subtitle: "创新驱动增长", date_badge: "2026年6月" },
-  { page_type: "toc",     title: "目录", bullets: ["第一章 市场趋势与机遇", "第二章 核心产品矩阵", "第三章 技术架构升级", "第四章 战略规划与展望"] },
-  { page_type: "section", title: "第一章", subtitle: "市场趋势与机遇" },
-  { page_type: "content", title: "行业现状分析", bullets: ["全球数字化转型加速，AI技术深入各行各业", "2026年全球企业级SaaS市场规模预计突破3000亿美元", "AI Agent技术成为企业效率提升的关键驱动力", "数据安全与隐私合规需求持续增长"] },
-  { page_type: "section", title: "第二章", subtitle: "核心产品矩阵" },
-  { page_type: "content", title: "产品体系概览", bullets: ["SmartChat：新一代企业级AI对话平台", "DataPilot：智能数据分析与可视化工具", "FlowMaster：低代码业务流程自动化引擎", "三款产品深度集成，形成完整解决方案"] },
-  { page_type: "ending",  title: "谢谢观看", subtitle: "期待与您携手共创未来" },
-]
 
 const collapsedSections = ref({
   basic: false,
@@ -576,108 +591,15 @@ const collapsedSections = ref({
   html: false
 })
 
-// Default template config
-const config = ref({
-  template_id: 'my_template_' + Date.now().toString(36),
-  template_name: '我的自定义模板',
-  description: '使用 AI 模板创建器生成的模板',
-  version: '1.0.0',
-  css_variables: {
-    'color-primary': '#6366f1',
-    'color-secondary': '#8b5cf6',
-    'color-background': '#ffffff',
-    'color-surface': '#f8fafc',
-    'color-text': '#1e293b',
-    'color-text-muted': '#64748b',
-    'color-card': '#ffffff',
-    'font-body': "'Segoe UI', 'Microsoft YaHei', sans-serif",
-    'font-heading': "'Segoe UI', 'Microsoft YaHei', sans-serif"
-  },
-  page_types: {
-    cover: {
-      skeleton: '<div class="slide cover"><h1 class="main-title">{{title}}</h1><p class="subtitle">{{subtitle}}</p></div>',
-      placeholders: ['title', 'subtitle']
-    },
-    content: {
-      skeleton: '<div class="slide content"><h2 class="page-title">{{title}}</h2><div class="page-content">{{content}}</div></div>',
-      placeholders: ['title', 'content']
-    },
-    toc: {
-      skeleton: '<div class="slide toc"><h2 class="page-title">{{title}}</h2><div class="toc-list">{{toc_items}}</div></div>',
-      placeholders: ['title', 'toc_items']
-    },
-    ending: {
-      skeleton: '<div class="slide ending"><h1>{{title}}</h1><p>{{message}}</p></div>',
-      placeholders: ['title', 'message']
-    }
-  },
-  raw_html: '',
-  viewport: { width: 1280, height: 720 },
-  tags: [],
-  template_type: 'user'
-})
+const config = ref(createDefaultTemplateConfig())
 
-// Auto-select first page type when config loads
 watch(() => Object.keys(config.value.page_types || {}), (keys) => {
   if (keys.length > 0 && !activePageType.value) {
     activePageType.value = keys[0]
   }
 }, { immediate: true })
 
-// --- Color Presets ---
-const colorPresets = [
-  {
-    name: '赛博朋克',
-    colors: ['#00ffff', '#0088ff', '#a855f7', '#ec4899'],
-    vars: {
-      'color-primary': '#00ffff', 'color-secondary': '#0088ff',
-      'color-accent-cyan': '#00ffff', 'color-accent-blue': '#0088ff',
-      'color-accent-purple': '#a855f7', 'color-accent-pink': '#ec4899',
-      'color-background': '#0a0c14', 'color-surface': '#1a2035',
-      'color-text': '#e0e0e0', 'color-card': '#151a2d'
-    }
-  },
-  {
-    name: '水墨风',
-    colors: ['#1a1a1a', '#8B7355', '#C54B4B', '#F5F0E8'],
-    vars: {
-      'color-primary': '#1a1a1a', 'color-secondary': '#8B7355',
-      'color-accent-seal': '#C54B4B', 'color-background': '#F5F0E8',
-      'color-surface': '#FDFBF7', 'color-text': '#2d2d2d',
-      'color-card': '#FFFFFF'
-    }
-  },
-  {
-    name: '商务蓝',
-    colors: ['#1e3a5f', '#2c5282', '#3182ce', '#63b3ed'],
-    vars: {
-      'color-primary': '#1e3a5f', 'color-secondary': '#2c5282',
-      'color-accent-blue': '#3182ce', 'color-accent-light': '#63b3ed',
-      'color-background': '#f7fafc', 'color-surface': '#ffffff',
-      'color-text': '#1a202c', 'color-card': '#ffffff'
-    }
-  },
-  {
-    name: '清新绿',
-    colors: ['#166534', '#15803d', '#22c55e', '#86efac'],
-    vars: {
-      'color-primary': '#166534', 'color-secondary': '#15803d',
-      'color-accent-green': '#22c55e', 'color-accent-light': '#86efac',
-      'color-background': '#f0fdf4', 'color-surface': '#ffffff',
-      'color-text': '#14532d', 'color-card': '#ffffff'
-    }
-  },
-  {
-    name: '暖橙',
-    colors: ['#9a3412', '#c2410c', '#ea580c', '#fdba74'],
-    vars: {
-      'color-primary': '#9a3412', 'color-secondary': '#c2410c',
-      'color-accent-orange': '#ea580c', 'color-accent-light': '#fdba74',
-      'color-background': '#fff7ed', 'color-surface': '#ffffff',
-      'color-text': '#431407', 'color-card': '#ffffff'
-    }
-  }
-]
+const colorPresets = COLOR_PRESETS
 
 // --- Computed ---
 const tagsString = computed({
@@ -783,12 +705,11 @@ function goBack() {
 }
 
 function getPageTypeIcon(key) {
-  const icons = { cover: '📄', content: '📝', toc: '📋', section: '🏷️', ending: '🏁', compare: '⚖️', chart: '📊', timeline: '📅', qa: '❓' }
-  return icons[key] || '📄'
+  return PAGE_TYPE_ICONS[normalizePageType(key)] || '📄'
 }
 
 function isBuiltinPageType(key) {
-  return ['cover', 'content', 'toc', 'section', 'ending', 'compare', 'chart', 'timeline', 'qa'].includes(key)
+  return Object.values(PAGE_TYPES).includes(normalizePageType(key))
 }
 
 function toggleSection(key) {
@@ -912,8 +833,19 @@ function getSlideThumbStyle(slide) {
 
 function selectServerSlide(idx) {
   activeServerSlide.value = idx
+  if (serverPreviewUrl.value) {
+    navigateServerPreview(idx)
+    return
+  }
   serverIframeKey.value++
   nextTick(() => calculatePreviewScale())
+}
+
+function navigateServerPreview(idx) {
+  const win = previewFrame.value?.contentWindow
+  if (win) {
+    win.postMessage({ type: 'landppt-preview-nav', slide: idx }, '*')
+  }
 }
 
 function getServerSlideThumbStyle(slide) {
@@ -940,32 +872,10 @@ function openFullscreen() {
 function resetAll() {
   if (confirm('确定要重置所有对话和配置吗？')) {
     messages.value = []
-    config.value = {
-      template_id: 'my_template_' + Date.now().toString(36),
-      template_name: '我的自定义模板',
-      description: '使用 AI 模板创建器生成的模板',
-      version: '1.0.0',
-      css_variables: {
-        'color-primary': '#6366f1', 'color-secondary': '#8b5cf6',
-        'color-background': '#ffffff', 'color-surface': '#f8fafc',
-        'color-text': '#1e293b', 'color-text-muted': '#64748b',
-        'color-card': '#ffffff',
-        'font-body': "'Segoe UI', 'Microsoft YaHei', sans-serif",
-        'font-heading': "'Segoe UI', 'Microsoft YaHei', sans-serif"
-      },
-      page_types: {
-        cover: { skeleton: '<div class="slide cover"><h1 class="main-title">{{title}}</h1><p class="subtitle">{{subtitle}}</p></div>', placeholders: ['title', 'subtitle'] },
-        content: { skeleton: '<div class="slide content"><h2 class="page-title">{{title}}</h2><div class="page-content">{{content}}</div></div>', placeholders: ['title', 'content'] },
-        toc: { skeleton: '<div class="slide toc"><h2 class="page-title">{{title}}</h2><div class="toc-list">{{toc_items}}</div></div>', placeholders: ['title', 'toc_items'] },
-        ending: { skeleton: '<div class="slide ending"><h1>{{title}}</h1><p>{{message}}</p></div>', placeholders: ['title', 'message'] }
-      },
-      raw_html: '',
-      viewport: { width: 1280, height: 720 },
-      tags: [],
-      template_type: 'user'
-    }
+    config.value = createDefaultTemplateConfig()
     // 清除服务端预览
     serverPreviewHtml.value = ''
+    serverPreviewUrl.value = ''
     serverSlides.value = []
     isGeneratingPreview.value = false
     store.showToastMessage('已重置')
@@ -1128,24 +1038,29 @@ async function createTemplateFromChat(msgIdx) {
     if (response.parsed) {
       msg.llmResponse = response
       msg.parsedConfig = response.parsed
+      msg.previewReady = false
+      msg.previewError = false
       mergeConfig(response.parsed)
-      store.showToastMessage('模板已生成！正在保存并生成预览...')
+      store.showToastMessage('模板配置已生成，正在保存并生成预览...')
 
       // 自动保存模板到服务端
       const templateData = buildTemplateData(response.parsed)
-      try {
-        await store.createTemplate(templateData)
-        store.showToastMessage('模板已保存！正在生成PPT预览...')
-      } catch (e) {
-        store.showToastMessage('模板保存失败: ' + (e.response?.data?.error || e.message))
+      const savedTemplate = await store.createTemplate(templateData, { silent: true })
+      if (!savedTemplate) {
+        throw new Error('模板配置保存失败')
       }
 
       // 自动生成服务端PPT预览
-      await generateServerPreview(response.parsed.template_id)
+      const previewResult = await generateServerPreview(response.parsed.template_id)
+      msg.previewReady = true
+      store.showToastMessage(`模板已生成！预览共 ${previewResult.page_count} 页`)
     } else {
       store.showToastMessage('模板生成失败，请重试')
     }
   } catch (e) {
+    if (msg.llmResponse?.parsed) {
+      msg.previewError = true
+    }
     store.showToastMessage('生成出错: ' + e.message)
   } finally {
     msg.creating = false
@@ -1174,6 +1089,7 @@ async function generateServerPreview(templateId) {
   previewProgressPercent.value = 0
   previewProgressText.value = '正在生成预览...'
   serverPreviewHtml.value = ''
+  serverPreviewUrl.value = ''
   activeServerSlide.value = 0
 
   // 预先创建 7 个空白占位缩略图
@@ -1186,13 +1102,6 @@ async function generateServerPreview(templateId) {
     html: '',
   }))
 
-  // 清空旧预览文件
-  fetch('/api/save-preview-html', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ template_id: templateId, html: '' }),
-  }).catch(() => {})
-
   try {
     const res = await fetch('/api/generate-ppt-progress', {
       method: 'POST',
@@ -1201,7 +1110,8 @@ async function generateServerPreview(templateId) {
         pages: FIXED_PREVIEW_OUTLINE,
         topic: '产品战略发布会',
         template: templateId,
-        save_pages: true,
+        save_pages: false,
+        preview_template_id: templateId,
       }),
     })
 
@@ -1253,7 +1163,7 @@ async function generateServerPreview(templateId) {
             previewProgressPercent.value = Math.round((current / total) * 100)
             const pageInfo = event.page || {}
             previewProgressText.value = current >= total
-              ? '生成完成！'
+              ? '页面生成完成，正在保存预览...'
               : `正在生成第 ${Math.min(current + 1, total)} / ${total} 页${pageInfo.title ? '：' + pageInfo.title : ''}`
           } else if (event.type === 'slide' && event.slide) {
             const s = event.slide
@@ -1293,6 +1203,7 @@ async function generateServerPreview(templateId) {
     if (!result.success) throw new Error(result.error || '生成失败')
 
     serverPreviewHtml.value = result.html || ''
+    serverPreviewUrl.value = `/api/template-preview/${encodeURIComponent(templateId)}?v=${Date.now()}`
     // 用最终结果覆盖 slides（确保完整）
     if (result.slides) {
       serverSlides.value = result.slides.map(s => ({
@@ -1306,21 +1217,14 @@ async function generateServerPreview(templateId) {
 
     previewProgressPercent.value = 100
     previewProgressText.value = `预览完成！共 ${result.page_count} 页`
-    store.showToastMessage(`预览完成！共 ${result.page_count} 页`)
-
-    // 保存预览 HTML
-    fetch('/api/save-preview-html', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ template_id: templateId, html: result.html }),
-    }).catch(() => {})
 
     // 缩放
     await nextTick()
     calculatePreviewScale()
+    return result
   } catch (e) {
-    store.showToastMessage('预览生成失败: ' + e.message)
     console.error('Preview generation failed:', e)
+    throw e
   } finally {
     isGeneratingPreview.value = false
   }
@@ -1330,6 +1234,10 @@ async function generateServerPreview(templateId) {
 function prevServerSlide() {
   if (activeServerSlide.value > 0) {
     activeServerSlide.value--
+    if (serverPreviewUrl.value) {
+      navigateServerPreview(activeServerSlide.value)
+      return
+    }
     serverIframeKey.value++
     nextTick(() => calculatePreviewScale())
   }
@@ -1337,6 +1245,10 @@ function prevServerSlide() {
 function nextServerSlide() {
   if (activeServerSlide.value < serverSlides.value.length - 1) {
     activeServerSlide.value++
+    if (serverPreviewUrl.value) {
+      navigateServerPreview(activeServerSlide.value)
+      return
+    }
     serverIframeKey.value++
     nextTick(() => calculatePreviewScale())
   }
@@ -1358,6 +1270,9 @@ function calculatePreviewScale() {
 
 function onPreviewLoad() {
   calculatePreviewScale()
+  if (serverPreviewUrl.value) {
+    navigateServerPreview(activeServerSlide.value)
+  }
 }
 
 async function callLLM(message, history = [], mode = 'chat') {
@@ -1798,11 +1713,6 @@ function buildTocItems(items, primary, text, surface, isDark) {
   ).join('')
 }
 
-function escapeHtml(str) {
-  if (!str) return ''
-  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
 function regenerateFromRaw() {
   store.showToastMessage('从 raw_html 提取配置的功能开发中')
 }
@@ -1821,39 +1731,6 @@ function scrollToBottom() {
 
 function formatTime(date) {
   return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-}
-
-function isColorDark(color) {
-  if (!color) return false
-  color = color.replace('#', '')
-  if (color.length === 3) color = color[0] + color[0] + color[1] + color[1] + color[2] + color[2]
-  if (color.length !== 6) return false
-  const r = parseInt(color.substring(0, 2), 16)
-  const g = parseInt(color.substring(2, 4), 16)
-  const b = parseInt(color.substring(4, 6), 16)
-  return (r * 299 + g * 587 + b * 114) / 1000 < 128
-}
-
-function adjustBrightness(hex, percent) {
-  if (!hex) return '#333333'
-  hex = hex.replace('#', '')
-  if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2]
-  if (hex.length !== 6) return '#333333'
-  const num = parseInt(hex, 16)
-  const amt = Math.round(2.55 * percent)
-  const R = Math.min(255, Math.max(0, (num >> 16) + amt))
-  const G = Math.min(255, Math.max(0, ((num >> 8) & 0x00FF) + amt))
-  const B = Math.min(255, Math.max(0, (num & 0x0000FF) + amt))
-  return '#' + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1)
-}
-
-function renderMarkdown(text) {
-  if (!text) return ''
-  return text
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/`(.*?)`/g, '<code>$1</code>')
-    .replace(/\n/g, '<br>')
 }
 
 // --- Watchers ---

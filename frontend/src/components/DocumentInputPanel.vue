@@ -194,6 +194,11 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import {
+  PAGE_TYPE_LABELS,
+  PAGE_TYPES,
+  normalizePageType
+} from '@/constants/pageTypes'
 import { store } from '../stores/appStore'
 
 const fileInputRef = ref(null)
@@ -312,8 +317,8 @@ const handleApply = async () => {
           title: page.title || `第${index + 1}页`,
           subtitle: page.subtitle || page.summary || '',
           content_points: page.bullets || page.items || [],
-          // 保持 page.type 原样传递（cover, toc, section, content, end）
-          slide_type: page.type || 'content',
+          // API 边界统一写入规范页面类型，读取时仍兼容历史别名。
+          slide_type: normalizePageType(page.type),
           description: page.description || '',
           highlights: page.highlights || null,
           steps: page.steps || null,
@@ -335,7 +340,7 @@ const handleApply = async () => {
             title: section.title || `第${index + 1}部分`,
             subtitle: section.content || '',
             content_points: section.bullets || [],
-            slide_type: 'content'
+            slide_type: PAGE_TYPES.CONTENT
           }))
         }
         
@@ -345,7 +350,7 @@ const handleApply = async () => {
           title: store.parseResult.title || '未命名文档',
           subtitle: store.parseResult.summary || '',
           content_points: [],
-          slide_type: 'title'
+          slide_type: PAGE_TYPES.COVER
         })
         
         // 生成页面数据并保存
@@ -387,14 +392,7 @@ const getSectionIcon = (title) => {
 
 // 获取页面类型的中文名称
 const getPageTypeName = (type) => {
-  const typeMap = {
-    'cover': '封面',
-    'toc': '目录',
-    'section': '章节',
-    'content': '内容',
-    'end': '结束'
-  }
-  return typeMap[type] || '内容'
+  return PAGE_TYPE_LABELS[normalizePageType(type)] || '内容'
 }
 </script>
 
@@ -573,7 +571,7 @@ const getPageTypeName = (type) => {
 .page-type-toc { border-left-color: #10b981; }
 .page-type-section { border-left-color: #6366f1; }
 .page-type-content { border-left-color: #64748b; }
-.page-type-end { border-left-color: #ef4444; }
+.page-type-ending { border-left-color: #ef4444; }
 
 .page-preview-header {
   display: flex;
@@ -595,7 +593,7 @@ const getPageTypeName = (type) => {
 .page-type-toc .page-type-badge { background: #10b981; }
 .page-type-section .page-type-badge { background: #6366f1; }
 .page-type-content .page-type-badge { background: #64748b; }
-.page-type-end .page-type-badge { background: #ef4444; }
+.page-type-ending .page-type-badge { background: #ef4444; }
 
 .page-number {
   font-size: 12px;

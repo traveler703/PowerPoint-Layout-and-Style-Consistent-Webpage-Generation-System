@@ -109,7 +109,7 @@
               <option value="toc">目录页</option>
               <option value="section">章节页</option>
               <option value="content">内容页</option>
-              <option value="end">结束页</option>
+              <option value="ending">结束页</option>
             </select>
           </div>
           <div class="text-input-group">
@@ -339,40 +339,33 @@
 
 <script setup>
 import { computed, ref } from 'vue'
+import {
+  PAGE_TYPE_ICONS,
+  PAGE_TYPE_LABELS,
+  PAGE_TYPES,
+  normalizePageType
+} from '@/constants/pageTypes'
 import { store } from '../stores/appStore'
 
-// 页面类型图标映射
 const getPageIcon = (layout) => {
-  const icons = {
-    cover: '📄',
-    toc: '📑',
-    section: '📑',
-    content: '📝',
-    end: '🔚'
-  }
-  return icons[layout] || '📄'
+  return PAGE_TYPE_ICONS[normalizePageType(layout)] || '📄'
 }
 
-// 页面类型名称映射
 const getLayoutName = (layout) => {
-  const names = {
-    cover: '封面页',
-    toc: '目录页',
-    section: '章节页',
-    content: '内容页',
-    end: '结束页'
-  }
-  return names[layout] || '标准版式'
+  return PAGE_TYPE_LABELS[normalizePageType(layout)] || '标准版式'
 }
 
-// 检查是否为特殊页面类型（不需要内容要点）
 const isSpecialPage = (layout) => {
-  return ['cover', 'toc', 'section', 'end'].includes(layout)
+  return [
+    PAGE_TYPES.COVER,
+    PAGE_TYPES.TOC,
+    PAGE_TYPES.SECTION,
+    PAGE_TYPES.ENDING
+  ].includes(normalizePageType(layout))
 }
 
-// 检查是否为封面页（不需要背景与Logo）
 const isCoverPage = (layout) => {
-  return layout === 'cover'
+  return normalizePageType(layout) === PAGE_TYPES.COVER
 }
 
 const pageImageRef = ref(null)

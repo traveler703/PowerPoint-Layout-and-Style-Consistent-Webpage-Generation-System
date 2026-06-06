@@ -207,15 +207,16 @@ def build_content_html_prompt(
         "",
         "【背景要求】",
         "- **主容器不要设置背景色**，使用 `background: transparent` 或直接不设置 background",
-        "- **每一个内容卡片/内容块必须使用白色背景**：`background:#FFFFFF` 或 `background:white`",
-        "- 如果一页中有多块内容，所有同级内容块的背景必须一致为白色，不能第一块透明、其余白色",
-        "- 只允许装饰性小标签/徽章使用半透明背景；承载正文的卡片必须是白色背景",
-        "- 不要使用深色实色背景（如 #0a0e1a），让模板本身的海蓝渐变背景透出来",
+        f"- **每一个内容卡片/内容块必须使用模板卡片色**：`background:{colors['CARD_BG']}`",
+        "- 如果一页中有多块内容，所有同级内容块的背景必须一致，不能自行引入模板调色板以外的颜色",
+        "- 只允许装饰性小标签/徽章使用半透明背景；承载正文的卡片必须使用模板卡片色",
+        "- 主容器保持透明，让模板自身背景透出",
+        "- 禁止使用模板CSS变量及其透明度变体之外的颜色，色彩偏差率必须不超过5%",
         "",
         "示例：",
         "```html",
         "<div style=\"width:1160px;height:530px;overflow:hidden;display:flex;background:transparent;\">",
-        "  <div style=\"flex:1;background:#FFFFFF;border-radius:14px;overflow:hidden;\">内容...</div>",
+        f"  <div style=\"flex:1;background:{colors['CARD_BG']};border-radius:14px;overflow:hidden;\">内容...</div>",
         "</div>",
         "```",
     ])
@@ -236,7 +237,8 @@ def build_content_html_prompt(
         f"5. 使用创意、独特的布局\n"
         f"6. **关键**：每个卡片/容器必须添加 `overflow: hidden` 防止内容溢出\n"
         f"7. 避免文字重叠 - 使用适当的 padding、margin 和文字宽度控制\n"
-        f"8. **关键**：每一个承载正文的内容块/卡片背景必须是白色；一页有多块内容时，不允许第一块透明、其他块白色"
+        f"8. **关键**：正文卡片统一使用模板卡片色 {colors['CARD_BG']}，不得自行增加其他颜色\n"
+        f"9. **质量门槛**：元素重叠率必须为0，色彩偏差率必须不超过5%"
     )
 
     return system_prompt, user_prompt

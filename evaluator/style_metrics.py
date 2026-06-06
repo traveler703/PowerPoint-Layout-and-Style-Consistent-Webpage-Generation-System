@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import re
-from typing import Iterable, Any
+from collections import Counter
+from typing import Iterable
 
 from pydantic import BaseModel, Field
 
@@ -25,22 +26,46 @@ class StyleMetrics(BaseModel):
 
 _HEX_RE = re.compile(r"#(?:[0-9a-fA-F]{3}){1,2}\b")
 _STYLE_RE = re.compile(r"(?is)<style[^>]*>([\s\S]*?)</style>")
+_RUNTIME_STYLE_RE = re.compile(
+    r'(?is)<style[^>]*\bid\s*=\s*(["\'])landppt-runtime-overrides\1[^>]*>.*?</style>'
+)
+_RGB_RE = re.compile(
+    r"rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)",
+    re.I,
+)
 
 
-def _extract_hexes_from_css_text(css: str) -> set[str]:
-    return set(m.group(0) for m in _HEX_RE.finditer(css))
+def _normalize_hex(color: str) -> str:
+    value = color.lstrip("#")
+    if len(value) == 3:
+        value = "".join(ch * 2 for ch in value)
+    return f"#{value.upper()}"
+
+
+def _extract_colors_from_css_text(css: str) -> list[str]:
+    colors = [_normalize_hex(m.group(0)) for m in _HEX_RE.finditer(css)]
+    for match in _RGB_RE.finditer(css):
+        rgb = tuple(min(255, int(match.group(i))) for i in range(1, 4))
+        colors.append("#{:02X}{:02X}{:02X}".format(*rgb))
+    return colors
+
+
+def extract_color_counts_from_html(html: str) -> Counter[str]:
+    """Extract authored colors, excluding renderer-only runtime helper styles."""
+    found: Counter[str] = Counter()
+    authored_html = _RUNTIME_STYLE_RE.sub("", html)
+    for m in _STYLE_RE.finditer(authored_html):
+        found.update(_extract_colors_from_css_text(m.group(1)))
+    for m in re.finditer(
+        r'(?is)\sstyle\s*=\s*(["\'])(.*?)\1',
+        authored_html,
+    ):
+        found.update(_extract_colors_from_css_text(m.group(2)))
+    return found
 
 
 def extract_colors_from_html(html: str) -> set[str]:
-    found: set[str] = set()
-    for m in _STYLE_RE.finditer(html):
-        found |= _extract_hexes_from_css_text(m.group(1))
-    for m in re.finditer(
-        r'(?is)\sstyle\s*=\s*(["\'])(.*?)\1',
-        html,
-    ):
-        found |= _extract_hexes_from_css_text(m.group(2))
-    return found
+    return set(extract_color_counts_from_html(html))
 
 
 def _palette_from_tokens(tokens: StyleTokens) -> list[str]:
@@ -61,21 +86,25 @@ def _nearest_delta_e(hex_color: str, palette_labs: list[tuple[float, float, floa
     return min(delta_e_cie76(lab, pl) for pl in palette_labs)
 
 
-def _palette_deviation_percent(sample: set[str], palette: list[str], tolerance: float = 25.0) -> float:
-    """返回偏离模板调色板的颜色占比，而不是单个最远颜色的放大值。"""
+def _palette_deviation_percent(
+    sample: Counter[str],
+    palette: list[str],
+    tolerance: float = 25.0,
+) -> float:
+    """Return the usage-weighted share of authored colors outside the palette."""
     palette_labs = [hex_to_lab(h) for h in palette]
     palette_labs = [p for p in palette_labs if p is not None]
     if not sample or not palette_labs:
         return 0.0
     checked = 0
     off_palette = 0
-    for color in sample:
+    for color, occurrences in sample.items():
         delta = _nearest_delta_e(color, palette_labs)
         if delta is None:
             continue
-        checked += 1
+        checked += occurrences
         if delta > tolerance:
-            off_palette += 1
+            off_palette += occurrences
     return (off_palette / checked) * 100 if checked else 0.0
 
 
@@ -112,7 +141,8 @@ def color_consistency_from_html(
     elif isinstance(tokens, StyleTokens):
         palette = _palette_from_tokens(tokens)
 
-    sample = extract_colors_from_html(html)
+    sample_counts = extract_color_counts_from_html(html)
+    sample = set(sample_counts)
     if not palette:
         return StyleMetrics(
             max_color_delta_e=None,
@@ -126,7 +156,7 @@ def color_consistency_from_html(
             token_violations=[],
         )
     worst = max_delta_e_vs_palette(sample, palette)
-    pct = _palette_deviation_percent(sample, palette)
+    pct = _palette_deviation_percent(sample_counts, palette)
     violations: list[str] = []
     if pct > 5.0:
         violations.append(f"全局颜色偏差约 {pct:.1f}%（目标 ≤5%）")
