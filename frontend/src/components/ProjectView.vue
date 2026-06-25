@@ -10,7 +10,6 @@
           返回工作空间
         </button>
         <div class="project-title">
-          <div class="project-title-icon" :class="store.currentProject?.type">{{ store.currentProject?.icon }}</div>
           <span>{{ store.currentProject?.name }}</span>
         </div>
       </div>

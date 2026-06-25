@@ -45,12 +45,28 @@
             </svg>
             <input type="text" placeholder="搜索项目..." v-model="store.searchQuery">
           </div>
-          <button class="filter-btn" @click="sortProjects">
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"/>
-            </svg>
-            排序
-          </button>
+          <div class="sort-menu-wrap">
+            <button class="filter-btn" @click="toggleSortMenu">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"/>
+              </svg>
+              排序
+            </button>
+            <div v-if="showSortMenu" class="sort-menu">
+              <button
+                v-for="option in sortOptions"
+                :key="option.value"
+                class="sort-menu-item"
+                :class="{ active: store.projectSortMode === option.value }"
+                @click="selectSort(option)"
+              >
+                <span>{{ option.label }}</span>
+                <svg v-if="store.projectSortMode === option.value" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
         <div class="toolbar-right">
           <div class="view-toggle">
@@ -78,31 +94,29 @@
           @click="store.openProject(project.id)"
           @contextmenu.prevent="showContextMenu($event, project.id)"
         >
-          <div class="project-card-header">
-            <div class="project-icon" :class="project.type">{{ project.icon }}</div>
-            <button class="project-menu-btn" @click.stop="showContextMenu($event, project.id)">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
-              </svg>
-            </button>
-          </div>
           <div class="project-preview">
-            <div class="project-preview-text">{{ project.icon }}</div>
-          </div>
-          <div class="project-name">{{ project.name }}</div>
-          <div class="project-desc">{{ project.desc }}</div>
-          <div class="project-meta">
-            <div class="project-meta-item">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-              </svg>
-              {{ project.pages }}页
+            <div class="project-preview-chart" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
             </div>
-            <div class="project-meta-item">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-              </svg>
-              {{ formatTime(project.updated) }}
+          </div>
+          <div class="project-info">
+            <div class="project-name">{{ project.name }}</div>
+            <div class="project-desc">{{ project.desc }}</div>
+            <div class="project-meta">
+              <div class="project-meta-item">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                {{ project.pages }}页
+              </div>
+              <div class="project-meta-item">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                {{ formatTime(project.updated) }}
+              </div>
             </div>
           </div>
         </div>
@@ -125,12 +139,26 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref } from 'vue'
 import { store, filteredProjects, formatTime } from '../stores/appStore'
 
-const sortProjects = () => {
-  store.projects.sort((a, b) => b.updated - a.updated)
-  store.showToastMessage('已按更新时间排序')
+const showSortMenu = ref(false)
+
+const sortOptions = [
+  { value: 'updated-asc', label: '按更新时间顺序排序', toast: '已按更新时间顺序排序' },
+  { value: 'updated-desc', label: '按更新时间倒序排序', toast: '已按更新时间倒序排序' },
+  { value: 'name-asc', label: '按项目名称顺序排序', toast: '已按项目名称顺序排序' },
+  { value: 'name-desc', label: '按项目名称倒序排序', toast: '已按项目名称倒序排序' }
+]
+
+const toggleSortMenu = () => {
+  showSortMenu.value = !showSortMenu.value
+}
+
+const selectSort = (option) => {
+  store.setProjectSortMode(option.value)
+  showSortMenu.value = false
+  store.showToastMessage(option.toast)
 }
 
 const showContextMenu = (event, projectId) => {
@@ -139,16 +167,3 @@ const showContextMenu = (event, projectId) => {
   store.showContextMenu = true
 }
 </script>
-
-<style scoped>
-.project-card.list-mode {
-  flex-direction: row;
-  height: auto;
-}
-
-.project-card.list-mode .project-preview {
-  width: 120px;
-  height: 80px;
-  flex-shrink: 0;
-}
-</style>

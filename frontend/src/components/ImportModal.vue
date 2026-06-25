@@ -59,10 +59,7 @@ const importProject = async (file) => {
   store.showToastMessage(`正在导入项目「${file.name}」...`)
 
   try {
-    const result = await store.createProject(
-      file.name.replace(/\.[^/.]+$/, ''),
-      'business'
-    )
+    const result = await store.createProject(file.name.replace(/\.[^/.]+$/, ''))
     if (result) {
       store.showToastMessage('项目导入成功')
     }

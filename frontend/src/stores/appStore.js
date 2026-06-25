@@ -8,26 +8,6 @@ import {
   normalizePageType
 } from '@/constants/pageTypes'
 
-// 项目类型图标映射
-const typeIcons = {
-  business: '📊',
-  academic: '🎓',
-  vibrant: '🎨',
-  tech: '🚀',
-  nature: '🌿',
-  minimal: '✨'
-}
-
-// 项目类型名称映射
-const typeNames = {
-  business: '商务',
-  academic: '学术',
-  vibrant: '创意',
-  tech: '科技',
-  nature: '自然',
-  minimal: '个人'
-}
-
 // 工作流步骤
 const workflowSteps = ['input', 'outline', 'style', 'preview', 'report']
 const stepTitles = {
@@ -66,6 +46,7 @@ export const store = reactive({
 
   // 视图模式
   viewMode: 'grid',
+  projectSortMode: 'updated-desc',
 
   // 右键菜单
   contextMenuProjectId: null,
@@ -140,8 +121,6 @@ export const store = reactive({
           id: p.id,
           name: p.name,
           desc: p.description || '',
-          type: p.type || 'business',
-          icon: typeIcons[p.type] || typeIcons.business,
           pages: p.page_count || 0,
           updated: p.updated_at ? new Date(p.updated_at).getTime() : Date.now(),
           created: p.created_at ? new Date(p.created_at).getTime() : Date.now()
@@ -321,13 +300,11 @@ export const store = reactive({
   },
 
   // 项目管理 - 调用API
-  async createProject(name, type) {
+  async createProject(name) {
     try {
       const response = await createProject({
         name: name || '未命名项目',
-        description: '新创建的项目',
-        type: type || 'business',
-        icon: typeIcons[type] || typeIcons.business
+        description: '新创建的项目'
       })
 
       if (response.success) {
@@ -335,8 +312,6 @@ export const store = reactive({
           id: response.project_id,
           name: name || '未命名项目',
           desc: '新创建的项目',
-          type: type || 'business',
-          icon: typeIcons[type] || typeIcons.business,
           pages: 0,
           updated: Date.now(),
           created: Date.now()
@@ -355,7 +330,7 @@ export const store = reactive({
   async duplicateProject(projectId) {
     const original = this.projects.find(p => p.id === projectId)
     if (original) {
-      return await this.createProject(original.name + ' (副本)', original.type)
+      return await this.createProject(original.name + ' (副本)')
     }
     return null
   },
@@ -1032,6 +1007,10 @@ export const store = reactive({
     this.viewMode = mode
   },
 
+  setProjectSortMode(mode) {
+    this.projectSortMode = mode
+  },
+
   // 搜索
   setSearchQuery(query) {
     this.searchQuery = query
@@ -1337,11 +1316,28 @@ export const store = reactive({
 // 计算属性
 export const filteredProjects = computed(() => {
   const query = store.searchQuery.toLowerCase()
-  if (!query) return store.projects
-  return store.projects.filter(p =>
-    p.name.toLowerCase().includes(query) ||
-    p.desc.toLowerCase().includes(query)
-  )
+  const projects = query
+    ? store.projects.filter(p =>
+        p.name.toLowerCase().includes(query) ||
+        p.desc.toLowerCase().includes(query)
+      )
+    : [...store.projects]
+
+  return projects.sort((a, b) => {
+    if (store.projectSortMode === 'updated-asc') {
+      return (a.updated || 0) - (b.updated || 0)
+    }
+
+    if (store.projectSortMode === 'name-asc') {
+      return a.name.localeCompare(b.name, 'zh-Hans-CN')
+    }
+
+    if (store.projectSortMode === 'name-desc') {
+      return b.name.localeCompare(a.name, 'zh-Hans-CN')
+    }
+
+    return (b.updated || 0) - (a.updated || 0)
+  })
 })
 
 export const currentPage = computed(() => {
@@ -1400,5 +1396,3 @@ export const getLayoutName = (layout) => {
   }
   return names[normalizePageType(layout)] || '标准版式'
 }
-
-export { typeIcons, typeNames }

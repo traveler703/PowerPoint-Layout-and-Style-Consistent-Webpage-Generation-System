@@ -20,28 +20,6 @@
             @keyup.enter="createProject"
           >
         </div>
-        <div class="form-group">
-          <label class="form-label">项目类型</label>
-          <select class="form-input form-select" v-model="projectType">
-            <option value="business">📊 商务汇报</option>
-            <option value="academic">🎓 学术报告</option>
-            <option value="vibrant">🎨 活动策划</option>
-            <option value="tech">🚀 科技产品</option>
-            <option value="nature">🌿 健康环保</option>
-            <option value="minimal">✨ 个人展示</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">初始风格</label>
-          <select class="form-input form-select" v-model="projectStyle">
-            <option value="business">商务蓝</option>
-            <option value="academic">学术灰</option>
-            <option value="vibrant">活力橙</option>
-            <option value="tech">科技紫</option>
-            <option value="nature">清新绿</option>
-            <option value="minimal">极简白</option>
-          </select>
-        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" @click="store.closeNewProjectModal()">取消</button>
@@ -56,11 +34,9 @@ import { ref } from 'vue'
 import { store } from '../stores/appStore'
 
 const projectName = ref('')
-const projectType = ref('business')
-const projectStyle = ref('business')
 
 const createProject = async () => {
-  const newProject = await store.createProject(projectName.value || '未命名项目', projectType.value)
+  const newProject = await store.createProject(projectName.value || '未命名项目')
   store.closeNewProjectModal()
 
   if (newProject) {

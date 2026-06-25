@@ -68,8 +68,8 @@ def create_project():
         project_id = ProjectService.create_project(
             name=data.get("name", "未命名项目"),
             description=data.get("description", ""),
-            type=data.get("type", "business"),
-            icon=data.get("icon", "📊"),
+            type="business",
+            icon="📊",
         )
         return jsonify(
             {
