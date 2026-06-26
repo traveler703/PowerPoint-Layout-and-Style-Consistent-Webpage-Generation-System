@@ -1030,10 +1030,17 @@ async function createTemplateFromChat(msgIdx) {
   isTyping.value = true
 
   try {
-    // 直接用该 AI 回复的内容作为模板需求描述
-    const designSummary = msg.content
+    const sourceUserMsg = [...messages.value.slice(0, msgIdx)]
+      .reverse()
+      .find(m => m.role === 'user')?.content || ''
 
-    const response = await callLLM(designSummary, [], 'template')
+    // 同时传入用户原始需求和 AI 总结，避免模板名称从确认话术中误提取。
+    const designSummary = msg.content
+    const templateRequest = sourceUserMsg
+      ? `原始用户需求：${sourceUserMsg}\n\nAI设计总结：${designSummary}`
+      : designSummary
+
+    const response = await callLLM(templateRequest, [], 'template')
 
     if (response.parsed) {
       msg.llmResponse = response

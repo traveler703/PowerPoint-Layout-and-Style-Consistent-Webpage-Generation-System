@@ -1232,6 +1232,59 @@ def rewrite_slide():
         return jsonify({"error": str(e)}), 500
 
 
+def _format_metric_percent(value: float | int | None) -> str:
+    """Format an already-percent metric consistently for report text."""
+
+    if not isinstance(value, (int, float)):
+        return "N/A"
+    return f"{float(value):.2f}%"
+
+
+def _build_evaluation_summary(
+    *,
+    page_count: int,
+    pages: list[dict],
+    global_color_deviation: float,
+    average_generation_time: float,
+    passed: bool,
+) -> str:
+    """Build a deterministic report summary from computed metrics."""
+
+    failed_overlap_pages = [
+        p for p in pages
+        if isinstance(p.get("overlap_ratio"), (int, float)) and p["overlap_ratio"] > 0
+    ]
+    max_color_page = max(
+        pages,
+        key=lambda p: p.get("color_deviation_percent") or 0,
+        default={},
+    )
+    max_color_value = max_color_page.get("color_deviation_percent") or 0
+    if isinstance(max_color_value, (int, float)) and max_color_value > 0:
+        max_color_text = (
+            f"单页最高为第{max_color_page.get('page_number', '?')}页"
+            f"（{max_color_page.get('title') or '未命名'}）的"
+            f"{_format_metric_percent(max_color_value)}。"
+        )
+    else:
+        max_color_text = "各页面未检测到明显色彩偏差。"
+
+    overlap_text = (
+        "所有页面元素重叠率均为0，符合要求。"
+        if not failed_overlap_pages
+        else f"有{len(failed_overlap_pages)}页存在元素重叠，建议检查对应页面布局。"
+    )
+    color_status = "符合" if global_color_deviation <= 5 else "超过"
+    result_text = "总体质量良好" if passed else "仍需进一步检查"
+
+    return (
+        f"该演示文稿共{page_count}页，{overlap_text}"
+        f"全局色彩偏差率为{_format_metric_percent(global_color_deviation)}，"
+        f"{color_status}5%的目标；{max_color_text}"
+        f"平均每页生成时间约{average_generation_time:.2f}秒，{result_text}。"
+    )
+
+
 @app.route('/api/evaluate-presentation', methods=['POST'])
 def evaluate_presentation():
     """评估生成后的 HTML 演示文稿，返回报告页使用的数据。"""
@@ -1276,28 +1329,13 @@ def evaluate_presentation():
         average_generation_time = total_generation_time / page_count if total_generation_time and page_count else 0
         passed = all(p["overlap_ratio"] == 0 for p in pages) and global_color_deviation <= 5
 
-        summary = ""
-        try:
-            prompt = json.dumps(
-                {
-                    "task": "用中文简短评估HTML演示文稿质量",
-                    "constraints": {
-                        "overlap_ratio_target": 0,
-                        "global_color_deviation_percent_target": "<=5",
-                    },
-                    "metrics": {
-                        "page_count": page_count,
-                        "global_color_deviation_percent": global_color_deviation,
-                        "average_generation_time_seconds": average_generation_time,
-                        "pages": pages,
-                    },
-                },
-                ensure_ascii=False,
-            )
-            summary = asyncio.run(default_llm_client().complete("只输出一段中文评估摘要。", prompt))
-        except Exception as llm_err:
-            logger.warning(f"LLM评估摘要失败，使用本地摘要: {llm_err}")
-            summary = "已完成规则评估。请重点关注重叠率不为 0 或颜色偏差超过 5% 的页面。"
+        summary = _build_evaluation_summary(
+            page_count=page_count,
+            pages=pages,
+            global_color_deviation=global_color_deviation,
+            average_generation_time=average_generation_time,
+            passed=passed,
+        )
 
         return jsonify(
             {
@@ -1308,7 +1346,7 @@ def evaluate_presentation():
                     "pages": pages,
                     "global_color_deviation_percent": global_color_deviation,
                     "average_generation_time_seconds": average_generation_time,
-                    "summary": summary.strip(),
+                    "summary": summary,
                     "metric_notes": {
                         "color_deviation": "每页色彩偏差率=该页作者样式中偏离模板调色板的颜色使用次数占比；运行时辅助样式不参与统计。全局色彩偏差率=各页色彩偏差率的平均值。",
                         "overlap_ratio": "元素重叠率基于内联绝对定位元素的矩形交叠面积估算，并忽略背景层、低透明度装饰和 pointer-events:none 的装饰元素。",

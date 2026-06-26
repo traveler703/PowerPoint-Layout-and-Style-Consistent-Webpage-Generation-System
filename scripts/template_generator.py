@@ -926,12 +926,207 @@ def _extract_page_types_regex(html: str) -> dict[str, dict[str, Any]]:
     return result
 
 
-def _infer_theme_name(description: str) -> str:
-    """从描述中提取主题名称作为 template_name（仅用于显示）。"""
-    name = description.strip()
-    name = re.sub(r"[^\u4e00-\u9fa5a-zA-Z0-9\s]", "", name)
-    name = re.sub(r"\s+", " ", name)
-    return name[:20] or "未命名主题"
+def _compact_design_text(text: str) -> str:
+    """Collapse a chatty design summary into plain text for metadata inference."""
+
+    text = re.sub(r"```[\s\S]*?```", " ", text or "")
+    text = re.sub(r"[*_`#>\-•]+", " ", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def _clean_template_label(label: str) -> str:
+    """Normalize a candidate template name for display in the gallery."""
+
+    label = re.sub(r"\{\{[^}]+\}\}", " ", label or "")
+    label = re.sub(r"[^\u4e00-\u9fa5a-zA-Z0-9\s]", " ", label)
+    label = re.sub(
+        r"^(?:模板名称|名称|主题|风格|用户需求|AI设计总结|当前设计方案总结)\s*",
+        "",
+        label,
+        flags=re.IGNORECASE,
+    )
+    label = re.sub(r"^(?:这是|这是一款|这是一个|是一款|是一个|面向).{0,16}的", "", label)
+    if label.endswith(("风格", "主题", "风")) and "的" in label:
+        label = label.rsplit("的", 1)[-1]
+    label = re.sub(r"(?:PPT|ppt|演示文稿|演示|模板)$", "", label).strip()
+    label = re.sub(r"\s+", " ", label)
+    return label.strip()
+
+
+def _is_bad_template_label(label: str) -> bool:
+    """Reject labels that are obviously copied from assistant dialogue."""
+
+    if not label:
+        return True
+    compact = label.replace(" ", "")
+    bad_prefixes = (
+        "感谢",
+        "用户需求",
+        "当前设计",
+        "设计方案",
+        "这是一款",
+        "请告诉",
+        "我为您",
+        "现在方案",
+        "两个细节",
+    )
+    return len(compact) > 16 or compact.startswith(bad_prefixes)
+
+
+def _extract_html_title_candidates(html: str) -> list[str]:
+    """Return short visual-title candidates from HTML title and sample headings."""
+
+    candidates: list[str] = []
+    soup = BeautifulSoup(html or "", "html.parser")
+    if soup.title and soup.title.string:
+        candidates.append(soup.title.string)
+
+    for selector in ("h1", ".main-title", ".section-title"):
+        for node in soup.select(selector):
+            text = node.get_text(" ", strip=True)
+            if text:
+                candidates.append(text)
+
+    normalized: list[str] = []
+    for candidate in candidates:
+        label = _clean_template_label(candidate)
+        if label and not _is_bad_template_label(label):
+            normalized.append(label)
+    return normalized
+
+
+THEME_KEYWORD_NAMES = (
+    ("赛博朋克", "赛博朋克风"),
+    ("樱花", "樱花风格"),
+    ("水墨", "水墨风"),
+    ("中国风", "中国风"),
+    ("科技", "科技风"),
+    ("商务", "商务风"),
+    ("儿童", "儿童风格"),
+    ("学术", "学术风格"),
+    ("极简", "极简风"),
+    ("插画", "插画风格"),
+    ("自然", "自然风"),
+    ("海洋", "海洋风格"),
+)
+
+
+TAG_KEYWORDS = (
+    ("赛博朋克", "赛博朋克"),
+    ("cyber", "赛博朋克"),
+    ("科技", "科技"),
+    ("技术", "科技"),
+    ("未来", "未来"),
+    ("深色", "深色"),
+    ("霓虹", "霓虹"),
+    ("樱花", "樱花"),
+    ("学术", "学术"),
+    ("论文", "学术"),
+    ("答辩", "学术"),
+    ("教育", "教育"),
+    ("清新", "清新"),
+    ("柔美", "柔美"),
+    ("商务", "商务"),
+    ("business", "商务"),
+    ("专业", "专业"),
+    ("简洁", "简洁"),
+    ("简约", "简约"),
+    ("极简", "极简"),
+    ("水墨", "水墨"),
+    ("中国风", "中国风"),
+    ("传统", "传统"),
+    ("典雅", "典雅"),
+    ("文艺", "文艺"),
+    ("儿童", "儿童"),
+    ("可爱", "可爱"),
+    ("活泼", "活泼"),
+    ("自然", "自然"),
+    ("环保", "环保"),
+    ("森林", "自然"),
+    ("海洋", "海洋"),
+    ("深海", "海洋"),
+    ("插画", "插画"),
+    ("手绘", "手绘"),
+    ("创意", "创意"),
+    ("渐变", "渐变"),
+)
+
+
+def _infer_theme_name(description: str, html: str = "") -> str:
+    """Infer a concise template_name from user intent and generated HTML."""
+
+    source = _compact_design_text(description)
+
+    explicit = re.search(
+        r"(?:模板名称|名称)\s*[:：]\s*([^\n。；;，,]{2,24})",
+        source,
+        flags=re.IGNORECASE,
+    )
+    if explicit:
+        label = _clean_template_label(explicit.group(1))
+        if not _is_bad_template_label(label):
+            return label
+
+    style_matches = re.findall(
+        r"([\u4e00-\u9fa5A-Za-z0-9]{2,12}(?:风格|主题|风))",
+        source,
+    )
+    for match in style_matches:
+        label = _clean_template_label(match)
+        if not _is_bad_template_label(label):
+            return label
+
+    combined = f"{source} {' '.join(_extract_html_title_candidates(html))}"
+    for keyword, name in THEME_KEYWORD_NAMES:
+        if keyword in combined:
+            return name
+
+    for candidate in _extract_html_title_candidates(html):
+        label = _clean_template_label(candidate)
+        if not _is_bad_template_label(label):
+            return label
+
+    fallback = _clean_template_label(source.split("。", 1)[0].split("，", 1)[0])
+    return fallback[:12] if fallback and not _is_bad_template_label(fallback) else "自定义模板"
+
+
+def _infer_template_description(description: str, theme_name: str, html: str = "") -> str:
+    """Create a short gallery description instead of persisting full chat text."""
+
+    source = _compact_design_text(description)
+    if not source:
+        return f"{theme_name}模板" if theme_name else "用户自定义模板"
+
+    mood_words = [
+        "柔美清新",
+        "专业克制",
+        "清新淡雅",
+        "简洁大气",
+        "活泼可爱",
+        "现代简约",
+        "科技感",
+        "未来感",
+        "温暖专业",
+        "前卫",
+        "典雅",
+    ]
+    moods = [word for word in mood_words if word in source][:2]
+
+    purpose = ""
+    purpose_match = re.search(r"适合([^。；;，,]{2,24})", source)
+    if purpose_match:
+        purpose = purpose_match.group(1).strip()
+    elif "学术汇报" in source or "学术报告" in source:
+        purpose = "学术汇报"
+
+    theme = theme_name if theme_name.endswith(("风", "风格", "主题")) else f"{theme_name}风格"
+    prefix = "、".join(moods)
+    summary = f"{prefix}的{theme}模板" if prefix else f"{theme}模板"
+    if purpose:
+        summary += f"，适合{purpose}"
+    summary = summary.rstrip("，。；;") + "。"
+    return summary[:80]
 
 
 # ============================================================
@@ -1032,15 +1227,17 @@ def extract_template_from_response(response: str, user_description: str = "") ->
                     + "\n".join(f"  - {e}" for e in clean_errors)
                 )
 
+    template_name = _infer_theme_name(user_description, html)
+
     template_dict: dict[str, Any] = {
         "template_id": _make_template_id(user_description or "template"),
-        "template_name": _infer_theme_name(user_description),
-        "description": f"用户需求: {user_description}" if user_description else "",
+        "template_name": template_name,
+        "description": _infer_template_description(user_description, template_name, html),
         "version": "1.0.0",
         "css_variables": css_vars,
         "page_types": page_types,
         "viewport": {"width": 1280, "height": 720},
-        "tags": _infer_tags(user_description),
+        "tags": _infer_tags(user_description, html),
         "is_default": False,
         "raw_html": _clean_page_content_visual_styles(_clean_css_placeholders(html)),
     }
@@ -1053,9 +1250,51 @@ def _make_template_id(_name: str) -> str:
     return f"gen_{int(time.time())}"
 
 
-def _infer_tags(_description: str) -> list[str]:
-    """不从描述推断标签，统一返回通用标签。"""
-    return ["通用"]
+def _infer_tags(description: str, html: str = "") -> list[str]:
+    """Infer 2-4 short gallery tags from user intent and generated HTML headings."""
+
+    combined = " ".join(
+        part
+        for part in (
+            _compact_design_text(description),
+            " ".join(_extract_html_title_candidates(html)),
+            _infer_theme_name(description, html),
+        )
+        if part
+    )
+    combined_lower = combined.lower()
+
+    tags: list[str] = []
+
+    def add_tag(tag: str) -> None:
+        clean = re.sub(r"(?:风格|主题|模板)$", "", tag.strip())
+        if clean and clean not in tags and len(clean) <= 6:
+            tags.append(clean)
+
+    for keyword, tag in TAG_KEYWORDS:
+        ascii_keyword = bool(re.fullmatch(r"[a-z0-9-]+", keyword, re.I))
+        haystack = combined_lower if ascii_keyword else combined
+        needle = keyword.lower() if ascii_keyword else keyword
+        if needle in haystack:
+            add_tag(tag)
+        if len(tags) >= 4:
+            break
+
+    for candidate in _extract_html_title_candidates(html):
+        for part in re.findall(r"[\u4e00-\u9fa5A-Za-z0-9]{2,6}", candidate):
+            if part.endswith(("风格", "主题")):
+                add_tag(part)
+            if len(tags) >= 4:
+                break
+        if len(tags) >= 4:
+            break
+
+    if not tags:
+        tags.extend(["自定义", "通用"])
+    elif len(tags) == 1:
+        tags.append("自定义")
+
+    return tags[:4]
 
 
 def _infer_placeholders(ptype: str) -> list[str]:
@@ -1709,7 +1948,7 @@ def register_template_api_routes(app):
                     content = m.get("content", "")
                     chat_messages.append(f"[{role}]: {content}")
                 history_text = "\n".join(chat_messages)
-                system_prompt = "你是一个专业的PPT模板设计顾问，帮助用户将模糊的想法逐步完善为清晰的设计需求。\n\n你的工作方式：\n1. 理解用户当前的想法，在回复中复述确认\n2. 基于已有讨论，主动补充缺失的维度（配色、字体、装饰、布局、氛围）\n3. 每次回复都在前一轮基础上更完整地描述模板方案\n4. 引导用户确认或调整你的建议\n\n回复格式：先总结当前设计方案（2-3句），再提出1-2个追问或建议。\n\n【禁止】不要输出JSON、代码、CSS变量。用户满意后会点击\"开始模板制作\"。"
+                system_prompt = "你是一个专业的PPT模板设计顾问，帮助用户将模糊的想法逐步完善为清晰的设计需求。\n\n你的工作方式：\n1. 理解用户当前的想法，在回复中复述确认\n2. 基于已有讨论，主动补充缺失的维度（配色、字体、装饰、布局、氛围）\n3. 每次回复都在前一轮基础上更完整地描述模板方案\n4. 引导用户确认或调整你的建议\n\n回复格式：\n- 第一行必须给出短模板名称，例如：模板名称：樱花风格\n- 然后总结当前设计方案（2-3句）\n- 最后提出1-2个追问或建议\n\n【禁止】不要输出JSON、代码、CSS变量。用户满意后会点击\"开始模板制作\"。"
                 response = asyncio.run(llm.complete(system_prompt, history_text))
                 return jsonify({
                     "success": True,

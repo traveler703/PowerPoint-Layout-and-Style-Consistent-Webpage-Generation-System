@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>夏日海滩 · 卡通PPT模板</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;800;900&amp;family=Noto+Sans+SC:wght@400;700;900&amp;display=swap" rel="stylesheet"/>
+<style>
+        /* ========== 基础重置 & 全局 ========== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #1a2a3a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Nunito', 'Noto Sans SC', sans-serif;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* ========== CSS变量 ========== */
+        :root {
+            --color-background: #AEE2FF;
+            --color-text: #2B2B2B;
+            --color-text-muted: #7A7A7A;
+            --color-primary: #4A90D9;
+            --color-secondary: #FFD166;
+            --color-accent: #FF6B6B;
+            --color-card: #FFFFFF;
+            --color-surface: #F8F6F0;
+            --font-body: 'Nunito', 'Noto Sans SC', sans-serif;
+            --font-heading: 'Nunito', 'Noto Sans SC', sans-serif;
+
+            /* 渐变背景色（天空→海面→沙滩） */
+            --gradient-bg: linear-gradient(135deg, #AEE2FF 0%, #4A90D9 45%, #7FB8E0 55%, #F5E6C8 100%);
+            --gradient-sand: linear-gradient(180deg, #F5E6C8, #EDD5B0);
+        }
+
+        /* ========== 幻灯片容器 ========== */
+        .slides-wrapper {
+            width: 1280px;
+            height: 720px;
+            position: relative;
+            overflow: hidden;
+            border-radius: 24px;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.35);
+            flex-shrink: 0;
+            background: var(--gradient-bg);
+        }
+
+        .slides-track {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            will-change: transform;
+        }
+
+        /* ========== slide 通用 ========== */
+        .slide {
+            width: 1280px;
+            height: 720px;
+            flex-shrink: 0;
+            position: relative;
+            overflow: hidden;
+            background: var(--gradient-bg);
+            padding: 0;
+        }
+
+        /* ========== 装饰波浪（全局背景点缀） ========== */
+        .wave-deco {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 80px;
+            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1280 80'%3E%3Cpath d='M0,40 Q160,0 320,40 Q480,80 640,40 Q800,0 960,40 Q1120,80 1280,40 L1280,80 L0,80 Z' fill='%23FFD166' opacity='0.3'/%3E%3C/svg%3E") repeat-x bottom;
+            background-size: 1280px 80px;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .wave-deco-2 {
+            position: absolute;
+            bottom: 15px;
+            left: 0;
+            width: 100%;
+            height: 40px;
+            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1280 40'%3E%3Cpath d='M0,20 Q160,0 320,20 Q480,40 640,20 Q800,0 960,20 Q1120,40 1280,20 L1280,40 L0,40 Z' fill='%23FF6B6B' opacity='0.2'/%3E%3C/svg%3E") repeat-x bottom;
+            background-size: 1280px 40px;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        /* ========== 通用插图装饰（卡通元素） ========== */
+        .deco-shell {
+            position: absolute;
+            font-size: 48px;
+            opacity: 0.5;
+            pointer-events: none;
+            z-index: 1;
+        }
+        .deco-umbrella {
+            position: absolute;
+            font-size: 56px;
+            opacity: 0.4;
+            pointer-events: none;
+            z-index: 1;
+        }
+        .deco-surfboard {
+            position: absolute;
+            font-size: 64px;
+            opacity: 0.35;
+            pointer-events: none;
+            z-index: 1;
+        }
+        .deco-sun {
+            position: absolute;
+            font-size: 52px;
+            opacity: 0.5;
+            pointer-events: none;
+            z-index: 1;
+        }
+        .deco-starfish {
+            position: absolute;
+            font-size: 36px;
+            opacity: 0.5;
+            pointer-events: none;
+            z-index: 1;
+        }
+        .deco-palm {
+            position: absolute;
+            font-size: 72px;
+            opacity: 0.3;
+            pointer-events: none;
+            z-index: 1;
+        }
+        .deco-flamingo {
+            position: absolute;
+            font-size: 60px;
+            opacity: 0.3;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* ========== 页脚 ========== */
+        .slide-footer {
+            position: absolute;
+            bottom: 18px;
+            right: 50px;
+            z-index: 10;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+            font-weight: 700;
+            font-family: 'Nunito', sans-serif;
+            letter-spacing: 0.5px;
+            background: rgba(0, 0, 0, 0.15);
+            padding: 4px 16px;
+            border-radius: 30px;
+            backdrop-filter: blur(4px);
+        }
+        .slide-footer .page-num {
+            color: #fff;
+            font-weight: 800;
+        }
+        .slide-footer::before {
+            content: "☀️ ";
+            font-size: 13px;
+        }
+
+        /* ========== 标题 / 正文 通用定位 ========== */
+        .page-title {
+            position: absolute;
+            top: 42px;
+            left: 60px;
+            right: 60px;
+            font-family: var(--font-heading);
+            font-weight: 900;
+            font-size: 32px;
+            color: var(--color-text);
+            z-index: 8;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .page-title .title-icon {
+            font-size: 36px;
+            line-height: 1;
+        }
+
+        .page-content {
+            position: absolute;
+            top: 130px;
+            left: 60px;
+            right: 60px;
+            bottom: 70px;
+            z-index: 8;
+            overflow-y: auto;
+            font-family: var(--font-body);
+            font-size: 18px;
+            line-height: 1.7;
+            color: var(--color-text);
+        }
+
+        /* ========== COVER ========== */
+        .slide.cover {
+            display: block;
+        }
+        .slide.cover .cover-bg-circle {
+            position: absolute;
+            top: -120px;
+            right: -120px;
+            width: 520px;
+            height: 520px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(255, 209, 102, 0.25), transparent 70%);
+            pointer-events: none;
+            z-index: 1;
+        }
+        .slide.cover .cover-bg-circle2 {
+            position: absolute;
+            bottom: -80px;
+            left: -80px;
+            width: 400px;
+            height: 400px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(255, 107, 107, 0.15), transparent 70%);
+            pointer-events: none;
+            z-index: 1;
+        }
+        .slide.cover h1 {
+            position: absolute;
+            top: 150px;
+            left: 80px;
+            font-family: var(--font-heading);
+            font-weight: 900;
+            font-size: 72px;
+            color: #fff;
+            text-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+            z-index: 8;
+            line-height: 1.2;
+            max-width: 700px;
+            letter-spacing: 2px;
+        }
+        .slide.cover .subtitle {
+            position: absolute;
+            top: 300px;
+            left: 80px;
+            font-family: var(--font-body);
+            font-size: 28px;
+            color: rgba(255, 255, 255, 0.92);
+            z-index: 8;
+            font-weight: 700;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .slide.cover .date-badge {
+            position: absolute;
+            top: 370px;
+            left: 80px;
+            background: var(--color-accent);
+            color: #fff;
+            padding: 12px 30px;
+            border-radius: 50px;
+            font-size: 20px;
+            font-weight: 800;
+            z-index: 8;
+            box-shadow: 0 8px 20px rgba(255, 107, 107, 0.35);
+            display: inline-block;
+            letter-spacing: 1px;
+        }
+
+        /* ========== TOC ========== */
+        .slide.toc .page-title {
+            color: #fff;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        .slide.toc .page-content {
+            top: 130px;
+            left: 80px;
+            right: 80px;
+            bottom: 80px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 18px;
+        }
+        .toc-item {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            font-size: 24px;
+            font-weight: 700;
+            color: #fff;
+            padding: 14px 24px;
+            background: rgba(255, 255, 255, 0.18);
+            border-radius: 20px;
+            backdrop-filter: blur(4px);
+            transition: all 0.2s;
+            max-width: 700px;
+            border-left: 6px solid var(--color-secondary);
+        }
+        .toc-item .toc-num {
+            font-size: 32px;
+            font-weight: 900;
+            color: var(--color-secondary);
+            min-width: 50px;
+        }
+        .toc-item .toc-icon {
+            font-size: 32px;
+        }
+
+        /* ========== SECTION ========== */
+        .slide.section .page-title {
+            color: #fff;
+            font-size: 28px;
+            font-weight: 800;
+            background: rgba(255, 255, 255, 0.15);
+            padding: 8px 24px;
+            border-radius: 40px;
+            backdrop-filter: blur(4px);
+            width: auto;
+            left: 80px;
+            top: 140px;
+        }
+        .slide.section .section-title {
+            position: absolute;
+            top: 220px;
+            left: 80px;
+            right: 80px;
+            font-family: var(--font-heading);
+            font-weight: 900;
+            font-size: 60px;
+            color: #fff;
+            text-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+            z-index: 8;
+            line-height: 1.2;
+            max-width: 700px;
+        }
+        .slide.section .subtitle {
+            position: absolute;
+            top: 360px;
+            left: 80px;
+            right: 80px;
+            font-family: var(--font-body);
+            font-size: 28px;
+            color: rgba(255, 255, 255, 0.9);
+            z-index: 8;
+            font-weight: 400;
+            max-width: 600px;
+        }
+
+        /* ========== CONTENT ========== */
+        .slide.content .page-title {
+            color: #fff;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+        .slide.content .page-content {
+            top: 130px;
+            left: 80px;
+            right: 80px;
+            bottom: 80px;
+            /* 内容完全由占位符控制，内部不放任何装饰 */
+            
+            
+        }
+
+        /* ========== ENDING ========== */
+        .slide.ending .ending-content {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 8;
+            text-align: center;
+            padding: 40px;
+        }
+        .slide.ending .ending-content h1 {
+            font-family: var(--font-heading);
+            font-weight: 900;
+            font-size: 72px;
+            color: #fff;
+            text-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
+            margin-bottom: 20px;
+        }
+        .slide.ending .ending-content .ending-message {
+            font-family: var(--font-body);
+            font-size: 32px;
+            color: rgba(255, 255, 255, 0.92);
+            font-weight: 700;
+            max-width: 600px;
+            text-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+        }
+        .slide.ending .ending-content .ending-emoji {
+            font-size: 80px;
+            margin-bottom: 24px;
+        }
+
+        /* ========== 导航点 ========== */
+        .nav-dots {
+            position: absolute;
+            bottom: 22px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 14px;
+            z-index: 30;
+        }
+        .nav-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.45);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        }
+        .nav-dot.active {
+            background: var(--color-secondary);
+            border-color: #fff;
+            transform: scale(1.2);
+            box-shadow: 0 0 20px rgba(255, 209, 102, 0.4);
+        }
+        .nav-dot:hover {
+            background: rgba(255, 255, 255, 0.7);
+            transform: scale(1.1);
+        }
+
+        /* ========== 箭头导航 ========== */
+        .nav-arrows {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            transform: translateY(-50%);
+            display: flex;
+            justify-content: space-between;
+            padding: 0 18px;
+            z-index: 30;
+            pointer-events: none;
+        }
+        .nav-arrow {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(8px);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: #fff;
+            cursor: pointer;
+            pointer-events: all;
+            transition: all 0.25s ease;
+            font-weight: 700;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+        }
+        .nav-arrow:hover {
+            background: rgba(255, 255, 255, 0.4);
+            transform: scale(1.08);
+            border-color: var(--color-secondary);
+        }
+        .nav-arrow:active {
+            transform: scale(0.94);
+        }
+
+        /* ========== 页码指示器 ========== */
+        .page-indicator {
+            position: absolute;
+            bottom: 22px;
+            right: 50px;
+            font-family: 'Nunito', sans-serif;
+            font-size: 16px;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.8);
+            z-index: 30;
+            background: rgba(0, 0, 0, 0.15);
+            padding: 4px 18px;
+            border-radius: 30px;
+            backdrop-filter: blur(4px);
+            letter-spacing: 1px;
+        }
+        .page-indicator .current {
+            color: #fff;
+            font-weight: 900;
+        }
+
+        /* ========== 滚动条美化 ========== */
+        .page-content::-webkit-scrollbar {
+            width: 5px;
+        }
+        .page-content::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+        .page-content::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.35);
+            border-radius: 10px;
+        }
+
+        /* ========== 响应式：保持比例 ========== */
+        @media (max-width: 1320px) {
+            .slides-wrapper {
+                transform: scale(0.85);
+            }
+        }
+        @media (max-width: 1100px) {
+            .slides-wrapper {
+                transform: scale(0.72);
+            }
+        }
+        @media (max-width: 920px) {
+            .slides-wrapper {
+                transform: scale(0.6);
+            }
+        }
+        @media (max-width: 760px) {
+            .slides-wrapper {
+                transform: scale(0.48);
+            }
+        }
+        @media (max-width: 600px) {
+            .slides-wrapper {
+                transform: scale(0.38);
+            }
+        }
+
+        /* 内容页装饰插图区（左右对称版式） */
+        .content-deco-left {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 320px;
+            height: 100%;
+            pointer-events: none;
+            z-index: 3;
+            background: linear-gradient(135deg, rgba(255, 209, 102, 0.08), rgba(255, 107, 107, 0.05));
+            border-right: 2px dashed rgba(255, 255, 255, 0.15);
+        }
+        .content-deco-right {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 320px;
+            height: 100%;
+            pointer-events: none;
+            z-index: 3;
+            background: linear-gradient(225deg, rgba(255, 209, 102, 0.08), rgba(255, 107, 107, 0.05));
+            border-left: 2px dashed rgba(255, 255, 255, 0.15);
+        }
+        .content-deco-left .deco-inner,
+        .content-deco-right .deco-inner {
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            align-items: center;
+            font-size: 48px;
+            opacity: 0.5;
+        }
+    </style>
+
+<style id="landppt-runtime-overrides">
+html,body{width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;overflow:hidden!important;}
+body{display:flex!important;align-items:center!important;justify-content:center!important;margin:0!important;padding:0!important;}
+#slidesWrapper,.slides-wrapper{width:1280px!important;height:720px!important;min-width:1280px!important;min-height:720px!important;flex:0 0 1280px!important;transform-origin:center center!important;}
+#slidesTrack,.slides-track{width:1280px!important;height:720px!important;min-width:1280px!important;min-height:720px!important;}
+.slide .page-content{overflow:hidden;}
+.slide .page-content.allow-scroll{overflow:auto;scrollbar-width:thin;}
+.slide .page-content::-webkit-scrollbar{width:6px;height:6px;}
+.slide .page-content::-webkit-scrollbar-thumb{border-radius:10px;background:rgba(148,163,184,.45);}
+.slide .page-content .generated-toc{max-height:100%;overflow:hidden!important;padding:4px!important;box-sizing:border-box!important;}
+.slide.toc .page-content .generated-toc{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:16px 22px!important;align-content:center!important;width:100%!important;height:100%!important;}
+.slide.toc .page-content .generated-toc .toc-item{display:flex!important;align-items:center!important;gap:14px!important;width:auto!important;min-width:0!important;min-height:0!important;margin:0!important;padding:14px 18px!important;border-radius:22px!important;background:#fff!important;border:1px solid rgba(255,127,63,.18)!important;border-left:6px solid var(--color-primary,#FF7F3F)!important;box-shadow:0 8px 22px rgba(255,127,63,.08)!important;box-sizing:border-box!important;}
+.slide.toc .page-content .generated-toc .toc-number{display:flex!important;align-items:center!important;justify-content:center!important;width:48px!important;height:48px!important;flex:0 0 48px!important;border-radius:999px!important;background:rgba(255,127,63,.10)!important;color:var(--color-primary,#FF7F3F)!important;font-weight:800!important;font-size:18px!important;}
+.slide .page-content .generated-toc .toc-text{min-width:0!important;overflow:hidden!important;}
+.slide .page-content .generated-toc .toc-text h3{font-size:clamp(15px,1.55vw,20px)!important;line-height:1.35!important;margin:0!important;white-space:normal!important;overflow-wrap:anywhere!important;color:var(--color-text,#2D3436)!important;}
+.slide .page-content .generated-toc .toc-text p:empty{display:none!important;}
+.slide .page-content .generated-toc .toc-text p{font-size:12px!important;line-height:1.35!important;margin:4px 0 0!important;color:var(--color-text-muted,#6B7280)!important;}
+.slide.cover > h1:not(.main-title){position:absolute!important;left:80px!important;right:80px!important;top:190px!important;margin:0!important;font-size:clamp(44px,6vw,78px)!important;line-height:1.15!important;color:#fff!important;text-shadow:0 0 36px rgba(96,165,250,.38)!important;z-index:20!important;}
+.slide.cover > .subtitle{color:rgba(224,242,254,.9)!important;z-index:20!important;}
+.slides-track > .slide-container,
+.slides-track > .slide-container > .slide-wrapper{width:1280px!important;height:720px!important;min-width:1280px!important;min-height:720px!important;flex:0 0 1280px!important;}
+.slides-track > .slide-container > .slide-wrapper > .slide{width:1280px!important;height:720px!important;min-width:1280px!important;min-height:720px!important;}
+.slide .page-content .slide,
+.slide .page-content .slides-wrapper,
+.slide .page-content .slide-container,
+.slide .page-content .slide-wrapper{width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;box-shadow:none!important;border-radius:0!important;background:transparent!important;}
+</style>
+<script id="landppt-runtime-fixes">
+(function(){
+  function fixPageCount(){
+    var track=document.getElementById('slidesTrack');
+    var total=track ? track.querySelectorAll(':scope > .slide-container, :scope > .slide').length : document.querySelectorAll('.slide').length;
+    var totalEl=document.getElementById('totalPages');
+    if(totalEl && total) totalEl.textContent=String(total);
+    window.__totalSlides=total;
+  }
+  function fitPresentation(){
+    var wrapper=document.getElementById('slidesWrapper') || document.querySelector('.slides-wrapper');
+    if(!wrapper) return;
+    var scale=Math.min(window.innerWidth / 1280, window.innerHeight / 720, 1);
+    wrapper.style.setProperty('transform','scale(' + scale + ')','important');
+    wrapper.style.setProperty('transform-origin','center center','important');
+  }
+  function initializeRuntime(){
+    fixPageCount();
+    fitPresentation();
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',initializeRuntime);
+  else initializeRuntime();
+  window.addEventListener('load',fitPresentation);
+  window.addEventListener('resize',fitPresentation);
+})();
+</script>
+
+</head>
+<body>
+<!-- ==================== 主体结构 ==================== -->
+<div class="slides-wrapper" id="slidesWrapper">
+<div class="slides-track" id="slidesTrack"><div class="slide-container"><div class="slide-wrapper" data-page="1"><div class="slide cover">
+<div class="cover-bg-circle"></div>
+<div class="cover-bg-circle2"></div>
+<div class="wave-deco"></div>
+<div class="wave-deco-2"></div>
+<div class="deco-palm" style="top:40px;right:60px;font-size:100px;opacity:0.4;">🌴</div>
+<div class="deco-sun" style="top:70px;right:200px;font-size:72px;opacity:0.5;">☀️</div>
+<div class="deco-umbrella" style="bottom:200px;right:120px;font-size:80px;opacity:0.35;">🏖️</div>
+<div class="deco-shell" style="bottom:100px;left:60px;font-size:52px;opacity:0.4;">🐚</div>
+<div class="deco-starfish" style="bottom:160px;left:140px;font-size:44px;opacity:0.35;">⭐</div>
+<h1>产品战略发布会</h1>
+<div class="subtitle">创新驱动增长</div>
+<div class="date-badge">2026年6月</div>
+<div class="slide-footer"><span class="page-num">1</span></div>
+</div></div></div><div class="slide-container"><div class="slide-wrapper" data-page="2"><div class="slide toc">
+<div class="wave-deco"></div>
+<div class="wave-deco-2"></div>
+<div class="deco-flamingo" style="top:100px;right:80px;font-size:80px;opacity:0.25;">🦩</div>
+<div class="deco-umbrella" style="bottom:200px;right:60px;font-size:64px;opacity:0.3;">🏖️</div>
+<div class="deco-shell" style="top:200px;left:30px;font-size:40px;opacity:0.3;">🐚</div>
+<div class="page-title">目录</div>
+<div class="page-content"><div class="generated-toc"><div class="toc-item"><div class="toc-number">01</div><div class="toc-text"><h3>第一章 市场趋势与机遇</h3><p></p></div></div><div class="toc-item"><div class="toc-number">02</div><div class="toc-text"><h3>第二章 核心产品矩阵</h3><p></p></div></div><div class="toc-item"><div class="toc-number">03</div><div class="toc-text"><h3>第三章 技术架构升级</h3><p></p></div></div><div class="toc-item"><div class="toc-number">04</div><div class="toc-text"><h3>第四章 战略规划与展望</h3><p></p></div></div></div></div>
+<div class="slide-footer"><span class="page-num">2</span></div>
+</div></div></div><div class="slide-container"><div class="slide-wrapper" data-page="3"><div class="slide section">
+<div class="wave-deco"></div>
+<div class="wave-deco-2"></div>
+<div class="deco-surfboard" style="top:140px;right:80px;font-size:90px;opacity:0.3;">🏄</div>
+<div class="deco-palm" style="bottom:60px;right:120px;font-size:96px;opacity:0.25;">🌴</div>
+<div class="deco-sun" style="top:60px;left:80px;font-size:56px;opacity:0.35;">☀️</div>
+<div class="deco-starfish" style="bottom:180px;left:60px;font-size:48px;opacity:0.3;">⭐</div>
+<div class="page-title">第I章</div>
+<h1 class="section-title">市场趋势与机遇</h1>
+<p class="subtitle"></p>
+<div class="slide-footer"><span class="page-num">3</span></div>
+</div></div></div><div class="slide-container"><div class="slide-wrapper" data-page="4"><div class="slide content">
+<div class="wave-deco"></div>
+<div class="wave-deco-2"></div>
+<div class="content-deco-left">
+<div class="deco-inner">
+<span>🏄</span>
+<span>🐚</span>
+<span>🌴</span>
+<span>☀️</span>
+<span>🍹</span>
+</div>
+</div>
+<div class="content-deco-right" style="width:160px;">
+<div class="deco-inner" style="font-size:32px;gap:12px;">
+<span>⭐</span>
+<span>🏖️</span>
+<span>🌊</span>
+</div>
+</div>
+<div class="page-title">行业现状分析</div>
+<div class="page-content"><ul><li>全球数字化转型加速，AI技术深入各行各业</li><li>2026年全球企业级SaaS市场规模预计突破3000亿美元</li><li>AI Agent技术成为企业效率提升的关键驱动力</li><li>数据安全与隐私合规需求持续增长</li></ul></div>
+<div class="slide-footer"><span class="page-num">4</span></div>
+</div></div></div><div class="slide-container"><div class="slide-wrapper" data-page="5"><div class="slide section">
+<div class="wave-deco"></div>
+<div class="wave-deco-2"></div>
+<div class="deco-surfboard" style="top:140px;right:80px;font-size:90px;opacity:0.3;">🏄</div>
+<div class="deco-palm" style="bottom:60px;right:120px;font-size:96px;opacity:0.25;">🌴</div>
+<div class="deco-sun" style="top:60px;left:80px;font-size:56px;opacity:0.35;">☀️</div>
+<div class="deco-starfish" style="bottom:180px;left:60px;font-size:48px;opacity:0.3;">⭐</div>
+<div class="page-title">第II章</div>
+<h1 class="section-title">核心产品矩阵</h1>
+<p class="subtitle"></p>
+<div class="slide-footer"><span class="page-num">5</span></div>
+</div></div></div><div class="slide-container"><div class="slide-wrapper" data-page="6"><div class="slide content">
+<div class="wave-deco"></div>
+<div class="wave-deco-2"></div>
+<div class="content-deco-left">
+<div class="deco-inner">
+<span>🏄</span>
+<span>🐚</span>
+<span>🌴</span>
+<span>☀️</span>
+<span>🍹</span>
+</div>
+</div>
+<div class="content-deco-right" style="width:160px;">
+<div class="deco-inner" style="font-size:32px;gap:12px;">
+<span>⭐</span>
+<span>🏖️</span>
+<span>🌊</span>
+</div>
+</div>
+<div class="page-title">产品体系概览</div>
+<div class="page-content"><ul><li>SmartChat：新一代企业级AI对话平台</li><li>DataPilot：智能数据分析与可视化工具</li><li>FlowMaster：低代码业务流程自动化引擎</li><li>三款产品深度集成，形成完整解决方案</li></ul></div>
+<div class="slide-footer"><span class="page-num">6</span></div>
+</div></div></div><div class="slide-container"><div class="slide-wrapper" data-page="7"><div class="slide ending">
+<div class="wave-deco"></div>
+<div class="wave-deco-2"></div>
+<div class="deco-palm" style="top:20px;left:60px;font-size:100px;opacity:0.2;">🌴</div>
+<div class="deco-palm" style="bottom:40px;right:80px;font-size:120px;opacity:0.2;">🌴</div>
+<div class="deco-sun" style="top:80px;right:160px;font-size:72px;opacity:0.3;">☀️</div>
+<div class="deco-flamingo" style="bottom:140px;left:200px;font-size:70px;opacity:0.2;">🦩</div>
+<div class="deco-shell" style="bottom:100px;right:260px;font-size:48px;opacity:0.3;">🐚</div>
+<div class="deco-starfish" style="top:220px;right:80px;font-size:40px;opacity:0.3;">⭐</div>
+<div class="ending-content">
+<div class="ending-emoji">🌅</div>
+<h1>谢谢观看</h1>
+<p class="ending-message">期待与您携手共创未来</p>
+</div>
+<div class="slide-footer"><span class="page-num">7</span></div>
+</div></div></div></div><!-- /slides-track -->
+<!-- 导航点（JS动态生成） -->
+<div class="nav-dots" id="navDots"></div>
+<!-- 箭头导航 -->
+<div class="nav-arrows">
+<div class="nav-arrow" id="prevBtn" onclick="prevSlide()">◀</div>
+<div class="nav-arrow" id="nextBtn" onclick="nextSlide()">▶</div>
+</div>
+<!-- 页码指示器 -->
+<div class="page-indicator">
+<span class="current" id="currentPage">1</span> / <span id="totalPages">5</span>
+</div>
+</div><!-- /slides-wrapper -->
+<script>
+        (function() {
+            'use strict';
+
+            // ============ 配置 ============
+            const totalSlides = 5;
+            let currentSlide = 0;
+            const track = document.getElementById('slidesTrack');
+            const dotsContainer = document.getElementById('navDots');
+            const currentPageSpan = document.getElementById('currentPage');
+            const totalPagesSpan = document.getElementById('totalPages');
+
+            // ============ 设置总页数 ============
+            totalPagesSpan.textContent = totalSlides;
+
+            // ============ 动态生成导航点 ============
+            for (let i = 0; i < totalSlides; i++) {
+                const dot = document.createElement('div');
+                dot.className = 'nav-dot' + (i === 0 ? ' active' : '');
+                dot.onclick = (function(idx) {
+                    return function() { goToSlide(idx); };
+                })(i);
+                dotsContainer.appendChild(dot);
+            }
+
+            const dots = document.querySelectorAll('.nav-dot');
+
+            // ============ 切换函数 ============
+            function goToSlide(index) {
+                if (index < 0) index = 0;
+                if (index >= totalSlides) index = totalSlides - 1;
+                if (index === currentSlide) return;
+
+                currentSlide = index;
+                // 使用 translateX 滑动
+                track.style.transform = 'translateX(-' + (currentSlide * 100) + '%)';
+
+                // 更新导航点
+                dots.forEach(function(dot, i) {
+                    dot.classList.toggle('active', i === currentSlide);
+                });
+
+                // 更新页码
+                currentPageSpan.textContent = currentSlide + 1;
+            }
+
+            // 全局暴露
+            window.goToSlide = goToSlide;
+
+            window.prevSlide = function() {
+                goToSlide(currentSlide - 1);
+            };
+
+            window.nextSlide = function() {
+                goToSlide(currentSlide + 1);
+            };
+
+            // ============ 键盘支持 ============
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    goToSlide(currentSlide - 1);
+                } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') {
+                    e.preventDefault();
+                    goToSlide(currentSlide + 1);
+                } else if (e.key === 'Home') {
+                    e.preventDefault();
+                    goToSlide(0);
+                } else if (e.key === 'End') {
+                    e.preventDefault();
+                    goToSlide(totalSlides - 1);
+                }
+            });
+
+            // ============ 触摸滑动支持 ============
+            let touchStartX = 0;
+            let touchEndX = 0;
+            const wrapper = document.getElementById('slidesWrapper');
+
+            wrapper.addEventListener('touchstart', function(e) {
+                touchStartX = e.changedTouches[0].screenX;
+            }, { passive: true });
+
+            wrapper.addEventListener('touchend', function(e) {
+                touchEndX = e.changedTouches[0].screenX;
+                const diff = touchStartX - touchEndX;
+                if (Math.abs(diff) > 50) {
+                    if (diff > 0) {
+                        goToSlide(currentSlide + 1);
+                    } else {
+                        goToSlide(currentSlide - 1);
+                    }
+                }
+            }, { passive: true });
+
+            // ============ 初始化 ============
+            // 确保初始状态正确
+            track.style.transform = 'translateX(0)';
+            currentPageSpan.textContent = 1;
+
+        })();
+    </script>
+</body>
+</html>
