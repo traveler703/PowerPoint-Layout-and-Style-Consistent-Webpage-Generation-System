@@ -20,6 +20,7 @@ from config import APP_HOST, APP_PORT, DEBUG
 from engine.content import parse_user_document
 from engine.page_types import PageType, normalize_page_payload, page_type_from_mapping
 from evaluator.layout_metrics import overlap_ratio_from_html
+from evaluator.readability_metrics import fix_readability_colors, readability_from_html
 from evaluator.style_metrics import (
     aggregate_color_deviation,
     color_consistency_from_html,
@@ -34,6 +35,7 @@ from pipeline import run_pipeline
 from routes import project_api, template_api
 from scripts.template_generator import register_template_api_routes
 from services.project_service import ProjectService
+from templates.template_loader import load_template
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,6 +51,8 @@ app.register_blueprint(template_api)
 
 MAX_LLM_INPUT_CHARS = 20000
 SUPPORTED_DOCUMENT_EXTENSIONS = {".docx", ".pptx", ".txt", ".md", ".pdf"}
+MAX_REWRITE_COLOR_DEVIATION_PERCENT = 5.0
+MAX_REWRITE_ATTEMPTS = 2
 
 
 def _prepare_text_for_llm(text: str, max_chars: int = MAX_LLM_INPUT_CHARS) -> str:
@@ -322,6 +326,80 @@ def _try_apply_common_font_resize(soup: BeautifulSoup, instruction: str) -> list
             }
         )
     return operations
+
+
+def _template_css_variables_for_quality(template_name: str | None) -> dict[str, str]:
+    """Load template palette tokens used by color and readability checks."""
+    try:
+        template = load_template(template_name or "tech")
+        css_variables = dict(template.css_variables)
+        for idx, color in enumerate(sorted(extract_colors_from_html(template.raw_html))):
+            css_variables[f"template-color-{idx}"] = color
+        return css_variables
+    except Exception as exc:
+        logger.debug("加载模板调色板失败: %s", exc)
+        return {}
+
+
+def _rewrite_page_quality_issues(html: str, css_variables: dict[str, str]) -> list[str]:
+    """Return structural issues that should trigger another page rewrite attempt."""
+    issues: list[str] = []
+    if not (html or "").strip():
+        return ["修改后的页面内容为空"]
+
+    try:
+        page_layout = overlap_ratio_from_html(html, bounds_width=1280, bounds_height=720)
+        if page_layout.overlap_ratio > 0:
+            issues.append(f"整页元素重叠率为{page_layout.overlap_ratio:.2%}，要求为0")
+        if page_layout.overflow_count:
+            issues.append(f"{page_layout.overflow_count}个绝对定位元素超出1280x720页面边界")
+    except Exception as exc:
+        logger.debug("页面修改布局检测跳过: %s", exc)
+
+    soup = BeautifulSoup(html or "", "html.parser")
+    content = soup.select_one(".page-content")
+    if content:
+        content_html = content.decode_contents()
+        try:
+            content_layout = overlap_ratio_from_html(content_html, bounds_width=1160, bounds_height=530)
+            if content_layout.overlap_ratio > 0:
+                issues.append(f"内容区元素重叠率为{content_layout.overlap_ratio:.2%}，要求为0")
+            if content_layout.overflow_count:
+                issues.append(f"{content_layout.overflow_count}个内容区元素超出1160x530边界")
+        except Exception as exc:
+            logger.debug("页面修改内容区布局检测跳过: %s", exc)
+
+    try:
+        color_report = color_consistency_from_html(html, css_variables)
+        deviation = float(color_report.global_color_deviation_percent or 0)
+        if deviation > MAX_REWRITE_COLOR_DEVIATION_PERCENT:
+            issues.append(
+                f"色彩偏差率为{deviation:.1f}%，要求不超过"
+                f"{MAX_REWRITE_COLOR_DEVIATION_PERCENT:.0f}%"
+            )
+    except Exception as exc:
+        logger.debug("页面修改色彩检测跳过: %s", exc)
+
+    try:
+        readability = readability_from_html(html, css_variables)
+        if readability.overflow_risk_count:
+            issues.append(f"{readability.overflow_risk_count}处固定高度文本容器存在截断/越界风险")
+    except Exception as exc:
+        logger.debug("页面修改内容越界检测跳过: %s", exc)
+
+    return issues
+
+
+def _fix_rewrite_page_readability(html: str, css_variables: dict[str, str]) -> tuple[str, int]:
+    """Directly repair low-contrast text after a page rewrite."""
+    try:
+        fixed_html, fixed_count = fix_readability_colors(html, css_variables)
+        if fixed_count:
+            logger.info("页面修改后自动修正低对比度文字颜色: %s 处", fixed_count)
+        return fixed_html, fixed_count
+    except Exception as exc:
+        logger.debug("页面修改文字可读性修正跳过: %s", exc)
+        return html, 0
 
 
 def _json_line(payload: dict) -> str:
@@ -1126,48 +1204,43 @@ def rewrite_slide():
             page_html, _ = _load_page_html_from_outputs(page_number)
 
         title = (page.get("title") or "").strip() or f"第{page_number}页"
+        template_name = (
+            data.get("template")
+            or page.get("template")
+            or page.get("template_name")
+            or page.get("templateName")
+            or "tech"
+        )
+        css_variables = _template_css_variables_for_quality(template_name)
         system_prompt = (
             "你是专业的PPT单页修改助手。请根据用户指令修改当前页面，只输出严格JSON。"
             "优先返回可应用到现有HTML的局部操作，不要影响其它页面。"
             "只修改用户明确提到的元素；如果用户说上下两块文字，通常指页面内容区顶部说明文字和底部提示文字，不要改中间卡片、流程节点或标题。"
+            "修改后必须保持元素不重叠、内容不超出页面或内容区边界、色彩继续遵循模板调色板。"
+            "如果用户要求调大字号，必须同步控制行高、容器高度、内边距或文本长度，避免文字被固定高度容器截断。"
+            "如果收到上一版质量问题，必须优先修复这些问题，同时尽量保留用户的修改意图。"
             "JSON格式："
             '{"page_id": 页面ID, "operations": ['
             '{"type": "update_style|delete_element|move_element", "selector": "CSS选择器", '
             '"style": {"CSS属性": "值"}, "position": "left|right|center|top|bottom"}], '
             '"page_data": {"title": "可选", "subtitle": "可选", "bullets": []}}'
         )
-        user_prompt = json.dumps(
-            {
-                "project_id": project_id,
-                "page": {
-                    "id": page_id,
-                    "page_number": page_number,
-                    "title": title,
-                    "html": page_html,
-                },
-                "instruction": instruction,
+        user_payload = {
+            "project_id": project_id,
+            "page": {
+                "id": page_id,
+                "page_number": page_number,
+                "title": title,
+                "html": page_html,
             },
-            ensure_ascii=False,
-        )
-
-        raw = asyncio.run(default_llm_client().complete(system_prompt, user_prompt))
-        cleaned = raw.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.strip("`")
-            cleaned = cleaned.removeprefix("json").strip()
-        start = cleaned.find("{")
-        end = cleaned.rfind("}")
-        if start != -1 and end != -1:
-            cleaned = cleaned[start:end + 1]
-        result = json.loads(cleaned)
-
-        merged_page = dict(page)
-        page_data = result.get("page_data") or {}
-        if isinstance(page_data, dict):
-            merged_page.update(page_data)
-
-        soup = BeautifulSoup(page_html or "<div></div>", "html.parser")
-        operations = result.get("operations") or []
+            "instruction": instruction,
+            "quality_rules": [
+                "元素重叠率必须为0",
+                "内容不得超出1280x720页面边界；内容区元素不得超出1160x530内容边界",
+                "色彩偏差率不得超过5%",
+                "固定高度文本容器不得截断文字；必要时增大容器、减小字号、调整行高或删除overflow:hidden",
+            ],
+        }
 
         def merge_style(node, updates: dict):
             style_map = {}
@@ -1178,41 +1251,99 @@ def rewrite_slide():
             style_map.update({str(k): str(v) for k, v in updates.items()})
             node["style"] = "; ".join(f"{k}: {v}" for k, v in style_map.items())
 
-        for op in operations:
-            if not isinstance(op, dict):
-                continue
-            selector = op.get("selector") or ""
-            try:
-                nodes = soup.select(selector) if selector else []
-            except Exception:
-                nodes = []
-            if not nodes:
-                continue
+        def parse_llm_json(raw: str) -> dict:
+            cleaned = raw.strip()
+            if cleaned.startswith("```"):
+                cleaned = cleaned.strip("`")
+                cleaned = cleaned.removeprefix("json").strip()
+            start = cleaned.find("{")
+            end = cleaned.rfind("}")
+            if start != -1 and end != -1:
+                cleaned = cleaned[start:end + 1]
+            return json.loads(cleaned)
 
-            op_type = str(op.get("type") or "").lower()
-            if op_type == "delete_element":
-                for node in nodes:
-                    node.decompose()
-            elif op_type in ("update_style", "move_element"):
-                style_updates = op.get("style") if isinstance(op.get("style"), dict) else {}
-                position = str(op.get("position") or "").lower()
-                if position in {"left", "center", "right"}:
-                    style_updates = {**style_updates, "text-align": position}
-                elif position == "top":
-                    style_updates = {**style_updates, "justify-content": "flex-start"}
-                elif position == "bottom":
-                    style_updates = {**style_updates, "justify-content": "flex-end"}
-                for node in nodes:
-                    merge_style(node, style_updates)
+        def apply_rewrite_result(result_payload: dict) -> tuple[dict, list[dict], str, list[str], int]:
+            merged_page = dict(page)
+            page_data = result_payload.get("page_data") or {}
+            if isinstance(page_data, dict):
+                merged_page.update(page_data)
 
-        quick_operations = _try_apply_common_font_resize(soup, instruction)
-        combined_operations = [*operations, *quick_operations]
-        html = _ensure_single_page_canvas_css(str(soup))
+            soup = BeautifulSoup(page_html or "<div></div>", "html.parser")
+            operations = result_payload.get("operations") or []
+            for op in operations:
+                if not isinstance(op, dict):
+                    continue
+                selector = op.get("selector") or ""
+                try:
+                    nodes = soup.select(selector) if selector else []
+                except Exception:
+                    nodes = []
+                if not nodes:
+                    continue
+
+                op_type = str(op.get("type") or "").lower()
+                if op_type == "delete_element":
+                    for node in nodes:
+                        node.decompose()
+                elif op_type in ("update_style", "move_element"):
+                    style_updates = op.get("style") if isinstance(op.get("style"), dict) else {}
+                    position = str(op.get("position") or "").lower()
+                    if position in {"left", "center", "right"}:
+                        style_updates = {**style_updates, "text-align": position}
+                    elif position == "top":
+                        style_updates = {**style_updates, "justify-content": "flex-start"}
+                    elif position == "bottom":
+                        style_updates = {**style_updates, "justify-content": "flex-end"}
+                    for node in nodes:
+                        merge_style(node, style_updates)
+
+            quick_operations = _try_apply_common_font_resize(soup, instruction)
+            combined_operations = [*operations, *quick_operations]
+            html = _ensure_single_page_canvas_css(str(soup))
+            quality_issues = _rewrite_page_quality_issues(html, css_variables)
+            html, readability_fixes = _fix_rewrite_page_readability(html, css_variables)
+            return merged_page, combined_operations, html, quality_issues, readability_fixes
+
+        quality_issues: list[str] = []
+        readability_fixes = 0
+        result = {}
+        merged_page = dict(page)
+        combined_operations: list[dict] = []
+        html = page_html
+        for attempt in range(MAX_REWRITE_ATTEMPTS):
+            attempt_payload = dict(user_payload)
+            if quality_issues:
+                attempt_payload["previous_quality_issues"] = quality_issues
+                attempt_payload["rewrite_principles"] = [
+                    "不要扩大已有重叠元素，优先调整位置、尺寸、行高和容器高度",
+                    "不要使用模板调色板之外的大面积新颜色",
+                    "文字变大时要同步让容器自适应，避免overflow:hidden截断",
+                    "保持页面仍是单页HTML，不要新增嵌套幻灯片外壳",
+                ]
+            raw = asyncio.run(
+                default_llm_client().complete(
+                    system_prompt,
+                    json.dumps(attempt_payload, ensure_ascii=False),
+                )
+            )
+            result = parse_llm_json(raw)
+            merged_page, combined_operations, html, quality_issues, readability_fixes = apply_rewrite_result(result)
+            if not quality_issues:
+                break
+            logger.info(
+                "页面修改质量检测未通过，准备重写: page=%s attempt=%s issues=%s",
+                page_number,
+                attempt + 1,
+                quality_issues,
+            )
+
         saved_path = _save_page_html_to_outputs(page_number, html)
         presentation_html, updated_output_path = _update_presentation_file(output_path, page_number, html)
         result["page_id"] = page_id
         result["page_data"] = merged_page
         result["operations"] = combined_operations
+        result["quality_warnings"] = quality_issues
+        result["readability_fixes"] = readability_fixes
         result["output_path"] = updated_output_path or output_path
 
         return jsonify(
@@ -1221,6 +1352,8 @@ def rewrite_slide():
                 "result": result,
                 "operations": combined_operations,
                 "page_data": merged_page,
+                "quality_warnings": quality_issues,
+                "readability_fixes": readability_fixes,
                 "html": html,
                 "presentation_html": presentation_html,
                 "output_path": updated_output_path or output_path,

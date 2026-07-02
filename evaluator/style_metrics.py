@@ -141,6 +141,10 @@ def color_consistency_from_html(
     elif isinstance(tokens, StyleTokens):
         palette = _palette_from_tokens(tokens)
 
+    # Accessibility text colors are allowed even when they are not part of a
+    # decorative template palette. Readability fixes use these values directly.
+    palette.extend(["#FFFFFF", "#111827", "#000000"])
+
     sample_counts = extract_color_counts_from_html(html)
     sample = set(sample_counts)
     if not palette:

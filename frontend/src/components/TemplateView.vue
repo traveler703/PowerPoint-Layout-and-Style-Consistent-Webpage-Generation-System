@@ -76,50 +76,54 @@
       </div>
 
       <!-- Templates Grid/List -->
-      <div v-if="filteredTemplates.length > 0" class="projects-container" :class="viewMode === 'grid' ? 'projects-grid' : 'projects-list'">
+      <div
+        v-if="filteredTemplates.length > 0"
+        class="templates-container"
+        :class="viewMode === 'grid' ? 'templates-grid' : 'templates-list'"
+      >
         <div
           v-for="tpl in filteredTemplates"
           :key="tpl.template_id"
-          class="project-card"
-          :class="{ 'list-mode': viewMode === 'list' }"
+          class="template-card"
+          :class="{ 'template-list-card': viewMode === 'list' }"
           @click="previewTemplate(tpl)"
+          @contextmenu.prevent="showTemplateMenu($event, tpl)"
         >
-          <div class="project-card-header">
-            <div class="project-icon" :style="{ background: getTemplateBg(tpl) }">
-              {{ getTemplateIcon(tpl) }}
-            </div>
-            <button class="project-menu-btn" @click.stop="showTemplateMenu($event, tpl)">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
-              </svg>
-            </button>
-          </div>
-          <div class="project-preview" :style="{ background: getTemplateGradient(tpl) }">
+          <button class="template-card-menu" @click.stop="showTemplateMenu($event, tpl)" aria-label="模板操作">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
+            </svg>
+          </button>
+          <div class="template-preview" :style="{ background: getTemplateGradient(tpl) }">
             <div class="project-preview-text">{{ getTemplateIcon(tpl) }}</div>
           </div>
-          <div class="project-name">{{ tpl.template_name }}</div>
-          <div class="project-desc">{{ tpl.description }}</div>
-          <div class="project-meta">
-            <div class="project-meta-item" v-if="tpl.is_default">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
-              </svg>
-              默认
+          <div class="template-info">
+            <div class="template-title-block">
+              <div class="project-name">{{ tpl.template_name }}</div>
+              <div class="template-status-row">
+                <div class="project-meta-item" v-if="tpl.is_default">
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+                  </svg>
+                  默认
+                </div>
+                <div class="template-type-badge" :class="tpl.template_type === 'user' ? 'user' : 'preset'">
+                  {{ tpl.template_type === 'user' ? '用户自制' : '预设' }}
+                </div>
+              </div>
             </div>
-            <div class="template-type-badge" :class="tpl.template_type === 'user' ? 'user' : 'preset'">
-              {{ tpl.template_type === 'user' ? '用户自制' : '预设' }}
-            </div>
-            <div class="template-tags" style="margin-left: auto;">
+            <div class="project-desc">{{ tpl.description }}</div>
+            <div class="template-tags">
               <span v-for="tag in (tpl.tags || []).slice(0, 3)" :key="tag" class="template-tag">{{ tag }}</span>
             </div>
-          </div>
-          <div class="template-colors">
-            <div
-              v-for="(color, idx) in getTemplateColors(tpl)"
-              :key="idx"
-              class="template-color"
-              :style="{ background: color }"
-            ></div>
+            <div class="template-colors">
+              <div
+                v-for="(color, idx) in getTemplateColors(tpl)"
+                :key="idx"
+                class="template-color"
+                :style="{ background: color }"
+              ></div>
+            </div>
           </div>
         </div>
       </div>
@@ -386,12 +390,6 @@ function getTemplateSubtitleColor(template) {
   return isColorDark(bgColor) ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)'
 }
 
-function getTemplateBg(template) {
-  const cssVars = template.css_variables || {}
-  const primary = cssVars['color-primary'] || '#6366f1'
-  return `rgba(${hexToRgb(primary)}, 0.15)`
-}
-
 function getTemplateColors(template) {
   const cssVars = template.css_variables || {}
   const keys = Object.keys(cssVars).filter(k => k.startsWith('color-accent-'))
@@ -425,17 +423,6 @@ function adjustBrightness(hex, percent) {
   const G = Math.min(255, Math.max(0, ((num >> 8) & 0x00FF) + amt))
   const B = Math.min(255, Math.max(0, (num & 0x0000FF) + amt))
   return '#' + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1)
-}
-
-function hexToRgb(hex) {
-  if (!hex) return '99, 102, 241'
-  hex = hex.replace('#', '')
-  if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2]
-  if (hex.length !== 6) return '99, 102, 241'
-  const r = parseInt(hex.substring(0, 2), 16)
-  const g = parseInt(hex.substring(2, 4), 16)
-  const b = parseInt(hex.substring(4, 6), 16)
-  return `${r}, ${g}, ${b}`
 }
 
 function showTemplateMenu(event, template) {
@@ -546,6 +533,145 @@ async function createTemplate() {
 .filter-btn-group .filter-btn.active {
   background: var(--accent);
   color: white;
+}
+
+.templates-container {
+  display: grid;
+  gap: 20px;
+}
+
+.templates-grid {
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+.templates-list {
+  grid-template-columns: 1fr;
+}
+
+.template-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  animation: slideUp 0.3s ease forwards;
+}
+
+.template-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.template-card-menu {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: all 0.15s;
+}
+
+.template-card:hover .template-card-menu,
+.template-card-menu:focus-visible {
+  opacity: 1;
+}
+
+.template-card-menu:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.template-card-menu svg {
+  width: 16px;
+  height: 16px;
+}
+
+.template-preview {
+  height: 140px;
+  margin-bottom: 16px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.template-info {
+  min-width: 0;
+}
+
+.template-title-block {
+  min-width: 0;
+}
+
+.template-status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 22px;
+  margin-bottom: 12px;
+}
+
+.template-list-card {
+  display: grid;
+  grid-template-columns: 300px minmax(180px, 0.9fr) minmax(280px, 1.35fr) minmax(210px, 0.8fr) auto;
+  align-items: center;
+  gap: 38px;
+  min-height: 164px;
+}
+
+.template-list-card .template-preview {
+  width: 300px;
+  height: 108px;
+  margin-bottom: 0;
+}
+
+.template-list-card .template-info {
+  display: contents;
+}
+
+.template-list-card .project-name {
+  font-size: 26px;
+  line-height: 1.2;
+  margin-bottom: 22px;
+}
+
+.template-list-card .template-status-row,
+.template-list-card .project-desc,
+.template-list-card .template-tags,
+.template-list-card .template-colors {
+  margin-bottom: 0;
+}
+
+.template-list-card .project-desc {
+  -webkit-line-clamp: 2;
+}
+
+.template-list-card .template-tags {
+  justify-content: flex-end;
+}
+
+.template-list-card .template-colors {
+  justify-content: flex-end;
+  margin-top: 0;
+}
+
+.template-list-card .template-card-menu {
+  top: 10px;
+  right: 10px;
 }
 
 .template-tags {

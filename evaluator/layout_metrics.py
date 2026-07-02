@@ -44,7 +44,7 @@ def _parse_px(val: str | None) -> float | None:
     return None
 
 
-def _parse_style_rect(style: str) -> _Rect | None:
+def _parse_style_rect(style: str, *, bounds_width: float = 1160, bounds_height: float = 530) -> _Rect | None:
     if not _POSITION_BLOCK_RE.search(style):
         return None
     pairs: dict[str, str] = {}
@@ -70,7 +70,7 @@ def _parse_style_rect(style: str) -> _Rect | None:
     h = _parse_px(pairs.get("height"))
     if w is None or h is None:
         return None
-    if w * h > 1160 * 530 * 0.55:
+    if w * h > bounds_width * bounds_height * 0.55:
         return None
     return _Rect(left=left, top=top, width=w, height=h)
 
@@ -85,18 +85,28 @@ def _intersection_area(a: _Rect, b: _Rect) -> float:
     return iw * ih
 
 
-def overlap_ratio_from_html(html: str) -> LayoutMetrics:
+def overlap_ratio_from_html(
+    html: str,
+    *,
+    bounds_width: float = 1160,
+    bounds_height: float = 530,
+) -> LayoutMetrics:
     """扫描内联 ``style`` 中的 ``position:absolute|fixed`` + 像素宽高。"""
     rects: list[_Rect] = []
     for m in _STYLE_ATTR_RE.finditer(html):
         style = m.group(2)
-        r = _parse_style_rect(style)
+        r = _parse_style_rect(style, bounds_width=bounds_width, bounds_height=bounds_height)
         if r and r.area() > 0:
             rects.append(r)
     overflow_count = sum(
         1
         for r in rects
-        if r.left < 0 or r.top < 0 or r.left + r.width > 1160 or r.top + r.height > 530
+        if (
+            r.left < 0
+            or r.top < 0
+            or r.left + r.width > bounds_width
+            or r.top + r.height > bounds_height
+        )
     )
     if len(rects) < 2:
         return LayoutMetrics(
