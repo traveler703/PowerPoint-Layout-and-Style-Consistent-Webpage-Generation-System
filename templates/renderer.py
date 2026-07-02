@@ -21,12 +21,15 @@ class TemplateRenderer:
 <style id="landppt-runtime-overrides">
 html,body{width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;overflow:hidden!important;}
 body{display:flex!important;align-items:center!important;justify-content:center!important;margin:0!important;padding:0!important;}
-#slidesWrapper,.slides-wrapper{width:1280px!important;height:720px!important;min-width:1280px!important;min-height:720px!important;flex:0 0 1280px!important;transform-origin:center center!important;}
-#slidesTrack,.slides-track{width:1280px!important;height:720px!important;min-width:1280px!important;min-height:720px!important;}
+#slidesWrapper,.slides-wrapper{width:1280px!important;height:720px!important;min-width:1280px!important;min-height:720px!important;flex:0 0 1280px!important;transform-origin:center center!important;overflow:hidden!important;}
+#slidesTrack,.slides-track{height:720px!important;min-height:720px!important;display:flex!important;align-items:stretch!important;transition:transform .45s cubic-bezier(.4,0,.2,1)!important;will-change:transform!important;}
 .slide .page-content{overflow:hidden;}
+.slide .page-content,.slide .page-content *{box-sizing:border-box;max-width:100%;}
+.slide .page-content::before,.slide .page-content::after{content:none!important;display:none!important;}
 .slide .page-content.allow-scroll{overflow:auto;scrollbar-width:thin;}
 .slide .page-content::-webkit-scrollbar{width:6px;height:6px;}
 .slide .page-content::-webkit-scrollbar-thumb{border-radius:10px;background:rgba(148,163,184,.45);}
+.slide .page-content p,.slide .page-content span,.slide .page-content li,.slide .page-content h1,.slide .page-content h2,.slide .page-content h3,.slide .page-content h4,.slide .page-content h5,.slide .page-content h6{overflow:visible!important;text-overflow:clip!important;-webkit-line-clamp:unset!important;overflow-wrap:anywhere!important;}
 .slide .page-content .generated-toc{max-height:100%;overflow:hidden!important;padding:4px!important;box-sizing:border-box!important;}
 .slide.toc .page-content .generated-toc{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:16px 22px!important;align-content:center!important;width:100%!important;height:100%!important;}
 .slide.toc .page-content .generated-toc .toc-item{display:flex!important;align-items:center!important;gap:14px!important;width:auto!important;min-width:0!important;min-height:0!important;margin:0!important;padding:14px 18px!important;border-radius:22px!important;background:#fff!important;border:1px solid rgba(255,127,63,.18)!important;border-left:6px solid var(--color-primary,#FF7F3F)!important;box-shadow:0 8px 22px rgba(255,127,63,.08)!important;box-sizing:border-box!important;}
@@ -37,22 +40,81 @@ body{display:flex!important;align-items:center!important;justify-content:center!
 .slide .page-content .generated-toc .toc-text p{font-size:12px!important;line-height:1.35!important;margin:4px 0 0!important;color:var(--color-text-muted,#6B7280)!important;}
 .slide.cover > h1:not(.main-title){position:absolute!important;left:80px!important;right:80px!important;top:190px!important;margin:0!important;font-size:clamp(44px,6vw,78px)!important;line-height:1.15!important;color:#fff!important;text-shadow:0 0 36px rgba(96,165,250,.38)!important;z-index:20!important;}
 .slide.cover > .subtitle{color:rgba(224,242,254,.9)!important;z-index:20!important;}
+.slide.section .section-content{position:absolute!important;left:50%!important;top:50%!important;transform:translate(-50%,-50%)!important;width:min(920px,78%)!important;max-height:560px!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;text-align:center!important;gap:24px!important;z-index:30!important;padding:24px!important;box-sizing:border-box!important;}
+.slide.section .section-content .page-title{position:static!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;width:auto!important;max-width:100%!important;margin:0!important;padding:12px 34px!important;border-radius:18px!important;line-height:1.2!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:center!important;z-index:31!important;}
+.slide.section .section-content .section-title{position:static!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;transform:none!important;max-width:100%!important;margin:0!important;line-height:1.18!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:center!important;color:var(--color-text,#111827)!important;z-index:31!important;}
+.slide.section .section-content .subtitle{position:static!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;transform:none!important;max-width:100%!important;margin:0!important;line-height:1.4!important;text-align:center!important;color:var(--color-text-muted,#6B7280)!important;z-index:31!important;}
+.slide.section > .section-title{position:absolute!important;left:50%!important;top:50%!important;transform:translate(-50%,-50%)!important;width:min(920px,78%)!important;max-width:920px!important;margin:0!important;line-height:1.18!important;text-align:center!important;white-space:normal!important;overflow-wrap:anywhere!important;color:var(--color-text,#111827)!important;z-index:30!important;}
+.slide.section > .page-title{position:absolute!important;left:50%!important;top:calc(50% - 105px)!important;transform:translateX(-50%)!important;width:auto!important;max-width:78%!important;text-align:center!important;white-space:normal!important;overflow-wrap:anywhere!important;z-index:31!important;}
 .slides-track > .slide-container,
 .slides-track > .slide-container > .slide-wrapper{width:1280px!important;height:720px!important;min-width:1280px!important;min-height:720px!important;flex:0 0 1280px!important;}
 .slides-track > .slide-container > .slide-wrapper > .slide{width:1280px!important;height:720px!important;min-width:1280px!important;min-height:720px!important;}
+.slides-track > .slide{width:1280px!important;height:720px!important;min-width:1280px!important;min-height:720px!important;flex:0 0 1280px!important;}
 .slide .page-content .slide,
 .slide .page-content .slides-wrapper,
 .slide .page-content .slide-container,
 .slide .page-content .slide-wrapper{width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;box-shadow:none!important;border-radius:0!important;background:transparent!important;}
 </style>
+"""
+        js = """
 <script id="landppt-runtime-fixes">
 (function(){
+  var currentIndex=0;
+  function directSlides(){
+    var track=document.getElementById('slidesTrack')||document.querySelector('.slides-track');
+    if(!track) return [];
+    return Array.prototype.slice.call(track.children).filter(function(el){
+      if(!el || !el.classList) return false;
+      return el.classList.contains('slide-container') || el.classList.contains('slide');
+    });
+  }
   function fixPageCount(){
-    var track=document.getElementById('slidesTrack');
-    var total=track ? track.querySelectorAll(':scope > .slide-container, :scope > .slide').length : document.querySelectorAll('.slide').length;
+    var total=directSlides().length || document.querySelectorAll('.slide').length;
     var totalEl=document.getElementById('totalPages');
     if(totalEl && total) totalEl.textContent=String(total);
     window.__totalSlides=total;
+  }
+  function setTransform(index){
+    var track=document.getElementById('slidesTrack')||document.querySelector('.slides-track');
+    if(!track) return;
+    track.style.setProperty('transform','translateX(-' + (index * 1280) + 'px)','important');
+  }
+  function updateChrome(index){
+    var currentEl=document.getElementById('currentPage');
+    if(currentEl) currentEl.textContent=String(index+1);
+    var dots=document.querySelectorAll('.nav-dot');
+    Array.prototype.forEach.call(dots,function(dot,i){dot.classList.toggle('active',i===index);});
+    var total=window.__totalSlides||directSlides().length;
+    var prev=document.getElementById('prevBtn');
+    var next=document.getElementById('nextBtn');
+    if(prev) prev.classList.toggle('disabled',index<=0);
+    if(next) next.classList.toggle('disabled',index>=total-1);
+  }
+  function installNavigation(){
+    var slides=directSlides();
+    var total=slides.length;
+    if(!total) return;
+    var navDots=document.getElementById('navDots')||document.querySelector('.nav-dots');
+    if(navDots){
+      navDots.innerHTML='';
+      for(var i=0;i<total;i++){
+        var dot=document.createElement('div');
+        dot.className='nav-dot'+(i===currentIndex?' active':'');
+        dot.setAttribute('data-index',String(i));
+        dot.onclick=(function(idx){return function(){window.goToSlide(idx);};})(i);
+        navDots.appendChild(dot);
+      }
+    }
+    window.__totalSlides=total;
+    window.goToSlide=function(index){
+      var nextIndex=Math.max(0,Math.min(Number(index)||0,(window.__totalSlides||total)-1));
+      currentIndex=nextIndex;
+      setTransform(currentIndex);
+      updateChrome(currentIndex);
+    };
+    window.nextSlide=function(){window.goToSlide(currentIndex+1);};
+    window.prevSlide=function(){window.goToSlide(currentIndex-1);};
+    window.goToSlide(currentIndex);
   }
   function fitPresentation(){
     var wrapper=document.getElementById('slidesWrapper') || document.querySelector('.slides-wrapper');
@@ -61,22 +123,122 @@ body{display:flex!important;align-items:center!important;justify-content:center!
     wrapper.style.setProperty('transform','scale(' + scale + ')','important');
     wrapper.style.setProperty('transform-origin','center center','important');
   }
+  function parseRgb(value){
+    if(!value) return null;
+    var m=value.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)(?:,\\s*([\\d.]+))?\\)/i);
+    if(!m) return null;
+    return {r:+m[1],g:+m[2],b:+m[3],a:m[4]===undefined?1:+m[4]};
+  }
+  function luminance(c){
+    function channel(v){v/=255;return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);}
+    return 0.2126*channel(c.r)+0.7152*channel(c.g)+0.0722*channel(c.b);
+  }
+  function contrast(a,b){
+    var l1=luminance(a),l2=luminance(b),light=Math.max(l1,l2),dark=Math.min(l1,l2);
+    return (light+0.05)/(dark+0.05);
+  }
+  function effectiveBackground(el){
+    var cur=el;
+    while(cur && cur.nodeType===1){
+      var bg=parseRgb(getComputedStyle(cur).backgroundColor);
+      if(bg && bg.a>0.35) return bg;
+      var bgImage=getComputedStyle(cur).backgroundImage;
+      if(bgImage && bgImage!=='none'){
+        var imgColor=parseRgb(bgImage);
+        if(imgColor && imgColor.a>0.35) return imgColor;
+      }
+      cur=cur.parentElement;
+    }
+    return {r:255,g:255,b:255,a:1};
+  }
+  function fixTextContrast(){
+    var selector='.slide .page-content, .slide .page-content *, .slide.section .section-content, .slide.section .section-content *, .slide.toc .page-content *';
+    Array.prototype.forEach.call(document.querySelectorAll(selector),function(el){
+      if(!el || !el.textContent || !el.textContent.trim()) return;
+      var rect=el.getBoundingClientRect();
+      if(rect.width<2 || rect.height<2) return;
+      var style=getComputedStyle(el);
+      var fg=parseRgb(style.color);
+      if(!fg || fg.a<0.35) return;
+      var bg=effectiveBackground(el);
+      if(contrast(fg,bg)>=4.5) return;
+      var white={r:255,g:255,b:255,a:1}, black={r:17,g:24,b:39,a:1};
+      var best=contrast(white,bg)>=contrast(black,bg)?'#FFFFFF':'#111827';
+      el.style.setProperty('color',best,'important');
+      if(style.textShadow && style.textShadow!=='none') {
+        el.style.setProperty('text-shadow',best==='#FFFFFF'?'0 1px 4px rgba(0,0,0,.55)':'none','important');
+      }
+    });
+  }
+  function fitOverflowingContent(){
+    Array.prototype.forEach.call(document.querySelectorAll('.slide .page-content'),function(pc){
+      if(!pc || !pc.firstElementChild) return;
+      var child=pc.firstElementChild;
+      child.style.removeProperty('transform');
+      child.style.removeProperty('transform-origin');
+      child.style.removeProperty('width');
+      child.style.setProperty('max-width','100%','important');
+      child.style.setProperty('box-sizing','border-box','important');
+      var maxW=pc.clientWidth, maxH=pc.clientHeight;
+      if(!maxW || !maxH) return;
+      for(var i=0;i<9 && (child.scrollHeight>maxH+2 || child.scrollWidth>maxW+2);i++){
+        Array.prototype.forEach.call(child.querySelectorAll('*'),function(node){
+          var fs=parseFloat(getComputedStyle(node).fontSize);
+          if(fs>10) node.style.setProperty('font-size',Math.max(10,fs*0.92)+'px','important');
+          var lh=parseFloat(getComputedStyle(node).lineHeight);
+          if(lh>12) node.style.setProperty('line-height',Math.max(1.15, (lh/fs)*0.96 || 1.25),'important');
+        });
+      }
+      if(child.scrollHeight>maxH+2 || child.scrollWidth>maxW+2){
+        var scale=Math.min(maxW/Math.max(child.scrollWidth,1),maxH/Math.max(child.scrollHeight,1))*0.97;
+        if(scale<1){
+          scale=Math.max(0.68,scale);
+          child.style.setProperty('transform','scale('+scale+')','important');
+          child.style.setProperty('transform-origin','top center','important');
+          child.style.setProperty('width',(100/scale)+'%','important');
+        }
+      }
+    });
+  }
   function initializeRuntime(){
     fixPageCount();
+    installNavigation();
     fitPresentation();
+    fitOverflowingContent();
+    fixTextContrast();
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',initializeRuntime);
   else initializeRuntime();
-  window.addEventListener('load',fitPresentation);
+  window.addEventListener('load',function(){initializeRuntime();setTimeout(initializeRuntime,0);});
   window.addEventListener('resize',fitPresentation);
 })();
 </script>
 """
-        if "landppt-runtime-overrides" in html:
-            return html
-        if "</head>" in html:
-            return html.replace("</head>", css + "\n</head>", 1)
-        return css + html
+        if "landppt-runtime-overrides" not in html:
+            if "</head>" in html:
+                html = html.replace("</head>", css + "\n</head>", 1)
+            else:
+                html = css + html
+        if "landppt-runtime-fixes" not in html:
+            if "</body>" in html:
+                html = html.replace("</body>", js + "\n</body>", 1)
+            else:
+                html = html + js
+        return html
+
+    def _strip_inline_navigation_scripts(self, html: str) -> str:
+        """Remove template-authored navigation scripts that may hard-code page counts."""
+        return re.sub(
+            r"(?is)<script(?![^>]*\bsrc=)(?![^>]*\bid=[\"']landppt-runtime-fixes[\"'])[^>]*>.*?</script>",
+            "",
+            html,
+        )
+
+    def _finalize_rendered_fragment(self, html: str) -> str:
+        """Clean unresolved placeholders after normal replacement."""
+        html = re.sub(r"\{(?:title|subtitle|content|bullets|toc_items|message|date_badge|chapter_tag|page_number|total_pages|page_type)\}", "", html)
+        html = re.sub(r"\{\{[^}]+\}\}", "", html)
+        return html
 
     def render_page(
         self,
@@ -122,8 +284,9 @@ body{display:flex!important;align-items:center!important;justify-content:center!
         rendered = page_config.skeleton
         for key, value in placeholders.items():
             rendered = rendered.replace(f"{{{{{key}}}}}", str(value))
+            rendered = rendered.replace(f"{{{key}}}", str(value))
 
-        return rendered
+        return self._finalize_rendered_fragment(rendered)
 
     def render_cover_page(
         self,
@@ -281,6 +444,7 @@ body{display:flex!important;align-items:center!important;justify-content:center!
             if not navigation:
                 base_html = re.sub(r'<div class="nav-dots"[^>]*></div>', '', base_html)
                 base_html = base_html.replace('<div class="nav-arrows">', '<div class="nav-arrows" style="display:none">')
+            base_html = self._strip_inline_navigation_scripts(base_html)
             return self._inject_runtime_overrides(base_html)
 
         soup = BeautifulSoup(base_html, "html.parser")
@@ -288,29 +452,7 @@ body{display:flex!important;align-items:center!important;justify-content:center!
         # Find slides-track
         track = soup.find("div", class_=lambda c: c and "slides-track" in c.split())
         if track:
-            # 只删除 slides-track 的直接子元素中属于示例 slide 的部分
-            # 不递归删除（避免把 slide-container / slide-wrapper 也删掉）
-            for child in list(track.children):
-                if not hasattr(child, 'name') or child.name != 'div':
-                    continue
-                child_class = child.get('class', [])
-                child_class_str = ' '.join(child_class) if isinstance(child_class, list) else str(child_class)
-                # 只删除直接的示例 slide div（不是 slide-container / slide-wrapper）
-                is_example_slide = (
-                    'slide' in child_class_str.split()
-                    and 'container' not in child_class_str
-                    and 'wrapper' not in child_class_str
-                )
-                if is_example_slide:
-                    # 删除示例 slide 内部的 footer（避免合并后出现两套 footer）
-                    for footer in child.find_all("div", class_=lambda c: c and 'slide-footer' in c.split()):
-                        footer.decompose()
-                    child.decompose()
-            # 移除 track 内的文本节点/注释
-            for child in list(track.children):
-                if hasattr(child, 'name') and child.name is None:
-                    child.extract()
-            # 注入渲染后的页面
+            track.clear()
             pages_soup = BeautifulSoup(slides_inner, "html.parser")
             for child in list(pages_soup.find_all("div", recursive=False)):
                 track.append(child)
@@ -324,6 +466,7 @@ body{display:flex!important;align-items:center!important;justify-content:center!
             base_html = re.sub(r'<div class="nav-dots"[^>]*></div>', '', base_html)
             base_html = base_html.replace('<div class="nav-arrows">', '<div class="nav-arrows" style="display:none">')
 
+        base_html = self._strip_inline_navigation_scripts(base_html)
         return self._inject_runtime_overrides(base_html)
 
     def _render_default_page(

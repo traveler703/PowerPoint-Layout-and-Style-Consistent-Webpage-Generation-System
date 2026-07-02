@@ -1,8 +1,8 @@
 """
-海洋主题模板生成 + 套用生成完整演示文稿
+玩具主题（Toy Theme）模板生成 + 套用测试
 
 流程：
-  1. 调用 TemplateGenerator 生成海洋主题 HTML 模板
+  1. 调用 TemplateGenerator 生成玩具主题 HTML 模板
   2. 从 HTML 提取模板 JSON，保存到 user_generated/
   3. 用 PresentationGenerator 加载该模板
   4. 生成一页封面 + 目录 + 章节 + 内容 + 结尾
@@ -15,7 +15,9 @@ import json
 import re
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 sys.stdout.reconfigure(encoding="utf-8")
 
 from generator.llm_client import DeepSeekChatClient
@@ -23,18 +25,18 @@ from scripts.template_generator import TemplateGenerator, validate_template, ext
 from pipeline import PresentationGenerator, PresentationOutline, SectionInput, ContentPageInput
 
 
-USER_DESC = "生成一个海洋主题 PPT 模板，要求深海蓝色调，每个页面有波浪和海洋生物装饰元素，适合海洋科普或海洋保护主题"
+USER_DESC = "生成一个玩具主题 PPT 模板，要求色彩鲜艳明快，卡通风格，适合儿童教育或亲子活动主题"
 
 
 async def main():
     print("=" * 60)
-    print("海洋主题模板生成 + 套用测试")
+    print("玩具主题模板生成 + 套用测试")
     print("=" * 60)
 
     # ============================================================
     # Step 1: 生成模板
     # ============================================================
-    print("\n--- Step 1: LLM 生成海洋主题 HTML ---")
+    print("\n--- Step 1: LLM 生成玩具主题 HTML ---")
     client = DeepSeekChatClient(timeout_s=180.0)
     generator = TemplateGenerator(llm_client=client)
 
@@ -61,12 +63,12 @@ async def main():
     # ============================================================
     print("\n--- Step 2: 保存模板 JSON ---")
     output_dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
+        REPO_ROOT,
         "templates", "data", "user_generated"
     )
     os.makedirs(output_dir, exist_ok=True)
 
-    template_id = template.get("template_id", f"ocean_{int(time.time())}")
+    template_id = template.get("template_id", f"toy_{int(time.time())}")
     json_path = os.path.join(output_dir, f"{template_id}.json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(template, f, ensure_ascii=False, indent=2)
@@ -78,7 +80,7 @@ async def main():
     # Step 3: 用 PresentationGenerator 加载该模板生成 PPT
     # ============================================================
     print("\n--- Step 3: 用 PresentationGenerator 套用模板 ---")
-    template_name_for_loader = template_id  # load_template 支持 template_id
+    template_name_for_loader = template_id
 
     try:
         ppt_gen = PresentationGenerator(template_name=template_name_for_loader, llm_client=client)
@@ -86,8 +88,6 @@ async def main():
     except Exception as e:
         print(f"  模板加载失败: {e}")
         print("  尝试通过 raw_html 加载...")
-
-        # fallback: 直接设置 template 和 renderer
         from templates.template_loader import load_template_from_dict
         ppt_gen = PresentationGenerator(template_name=template_name_for_loader, llm_client=client)
         ppt_gen.template = load_template_from_dict(template)
@@ -103,45 +103,45 @@ async def main():
     print("\n--- Step 4: 定义演示文稿大纲 ---")
 
     outline = PresentationOutline(
-        title="探索深海世界",
-        subtitle="海洋科普系列",
+        title="欢乐玩具总动员",
+        subtitle="亲子活动系列",
         date_badge="2026年",
-        ending_title="保护海洋",
-        ending_message="海洋是生命的摇篮，让我们共同守护这片蔚蓝",
+        ending_title="玩出智慧",
+        ending_message="每个玩具都是孩子的朋友，让我们在玩耍中成长",
         sections=[
             SectionInput(
-                title="深海奇观",
+                title="经典玩具",
                 content_pages=[
                     ContentPageInput(
-                        title="深海热泉",
-                        summary="深海热泉是海底的奇迹，在完全没有阳光的地方，生命依然蓬勃。",
+                        title="积木世界",
+                        summary="积木是孩子最早的建筑师，它教会我们空间感和创造力。",
                         bullet_points=[
-                            "热泉温度可达400°C",
-                            "周围生活着独特的化能合成细菌",
-                            "管虫、蛤蜊等生物在此繁衍生息",
+                            "锻炼手眼协调能力",
+                            "培养空间想象力",
+                            "促进亲子互动合作",
                         ],
                     ),
                     ContentPageInput(
-                        title="深海鱼类",
-                        summary="深海鱼类为了适应高压、黑暗的环境，进化出了独特的生存方式。",
+                        title="毛绒玩偶",
+                        summary="毛绒玩偶是孩子最温暖的陪伴，给他们安全感和想象力。",
                         bullet_points=[
-                            "灯笼鱼用生物光诱捕猎物",
-                            "吞噬鳗拥有巨大的嘴巴",
-                            "深海生物普遍具有发光器官",
+                            "提供情感安全感",
+                            "激发角色扮演游戏",
+                            "培养同情心和责任心",
                         ],
                     ),
                 ],
             ),
             SectionInput(
-                title="海洋保护",
+                title="创意玩具",
                 content_pages=[
                     ContentPageInput(
-                        title="珊瑚礁危机",
-                        summary="珊瑚礁是海洋中的热带雨林，但正面临严重的白化危机。",
+                        title="拼图挑战",
+                        summary="拼图是挑战与乐趣并存的游戏，让孩子在思考中获得成就感。",
                         bullet_points=[
-                            "全球约50%的珊瑚礁已消失",
-                            "海水温度升高是主要元凶",
-                            "保护珊瑚需要全球合作",
+                            "提升观察力和专注力",
+                            "锻炼逻辑思维能力",
+                            "完成后的巨大成就感",
                         ],
                     ),
                 ],
@@ -171,7 +171,7 @@ async def main():
     t1 = time.time()
     result = await ppt_gen.generate_presentation(
         outline=outline,
-        output_filename=f"ocean_test.html",
+        output_filename=f"toy_test.html",
         navigation=True,
         save_pages=True,
     )
@@ -208,16 +208,12 @@ async def main():
         checks.append(("包含 nav-dots", "nav-dots" in doc_html or "navDots" in doc_html))
         checks.append(("包含 page-indicator", "page-indicator" in doc_html or "pageIndicator" in doc_html))
 
-        # 检查每个页面类型都出现
         for ptype in ["cover", "toc", "section", "content", "ending"]:
             checks.append((f"HTML 中有 {ptype} 页面", f"slide {ptype}" in doc_html or f'class="{ptype}"' in doc_html))
 
-        # 检查标题内容是否被正确替换
-        checks.append(("封面标题已替换", "探索深海世界" in doc_html))
-        checks.append(("内容页有实际内容", "深海热泉" in doc_html or "深海鱼类" in doc_html or "珊瑚礁" in doc_html))
+        checks.append(("封面标题已替换", "欢乐玩具总动员" in doc_html))
+        checks.append(("内容页有实际内容", "积木世界" in doc_html or "毛绒玩偶" in doc_html or "拼图" in doc_html))
 
-        # 检查无未替换的 {{title}} 在 slide 内容中（非 JS 代码）
-        # 用非贪婪匹配截取各 slide 内容，排除 script 标签
         def strip_scripts(html):
             return re.sub(r'<script.*?</script>', '', html, flags=re.DOTALL)
 
@@ -231,20 +227,13 @@ async def main():
         chapter_in_doc = re.findall(r"\{\{chapter_tag\}\}", content_only)
         checks.append(("无残留 {{chapter_tag}} 占位符", len(chapter_in_doc) == 0))
 
-        # 检查有实际章节标签（不是占位符）
-        checks.append(("章节标签已替换", "第I章" in doc_html or "第1章" in doc_html or "深海奇观" in doc_html))
-
-        # 检查 ocean_test.html 里有 CSS 变量（支持任意 CSS 变量名格式）
-        checks.append(("包含海洋主题 CSS 变量", "color-accent" in doc_html or "--color-accent" in doc_html or "color-accent-red" in doc_html))
-        checks.append(("包含海洋主题背景色", "0a1a2f" in doc_html or "#0a1a2f" in doc_html or "深海蓝" in doc_html))
-
-        # 检查页码正确
-        checks.append(("包含页码指示器", "1 / 8" in doc_html or "1/8" in doc_html or "探索深海世界" in doc_html))
+        checks.append(("章节标签已替换", "第I章" in doc_html or "第1章" in doc_html or "经典玩具" in doc_html))
+        checks.append(("包含玩具主题 CSS 变量", "color-accent" in doc_html or "--color-accent" in doc_html))
+        checks.append(("包含页码指示器", "1 / 8" in doc_html or "1/8" in doc_html or "欢乐玩具" in doc_html))
 
         print(f"\n  HTML 总长度: {len(doc_html):,} 字符")
-        # 打印内容区预览
-        if "探索深海世界" in doc_html:
-            idx = doc_html.find("探索深海世界")
+        if "欢乐玩具总动员" in doc_html:
+            idx = doc_html.find("欢乐玩具总动员")
             print(f"  封面标题: {doc_html[idx:idx+20]}...")
 
     else:
@@ -268,7 +257,7 @@ async def main():
         print(f"\n[FAIL] 有 {failed} 项未通过")
         sys.exit(1)
     else:
-        print(f"\n[PASS] 全部通过！海洋主题演示文稿生成成功！")
+        print(f"\n[PASS] 全部通过！玩具主题演示文稿生成成功！")
 
 
 if __name__ == "__main__":

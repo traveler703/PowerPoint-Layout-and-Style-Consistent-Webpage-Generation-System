@@ -44,5 +44,8 @@ Thumbs.db
 # Project specific
 *.pptx
 output/
+test/output/
+.pytest_cache/
+.ruff_cache/
 reference/
 docs/

@@ -989,6 +989,24 @@ async function sendMessage() {
   await nextTick()
 
   try {
+    const userTurnCount = messages.value.filter(m => m.role === 'user').length
+    if (userTurnCount >= 3) {
+      const assistantMsg = {
+        role: 'assistant',
+        content: '已收到三轮需求，我会直接整理最终方案并开始生成模板。',
+        llmResponse: null,
+        parsedConfig: null,
+        showFull: false,
+        time: formatTime(new Date())
+      }
+      messages.value.push(assistantMsg)
+      isTyping.value = false
+      await nextTick()
+      await scrollToBottom()
+      await createTemplateFromChat(messages.value.length - 1)
+      return
+    }
+
     const history = messages.value.slice(0, -1).map(m => ({
       role: m.role,
       content: m.content

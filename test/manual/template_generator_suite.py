@@ -4,10 +4,10 @@
 测试模板生成器在各种场景下的表现。
 
 运行方式:
-    python scripts/test_template_generator.py
-    python scripts/test_template_generator.py --quick          # 快速测试（只用 fallback）
-    python scripts/test_template_generator.py --api http://localhost:5000  # 测试 API 模式
-    python scripts/test_template_generator.py --validate-file templates/data/ink.json
+    python test/manual/template_generator_suite.py
+    python test/manual/template_generator_suite.py --quick          # 快速测试（只验证内置模板）
+    python test/manual/template_generator_suite.py --api http://localhost:5000  # 测试 API 模式
+    python test/manual/template_generator_suite.py --validate-file templates/data/ink.json
 """
 
 from __future__ import annotations
@@ -19,7 +19,9 @@ import sys
 import time
 from typing import Any
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
 from scripts.template_generator import (
     REQUIRED_FIELDS,
@@ -510,7 +512,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--quick",
         action="store_true",
-        help="快速测试（只验证 fallback，不调用 LLM）",
+        help="快速测试（只验证内置模板，不调用 LLM）",
     )
     parser.add_argument(
         "--api",
@@ -545,33 +547,28 @@ if __name__ == "__main__":
         dv = validate_existing_file(args.validate_file)
         sys.exit(0 if dv["passed"] else 1)
 
-    # 快速测试：只验证 fallback 逻辑
+    # 快速测试：只验证内置模板文件，避免调用 LLM
     if args.quick:
-        print("快速测试模式：验证 fallback 模板生成逻辑")
+        print("快速测试模式：验证内置模板文件")
         print("=" * 60)
 
-        from scripts.template_generator import _build_fallback_template
-
-        test_keywords = [
-            ("商务", "business"),
-            ("科技", "cyber"),
-            ("水墨", "ink"),
-            ("儿童", "kids"),
-            ("模糊", "fallback"),
+        template_paths = [
+            os.path.join(REPO_ROOT, "templates", "data", "tech.json"),
+            os.path.join(REPO_ROOT, "templates", "data", "toy.json"),
+            os.path.join(REPO_ROOT, "templates", "data", "ink.json"),
         ]
 
         all_passed = True
-        for kw, style in test_keywords:
-            tpl = _build_fallback_template(f"测试{kw}关键词")
-            dv = deep_validate_template(tpl, kw)
-            status = "通过" if dv["passed"] else "失败"
-            print(f"  {kw}: {status} (得分: {dv['score']}/100)")
-            if not dv["passed"]:
-                for issue in dv["issues"]:
-                    print(f"    - {issue}")
+        for template_path in template_paths:
+            if not os.path.exists(template_path):
+                print(f"  缺失: {template_path}")
                 all_passed = False
+                continue
 
-        print(f"\nFallback 测试: {'全部通过' if all_passed else '有失败项'}")
+            dv = validate_existing_file(template_path)
+            all_passed = all_passed and dv["passed"]
+
+        print(f"\n内置模板快速测试: {'全部通过' if all_passed else '有失败项'}")
         sys.exit(0 if all_passed else 1)
 
     # 完整测试
@@ -598,7 +595,7 @@ if __name__ == "__main__":
 
     # 保存详细报告
     output_dir = args.output_dir or os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        REPO_ROOT,
         "output",
     )
     os.makedirs(output_dir, exist_ok=True)

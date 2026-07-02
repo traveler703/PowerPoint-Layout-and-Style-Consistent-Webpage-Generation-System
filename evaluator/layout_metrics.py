@@ -93,10 +93,15 @@ def overlap_ratio_from_html(html: str) -> LayoutMetrics:
         r = _parse_style_rect(style)
         if r and r.area() > 0:
             rects.append(r)
+    overflow_count = sum(
+        1
+        for r in rects
+        if r.left < 0 or r.top < 0 or r.left + r.width > 1160 or r.top + r.height > 530
+    )
     if len(rects) < 2:
         return LayoutMetrics(
             overlap_ratio=0.0,
-            overflow_count=0,
+            overflow_count=overflow_count,
             absolute_boxes=len(rects),
         )
     total_overlap = 0.0
@@ -105,7 +110,7 @@ def overlap_ratio_from_html(html: str) -> LayoutMetrics:
         for j in range(i + 1, len(rects)):
             total_overlap += _intersection_area(rects[i], rects[j])
     ratio = min(1.0, total_overlap / total_area) if total_area > 0 else 0.0
-    return LayoutMetrics(overlap_ratio=ratio, overflow_count=0, absolute_boxes=len(rects))
+    return LayoutMetrics(overlap_ratio=ratio, overflow_count=overflow_count, absolute_boxes=len(rects))
 
 
 def overlap_ratio_stub(html: str) -> LayoutMetrics:

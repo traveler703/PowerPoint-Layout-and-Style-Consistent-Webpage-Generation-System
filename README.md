@@ -22,17 +22,25 @@ A Flask-based web application that generates HTML presentations with consistent 
 
 ```
 PowerPoint-Layout-and-Style-Consistent-Webpage-Generation-System/
+├── app.py                 # Main Flask application and API wiring
+├── pipeline.py            # Presentation generation pipeline
+├── database.py            # SQLite models/session setup
+├── config.py              # Configuration
+├── engine/                # Outline/content reasoning primitives
+├── evaluator/             # Layout/style/readability quality metrics
+├── framework/             # Design tokens, layouts, and components
 ├── frontend/              # Vue.js frontend
-├── backend/               # Backend Flask application
-├── engine/                # Document parsing engine
-├── generator/             # Content generation
-├── pipeline/              # PPT generation pipeline
-├── templates/             # HTML templates
-├── database/              # Database models and services
+├── generator/             # LLM prompts, clients, and HTML generation
+├── parsers/               # Text/PDF/DOCX/PPTX/Markdown parsing
+├── routes/                # Flask route modules
+├── scripts/               # Runtime/maintenance scripts used by the app
 ├── services/              # Business logic services
-├── config.py             # Configuration
-└── app.py                 # Main Flask application
+├── templates/             # Template models, loader, renderer, and data
+└── test/                  # Automated tests, fixtures, and manual test scripts
 ```
+
+Manual/integration scripts that call the API, LLM, or write generated artifacts live in
+`test/manual/` and are not collected by default pytest discovery.
 
 ## API Endpoints
 
@@ -67,11 +75,20 @@ export OPENAI_API_KEY=your_api_key
 ```
 
 3. Run the application:
+
+Backend:
+
 ```bash
 python app.py
 ```
 
-4. Access the web interface at `http://localhost:5000`
+Frontend:
+
+```bash
+npm run dev
+```
+
+4. Access the web interface at `http://localhost:5173`
 
 ## License
 

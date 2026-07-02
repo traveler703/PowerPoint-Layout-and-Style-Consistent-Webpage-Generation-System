@@ -68,10 +68,14 @@ class TemplateLoader:
 
         page_types = {}
         for type_key, type_config in data.get("page_types", {}).items():
+            skeleton = self._sanitize_page_skeleton(
+                type_key,
+                type_config.get("skeleton", ""),
+            )
             page_types[type_key] = PageTypeConfig(
                 type_name=PageType(type_key),
-                skeleton=type_config.get("skeleton", ""),
-                placeholders=type_config.get("placeholders", []),
+                skeleton=skeleton,
+                placeholders=self._infer_placeholders(type_key, type_config.get("placeholders", [])),
                 content_patterns=type_config.get("content_patterns", {})
             )
 
@@ -186,6 +190,221 @@ class TemplateLoader:
             tags=data.get("tags", []),
             is_default=data.get("is_default", False)
         )
+
+    def _infer_placeholders(self, page_type: str, existing: list[str]) -> list[str]:
+        """Return the standard placeholders for a page type, preserving extras."""
+        required = {
+            "cover": ["title", "subtitle", "date_badge", "page_number"],
+            "toc": ["title", "toc_items", "page_number"],
+            "section": ["chapter_tag", "title", "subtitle", "page_number"],
+            "content": ["title", "content", "page_number"],
+            "ending": ["title", "message", "page_number"],
+        }.get(page_type, ["title", "page_number"])
+        result = []
+        for key in [*required, *(existing or [])]:
+            if key not in result:
+                result.append(key)
+        return result
+
+    def _sanitize_page_skeleton(self, page_type: str, skeleton: str) -> str:
+        """Repair common LLM/user-template skeleton mistakes at load time."""
+        if not skeleton:
+            return skeleton
+
+        skeleton = self._normalize_placeholder_spelling(skeleton)
+
+        try:
+            from bs4 import BeautifulSoup
+        except Exception:
+            return self._sanitize_page_skeleton_regex(page_type, skeleton)
+
+        soup = BeautifulSoup(skeleton, "html.parser")
+        root = soup.find("div", class_=lambda c: c and "slide" in str(c).split())
+        if root is None:
+            return self._sanitize_page_skeleton_regex(page_type, skeleton)
+
+        if page_type == "cover":
+            title_node = root.select_one("h1, .main-title, .title, .cover-title")
+            if title_node:
+                title_node.clear()
+                title_node.append("{{title}}")
+            subtitle_node = root.select_one(".subtitle, .sub-title, .cover-subtitle")
+            if subtitle_node:
+                subtitle_node.clear()
+                subtitle_node.append("{{subtitle}}")
+            date_node = root.select_one(".date-badge, .date")
+            if date_node:
+                date_node.clear()
+                date_node.append("{{date_badge}}")
+
+        elif page_type == "toc":
+            self._remove_sample_siblings(root, ("toc-layout", "toc-list", "toc-grid"))
+            title_node = root.select_one(".page-title, h1, h2")
+            if title_node:
+                title_node.clear()
+                title_node.append("{{title}}")
+            content_node = self._ensure_page_content(soup, root)
+            content_node.clear()
+            content_node.append("{{toc_items}}")
+
+        elif page_type == "section":
+            chapter_node = root.select_one(".page-title")
+            if chapter_node:
+                chapter_node.clear()
+                chapter_node.append("{{chapter_tag}}")
+            else:
+                chapter_node = soup.new_tag("div")
+                chapter_node["class"] = "page-title"
+                chapter_node.append("{{chapter_tag}}")
+                root.insert(0, chapter_node)
+            title_node = root.select_one(".section-title, h1")
+            if title_node:
+                title_node.clear()
+                title_node.append("{{title}}")
+            else:
+                title_node = soup.new_tag("h1")
+                title_node["class"] = "section-title"
+                title_node.append("{{title}}")
+                root.append(title_node)
+            subtitle_node = root.select_one(".subtitle")
+            if subtitle_node:
+                subtitle_node.clear()
+                subtitle_node.append("{{subtitle}}")
+            else:
+                subtitle_node = soup.new_tag("p")
+                subtitle_node["class"] = "subtitle"
+                subtitle_node.append("{{subtitle}}")
+
+            content_wrap = root.select_one(".section-content")
+            if content_wrap is None:
+                content_wrap = soup.new_tag("div")
+                content_wrap["class"] = "section-content"
+                insert_at = 0
+                for idx, child in enumerate(list(root.children)):
+                    if getattr(child, "name", None) and "slide-footer" not in str(child.get("class", [])).split():
+                        insert_at = idx
+                        break
+                root.insert(insert_at, content_wrap)
+            for node in (chapter_node, title_node, subtitle_node):
+                if node and node.parent is not content_wrap:
+                    content_wrap.append(node.extract())
+
+        elif page_type == "content":
+            self._remove_sample_siblings(
+                root,
+                (
+                    "content-display",
+                    "content-text",
+                    "content-visual",
+                    "actual-content",
+                    "sample-content",
+                    "placeholder-text",
+                ),
+            )
+            title_node = root.select_one(".page-title, h1, h2")
+            if title_node:
+                title_node.clear()
+                title_node.append("{{title}}")
+            else:
+                title_node = soup.new_tag("div")
+                title_node["class"] = "page-title"
+                title_node.append("{{title}}")
+                root.insert(0, title_node)
+            content_node = self._ensure_page_content(soup, root)
+            content_node.clear()
+            content_node.append("{{content}}")
+
+        elif page_type == "ending":
+            title_node = root.select_one(".ending-content h1, h1")
+            if title_node:
+                title_node.clear()
+                title_node.append("{{title}}")
+            message_node = root.select_one(".ending-message, .ending-content p")
+            if message_node:
+                message_node.clear()
+                message_node.append("{{message}}")
+
+        self._ensure_footer(soup, root)
+        return str(root)
+
+    def _sanitize_page_skeleton_regex(self, page_type: str, skeleton: str) -> str:
+        """Regex fallback for environments without BeautifulSoup."""
+        if page_type == "content":
+            skeleton = re.sub(
+                r'(<div[^>]*class="[^"]*\bpage-content\b[^"]*"[^>]*>).*?(</div>)',
+                r"\1{{content}}\2",
+                skeleton,
+                flags=re.DOTALL | re.IGNORECASE,
+            )
+            skeleton = re.sub(
+                r'<div[^>]*class="[^"]*\b(?:content-display|actual-content|sample-content|placeholder-text)\b[^"]*"[^>]*>.*?</div>',
+                "",
+                skeleton,
+                flags=re.DOTALL | re.IGNORECASE,
+            )
+        elif page_type == "toc":
+            skeleton = re.sub(
+                r'(<div[^>]*class="[^"]*\bpage-content\b[^"]*"[^>]*>).*?(</div>)',
+                r"\1{{toc_items}}\2",
+                skeleton,
+                flags=re.DOTALL | re.IGNORECASE,
+            )
+        return skeleton
+
+    def _normalize_placeholder_spelling(self, html: str) -> str:
+        """Accept historical single-brace placeholders and normalize to {{key}}."""
+        keys = (
+            "title",
+            "subtitle",
+            "content",
+            "toc_items",
+            "message",
+            "date_badge",
+            "chapter_tag",
+            "page_number",
+            "total_pages",
+        )
+        for key in keys:
+            html = re.sub(rf"(?<!\{{)\{{\s*{key}\s*\}}(?!\}})", f"{{{{{key}}}}}", html)
+            html = re.sub(rf"\{{\{{\s*{key}\s*\}}\}}", f"{{{{{key}}}}}", html)
+        return html
+
+    def _ensure_page_content(self, soup, root):
+        content_node = root.find("div", class_=lambda c: c and "page-content" in str(c).split())
+        if content_node:
+            return content_node
+        content_node = soup.new_tag("div")
+        content_node["class"] = "page-content"
+        root.append(content_node)
+        return content_node
+
+    def _remove_sample_siblings(self, root, class_names: tuple[str, ...]) -> None:
+        """Remove LLM demo content blocks that sit outside the placeholder."""
+        for node in list(root.find_all(True, class_=lambda c: c and any(name in str(c).split() for name in class_names))):
+            if node.parent is None or node.attrs is None:
+                continue
+            if "page-content" in str(node.get("class", [])).split():
+                continue
+            if "{{" in node.get_text("", strip=False):
+                continue
+            node.decompose()
+
+    def _ensure_footer(self, soup, root) -> None:
+        footer = root.find("div", class_=lambda c: c and "slide-footer" in str(c).split())
+        if not footer:
+            footer = soup.new_tag("div")
+            footer["class"] = "slide-footer"
+            page_num = soup.new_tag("span")
+            page_num["class"] = "page-num"
+            page_num.append("{{page_number}}")
+            footer.append(page_num)
+            root.append(footer)
+            return
+
+        page_num = footer.find(class_=lambda c: c and "page-num" in str(c).split())
+        if page_num:
+            page_num.clear()
+            page_num.append("{{page_number}}")
 
     def _extract_css_from_html(self, html: str) -> dict[str, str]:
         """Extract CSS variables from an HTML style block."""

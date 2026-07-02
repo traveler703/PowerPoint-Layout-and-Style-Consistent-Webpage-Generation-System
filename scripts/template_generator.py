@@ -52,7 +52,7 @@ TEMPLATE_GENERATION_SYSTEM_PROMPT = """你是一位极具创意的前端设计�
 只输出一个 HTML 代码块（```html），不要有任何解释文字。
 
 HTML 要求：
-- 完整、可直接运行的 HTML 文件，包含 5 个 slide 页面示例（封面、目录、章节、内容、结尾各一页）
+- 完整、可直接运行的 HTML 文件，包含 7 个 slide 页面示例，顺序必须固定为：封面、目录、章节页1、内容页1、章节页2、内容页2、结尾
 - 每个页面用 `<div class="slide [page_type]">` 包裹，page_type 取值为：cover、toc、section、content、ending
 - **【最重要】所有页面都必须遵循统一的结构规范**：
 
@@ -61,7 +61,7 @@ HTML 要求：
   <body>
     <div class="slides-wrapper" id="slidesWrapper">
       <div class="slides-track" id="slidesTrack">
-        <!-- 5个 slide 页面放这里 -->
+        <!-- 7个 slide 页面放这里：cover、toc、section、content、section、content、ending -->
       </div>
     </div>
     <div class="nav-dots" id="navDots"></div>     <!-- JS 动态生成，HTML 留空 -->
@@ -133,14 +133,15 @@ HTML 要求：
 ### section 章节页（必须严格遵守以下结构）
 ```html
 <div class="slide section">
-  <div class="page-title">{{chapter_tag}}</div>
-  <h1 class="section-title">{{title}}</h1>
-  <p class="subtitle">{{subtitle}}</p>
+  <div class="section-content">
+    <div class="page-title">{{chapter_tag}}</div>
+    <h1 class="section-title">{{title}}</h1>
+    <p class="subtitle">{{subtitle}}</p>
+  </div>
   <div class="slide-footer"><span class="page-num">{{page_number}}</span></div>
 </div>
 ```
-**严格要求**：`{{chapter_tag}}`（如"第一章"）用 `.page-title` 包裹，`{{title}}` 用 `<h1 class="section-title">` 包裹，`{{subtitle}}` 用 `<p class="subtitle">` 包裹，末尾必须有 `.slide-footer`。
-这些元素在 CSS 中必须用 absolute 定位。
+**严格要求**：`{{chapter_tag}}`（如"第一章"）、`{{title}}`、`{{subtitle}}` 必须放在 `.section-content` 内，`.section-content` 必须用 absolute 定位到画面中央附近（例如 left:50%; top:50%; transform:translate(-50%,-50%)），标题整体应大致位于画面中心，不能偏移到角落。末尾必须有 `.slide-footer`。
 
 ### content 内容页（核心要求 - 必须严格遵守）
 ```html
@@ -179,7 +180,7 @@ HTML 要求：
 
 ## 重要约束（必须遵守）
 
-1. **每种 page_type 都必须生成示例页面**：cover、toc、section、content、ending
+1. **必须生成且只生成 7 个示例页面**：cover 1 页、toc 1 页、section 2 页、content 2 页、ending 1 页；两个 section/content 示例必须是不同内容，但结构保持一致
 2. **占位符使用双花括号**：`{{title}}`、`{{subtitle}}`、`{{date_badge}}`、`{{chapter_tag}}`、`{{content}}`、`{{toc_items}}`、`{{message}}`、`{{page_number}}`
 3. **color-* 和 font-* CSS 变量必须全部填写**，不得为空
 4. **页面中要有装饰元素**（emoji、几何图形、渐变等），体现主题特色，装饰元素只能放在 slide 外层或 `.page-title` 旁边，**禁止放在 `.page-content` 内部**
@@ -202,6 +203,13 @@ HTML 要求：
    - `.page-content` 必须用 `position: absolute; top: 130px; left: 60px; right: 60px; bottom: 60px` 等四边约束
    - `.slide-footer` 必须用 `position: absolute; bottom: 15px` 等固定坐标
    - **禁止使用 `display: flex; flex-direction: column`** 作为 slide 主布局
+
+8. **【关键】可读性与内容完整性**：
+   - 所有文字必须清晰可见，文字与所在背景/卡片必须形成明显明暗对比；深色背景用浅色文字，浅色背景用深色文字
+   - 不得使用透明文字、与背景近似的文字色、`display:none`、`visibility:hidden`、`opacity < 0.6`
+   - 不得用 `text-overflow: ellipsis`、`line-clamp` 或固定高度容器截断正文
+   - `.page-content` 应预留足够空间，正文卡片不得超出 1160×530 内容区域；内容多时降低字号、减少装饰、改用紧凑网格
+   - 目录项、章节标题、正文卡片都必须能直接读清，不能只在鼠标选中时才看得见
 
 现在开始生成！"""
 
@@ -757,7 +765,8 @@ def _extract_page_types(html: str) -> dict[str, dict[str, Any]]:
                 for child in list(pc.children):
                     child.decompose()
                 pc.append(ph_soup)
-                raw_skeleton = str(sk_soup)
+            _remove_generated_sample_blocks(sk_soup, "content")
+            raw_skeleton = str(sk_soup)
             for ph in PLACEHOLDER_MAP[ptype]:
                 ph_double = f"{{{{{ph}}}}}"
                 raw_skeleton = re.sub(
@@ -780,6 +789,7 @@ def _extract_page_types(html: str) -> dict[str, dict[str, Any]]:
             # 删除 page-content 外部的 toc-item 元素
             for toc_el in sk_soup.find_all("div", class_=lambda c: c and "toc-item" in c):
                 toc_el.decompose()
+            _remove_generated_sample_blocks(sk_soup, "toc")
             raw_skeleton = str(sk_soup)
         else:
             for ph in PLACEHOLDER_MAP[ptype]:
@@ -796,6 +806,34 @@ def _extract_page_types(html: str) -> dict[str, dict[str, Any]]:
         }
 
     return result
+
+
+def _remove_generated_sample_blocks(soup: BeautifulSoup, page_type: str) -> None:
+    """Remove sample-only blocks that would repeat across generated pages."""
+    class_names = (
+        "content-display",
+        "content-text",
+        "content-visual",
+        "actual-content",
+        "sample-content",
+        "placeholder-text",
+        "demo-content",
+        "toc-layout",
+    )
+    if page_type == "toc":
+        class_names = (*class_names, "toc-list", "toc-grid")
+
+    for node in list(soup.find_all(True)):
+        classes = node.get("class") or []
+        if isinstance(classes, str):
+            classes = classes.split()
+        if "page-content" in classes:
+            continue
+        if not any(cls in class_names for cls in classes):
+            continue
+        if "{{" in str(node):
+            continue
+        node.decompose()
 
 
 def _replace_page_content_block(skeleton: str, placeholder: str) -> str:
@@ -1652,7 +1690,7 @@ def _auto_fix_template(parsed: dict[str, Any], errors: list[str]) -> tuple[dict[
     for ptype in ["content", "toc"]:
         sk = page_types.get(ptype, {}).get("skeleton", "")
         if sk:
-            clean_sk = _strip_content_decorations(sk)
+            clean_sk = _strip_content_decorations(sk, ptype)
             if clean_sk != sk:
                 page_types[ptype]["skeleton"] = clean_sk
                 fixed["page_types"] = page_types
@@ -1733,8 +1771,26 @@ def _auto_fix_template(parsed: dict[str, Any], errors: list[str]) -> tuple[dict[
     return fixed, remaining
 
 
-def _strip_content_decorations(skeleton: str) -> str:
+def _strip_content_decorations(skeleton: str, ptype: str = "content") -> str:
     """移除 .page-content 标签内部的装饰内容（注释、空div、额外HTML）。"""
+    sample_classes = (
+        "content-display",
+        "content-text",
+        "content-visual",
+        "actual-content",
+        "sample-content",
+        "placeholder-text",
+        "demo-content",
+        "toc-layout",
+    )
+    for cls in sample_classes:
+        skeleton = re.sub(
+            rf'<div[^>]*class="[^"]*\b{re.escape(cls)}\b[^"]*"[^>]*>.*?</div>',
+            "",
+            skeleton,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+
     # 只保留 {{content}} 或 {{toc_items}} 占位符
     pc_match = re.search(r'(<div[^>]*class="[^"]*page-content[^"]*"[^>]*>)(.*?)(</div>)', skeleton, re.DOTALL)
     if not pc_match:
@@ -1742,7 +1798,8 @@ def _strip_content_decorations(skeleton: str) -> str:
     prefix, inner, suffix = pc_match.groups()
     # 提取占位符
     placeholders = re.findall(r'\{\{[^}]+\}\}', inner)
-    clean_inner = "".join(placeholders) if placeholders else "{{content}}"
+    default_placeholder = "{{toc_items}}" if ptype == "toc" else "{{content}}"
+    clean_inner = "".join(placeholders) if placeholders else default_placeholder
     return skeleton[:pc_match.start()] + prefix + clean_inner + suffix + skeleton[pc_match.end():]
 
 
@@ -1808,7 +1865,7 @@ class TemplateGenerator:
                     f"上一次生成校验失败，以下问题无法自动修复，请修正后重新生成：\n"
                     f"{last_error}\n\n"
                     "请特别注意以下约束：\n"
-                    "1. 每种 page_type (cover/toc/section/content/ending) 都必须有对应的示例页面\n"
+                    "1. 示例页必须严格为 7 页：cover、toc、section、content、section、content、ending\n"
                     "2. content 页的 .page-content 内只能有 {{content}} 占位符，禁止任何装饰元素\n"
                     "3. .slide 必须使用 position:relative + position:absolute 布局，禁止 flex column\n"
                     "4. .slide 必须使用 width:1280px; height:720px 固定尺寸\n"
@@ -1941,6 +1998,7 @@ def register_template_api_routes(app):
             else:
                 # 普通 chat 模式：发送完整对话历史
                 llm = default_llm_client()
+                user_turns = sum(1 for m in messages if m.get("role") == "user")
                 # 构建带历史的 prompt
                 chat_messages = []
                 for m in messages[-20:]:  # 最近20条，防止超token
@@ -1948,7 +2006,31 @@ def register_template_api_routes(app):
                     content = m.get("content", "")
                     chat_messages.append(f"[{role}]: {content}")
                 history_text = "\n".join(chat_messages)
-                system_prompt = "你是一个专业的PPT模板设计顾问，帮助用户将模糊的想法逐步完善为清晰的设计需求。\n\n你的工作方式：\n1. 理解用户当前的想法，在回复中复述确认\n2. 基于已有讨论，主动补充缺失的维度（配色、字体、装饰、布局、氛围）\n3. 每次回复都在前一轮基础上更完整地描述模板方案\n4. 引导用户确认或调整你的建议\n\n回复格式：\n- 第一行必须给出短模板名称，例如：模板名称：樱花风格\n- 然后总结当前设计方案（2-3句）\n- 最后提出1-2个追问或建议\n\n【禁止】不要输出JSON、代码、CSS变量。用户满意后会点击\"开始模板制作\"。"
+                turn_rule = (
+                    "这是用户第3次或更多次发言。禁止继续提问或确认细节，"
+                    "必须直接输出最终设计方案总结，并明确可以开始模板制作。"
+                    if user_turns >= 3
+                    else (
+                        "这是最后一次允许追问。最多提出1个关键问题；如果已有足够信息，直接给出完整方案。"
+                        if user_turns == 2
+                        else "可以提出1-2个追问，帮助用户补齐关键设计信息。"
+                    )
+                )
+                system_prompt = (
+                    "你是一个专业的PPT模板设计顾问，帮助用户将模糊的想法逐步完善为清晰的设计需求。\n\n"
+                    "硬性规则：AI最多问两次问题；用户第3次发言后不得再追问，直接进入生成准备。\n"
+                    f"当前轮次规则：{turn_rule}\n\n"
+                    "你的工作方式：\n"
+                    "1. 理解用户当前的想法，在回复中复述确认\n"
+                    "2. 基于已有讨论，主动补充缺失的维度（配色、字体、装饰、布局、氛围）\n"
+                    "3. 每次回复都在前一轮基础上更完整地描述模板方案\n"
+                    "4. 未达到轮次上限时才允许引导用户确认或调整建议\n\n"
+                    "回复格式：\n"
+                    "- 第一行必须给出短模板名称，例如：模板名称：樱花风格\n"
+                    "- 然后总结当前设计方案（2-3句）\n"
+                    "- 最后根据当前轮次规则决定是否追问；第3次或更多次用户发言后不要出现问号\n\n"
+                    "【禁止】不要输出JSON、代码、CSS变量。用户满意后会点击\"开始模板制作\"。"
+                )
                 response = asyncio.run(llm.complete(system_prompt, history_text))
                 return jsonify({
                     "success": True,

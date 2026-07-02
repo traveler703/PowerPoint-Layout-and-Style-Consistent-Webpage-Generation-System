@@ -14,7 +14,9 @@ import json
 import re
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 sys.stdout.reconfigure(encoding="utf-8")
 
 from pipeline import PresentationGenerator, PresentationOutline, SectionInput, ContentPageInput
@@ -142,7 +144,7 @@ async def test_template(template_id: str, template_path: str) -> tuple[int, int]
 
 
 async def main():
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = REPO_ROOT
     templates_dir = os.path.join(base_dir, "templates", "data")
     user_dir = os.path.join(templates_dir, "user_generated")
 

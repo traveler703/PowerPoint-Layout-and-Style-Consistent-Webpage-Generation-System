@@ -31,6 +31,7 @@ from typing import Any
 from engine.page_types import PageType
 from engine.types import SemanticPageInput
 from evaluator.layout_metrics import overlap_ratio_from_html
+from evaluator.readability_metrics import fix_readability_colors, readability_from_html
 from evaluator.style_metrics import color_consistency_from_html
 from generator.llm_client import LLMClient, default_llm_client
 from generator.prompts import (
@@ -272,6 +273,8 @@ class PresentationGenerator:
                     + "；".join(quality_issues)
                     + "。不要重复标题，不要生成幻灯片外壳。元素重叠率必须为0，"
                     + "所有显式颜色必须来自模板CSS变量，色彩偏差率必须不超过5%。"
+                    + "所有内容必须位于1160px x 530px内容区域内，禁止内容越界、"
+                    + "ellipsis、line-clamp 或固定高度容器截断正文。"
                 ),
                 page_type=page.page_type,
                 bullet_points=page.bullet_points,
@@ -288,6 +291,7 @@ class PresentationGenerator:
         if quality_issues:
             layout_info["quality_warnings"] = quality_issues
 
+        html = self._fix_content_readability(html)
         return html, layout_info
 
     def _content_quality_issues(self, html: str) -> list[str]:
@@ -302,6 +306,8 @@ class PresentationGenerator:
             overlap = float(overlap_report.overlap_ratio or 0)
             if overlap > MAX_OVERLAP_RATIO:
                 issues.append(f"元素重叠率为{overlap:.2%}，要求为0")
+            if overlap_report.overflow_count:
+                issues.append(f"{overlap_report.overflow_count}个绝对定位元素超出1160x530内容边界")
         except Exception as exc:
             logger.debug("[Pipeline] overlap check skipped: %s", exc)
         try:
@@ -314,7 +320,27 @@ class PresentationGenerator:
                 )
         except Exception as exc:
             logger.debug("[Pipeline] color check skipped: %s", exc)
+        try:
+            readability = readability_from_html(html, self.template.css_variables if self.template else {})
+            if readability.overflow_risk_count:
+                issues.append(f"{readability.overflow_risk_count}处固定高度文本容器存在截断/越界风险")
+        except Exception as exc:
+            logger.debug("[Pipeline] readability check skipped: %s", exc)
         return issues
+
+    def _fix_content_readability(self, html: str) -> str:
+        """Fix low-contrast text colors in generated fragments without LLM retry."""
+        try:
+            fixed_html, fixed_count = fix_readability_colors(
+                html,
+                self.template.css_variables if self.template else {},
+            )
+            if fixed_count:
+                logger.info("[Pipeline] 自动修正低对比度文字颜色: %s 处", fixed_count)
+            return fixed_html
+        except Exception as exc:
+            logger.debug("[Pipeline] readability color fix skipped: %s", exc)
+            return html
 
     async def generate_content_pages_parallel(
         self,
@@ -718,6 +744,7 @@ class PresentationGenerator:
             single_html = self._replace_slides_track_content(single_html, slides_inner)
         single_html = single_html.replace("{{TOTAL_PAGES}}", str(total_pages))
         single_html = single_html.replace("{TOTAL_PAGES}", str(total_pages))
+        single_html = self.renderer._strip_inline_navigation_scripts(single_html)
         single_html = self.renderer._inject_runtime_overrides(single_html)
         single_html = single_html.replace('<div class="nav-dots"', '<div class="nav-dots" style="display:none"')
         single_html = single_html.replace('<div class="nav-arrows">', '<div class="nav-arrows" style="display:none">')
@@ -766,8 +793,31 @@ def _roman_numeral(num: int) -> str:
 
 def outline_from_dict(data: dict) -> PresentationOutline:
     """从字典创建 PresentationOutline"""
+    def _clean_section_title(section_data: dict, index: int) -> str:
+        """Pick a real section heading instead of a long summary/subtitle."""
+        candidates = [
+            section_data.get("page_title"),
+            section_data.get("title"),
+            section_data.get("name"),
+            section_data.get("heading"),
+        ]
+        for candidate in candidates:
+            title = str(candidate or "").strip()
+            if not title:
+                continue
+            if len(title) <= 28:
+                return title
+            compact = title.replace("，", ",").replace("。", ".")
+            if "," not in compact and "." not in compact and len(title) <= 40:
+                return title
+
+        fallback = str(section_data.get("title") or "").strip()
+        if fallback:
+            return fallback.split("，", 1)[0].split("。", 1)[0][:28]
+        return f"第{index}章"
+
     sections = []
-    for section_data in data.get("sections", []):
+    for section_index, section_data in enumerate(data.get("sections", []), 1):
         content_pages = []
         for cp_data in section_data.get("content_pages", []):
             content_pages.append(ContentPageInput(
@@ -776,7 +826,7 @@ def outline_from_dict(data: dict) -> PresentationOutline:
                 bullet_points=cp_data.get("bullets", []),
             ))
         sections.append(SectionInput(
-            title=section_data["title"],
+            title=_clean_section_title(section_data, section_index),
             content_pages=content_pages,
             include_section_page=bool(section_data.get("include_section_page", True)),
         ))

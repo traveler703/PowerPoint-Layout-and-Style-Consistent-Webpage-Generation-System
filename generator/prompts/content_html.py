@@ -54,7 +54,7 @@ def _get_default_css_variables() -> dict[str, str]:
 def generate_color_scheme_from_template(css_variables: dict[str, str]) -> dict[str, str]:
     """
     Generate color scheme variables from template CSS variables.
-    
+
     This function automatically derives all color variants from the
     template's primary color and text colors.
     """
@@ -188,10 +188,10 @@ def build_content_html_prompt(
         "- 使用 flex/grid 布局",
         "",
         "【溢出控制 - 最重要】",
-        "- 每个容器 div 必须添加 `overflow: hidden` 防止内容溢出",
-        "- 对长文本使用 `word-wrap: break-word`",
-        "- 对单行文本使用 `text-overflow: ellipsis` 或 `white-space: nowrap`",
-        "- 保持文字简洁，避免每行内容过多",
+        "- 最外层内容容器可以使用 `overflow:hidden` 控制画布边界，但承载文字的卡片/文本块不得裁剪文字",
+        "- 禁止使用 `text-overflow: ellipsis`、`line-clamp` 或固定高度截断文字",
+        "- 对长文本使用 `word-wrap: break-word; overflow-wrap:anywhere; white-space:normal`",
+        "- 保持文字简洁，必要时减少卡片数量、降低字号或改为两列/网格，确保全部内容可见",
         "",
         "输出格式：",
         "- 用 ```html ... ``` 包裹",
@@ -201,9 +201,10 @@ def build_content_html_prompt(
         "【样式要求 - 最重要】",
         "- **禁止使用自定义 class，所有样式必须使用内联 style 属性**",
         "- **禁止使用 <style> 标签，不要生成任何 CSS 样式定义**",
-        "- **禁止使用 overflow: visible，这会导致内容溢出**",
-        "- 每个 div 必须有 `overflow: hidden` 或明确的 overflow 控制",
+        "- 容器必须有明确的 overflow 控制；文字叶子节点不能被隐藏、透明、line-clamp 或 ellipsis 截断",
         "- 宽度和高度必须用具体数值（如 1160px, 100%）而不是 auto",
+        "- **所有页面的任何文字内容必须清晰可见、易于辨认**，当文字处于深色的背景或深色的卡片中，文字颜色需为白色或其他浅色；当文字处于浅色的背景或浅色的卡片中，文字颜色需为黑色或其他深色",
+        "- **每个设置了 background/background-color 的容器，都必须同时设置清晰对比的 color；文字与背景对比度至少达到 4.5:1**",
         "",
         "【背景要求】",
         "- **主容器不要设置背景色**，使用 `background: transparent` 或直接不设置 background",
@@ -376,12 +377,14 @@ def build_html_generation_prompt(
         "",
         "【溢出控制 - 关键要求】",
         "- **文字必须完整显示，禁止使用 text-overflow: ellipsis 截断文字**",
-        "- 每个容器 div 必须添加 `overflow: hidden` 防止内容溢出",
-        "- 对长文本使用 `word-wrap: break-word` 和多行文本",
-        "- **保持文字简短**，每行控制在10个中文字符以内，避免文字过长无法显示",
+        "- 禁止使用 line-clamp、透明文字、display:none、visibility:hidden 或 opacity<0.6 隐藏文字",
+        "- 最外层内容容器可以使用 `overflow:hidden` 控制边界，但承载文字的卡片/文本块不能裁剪文字",
+        "- 对长文本使用 `word-wrap: break-word; overflow-wrap:anywhere; white-space:normal` 和多行文本",
+        "- **保持文字简短**，每行控制在10-16个中文字符以内，避免文字过长无法显示",
         "- **禁止使用绝对定位(absolute/fixed)**，会导致内容被裁剪或溢出",
         "- **必须使用 flex 或 grid 布局**，所有内容必须能完整显示在1160x530区域内",
         "- **文字必须完整显示**，卡片宽度必须足够容纳所有文字内容",
+        "- 如果内容较多，优先减少装饰、减少卡片数量、降低字号到12-14px或改用更紧凑的两列布局，不要让底部内容被裁掉",
         "",
         "输出格式：",
         "- 用 ```html ... ``` 包裹",
@@ -391,9 +394,11 @@ def build_html_generation_prompt(
         "【样式要求 - 最重要】",
         "- **禁止使用自定义 class，所有样式必须使用内联 style 属性**",
         "- **禁止使用 <style> 标签，不要生成任何 CSS 样式定义**",
-        "- **禁止使用 overflow: visible，这会导致内容溢出**",
-        "- 每个 div 必须有 `overflow: hidden` 或明确的 overflow 控制",
+        "- 容器必须有明确的 overflow 控制；文字叶子节点不能被 hidden/ellipsis/line-clamp 裁剪",
         "- 宽度和高度必须用具体数值（如 1160px, 100%）而不是 auto",
+        "- **所有文字必须清晰可见**：深色背景/卡片上使用白色或浅色文字，浅色背景/卡片上使用黑色或深色文字",
+        "- **每个设置了 background/background-color 的容器，都必须同时设置高对比度 color；文字与背景对比度至少达到 4.5:1**",
+        "- 不要把文字颜色设置成与背景接近的同色系低亮度颜色，也不要只依赖发光/阴影让文字可见",
         "",
         "【背景要求】",
         "- **主容器不要设置背景色**，使用 `background: transparent` 或直接不设置 background",
@@ -439,10 +444,11 @@ def build_html_generation_prompt(
         f"3. **禁止使用绝对定位**，使用 flex/grid 布局\n"
         f"4. **禁止使用 text-overflow: ellipsis 截断文字**\n"
         f"5. **文字简洁**：内容区必须有丰富的正文内容，但不能溢出\n"
-        f"6. **卡片高度必须自适应内容**，不要设置固定max-height\n"
-        f"7. **内容必须全部可见**，不允许任何溢出或裁剪\n"
+        f"6. **卡片高度必须自适应内容**，不要设置固定max-height；如果使用固定height，必须确认文字完全放得下\n"
+        f"7. **内容必须全部可见**，不允许任何溢出、透明、隐藏或裁剪\n"
         f"8. **重要**：仅使用提供的数据，不要编造不存在的内容\n"
-        f"9. **重要**：只展示有数据提供的组件（有highlights才用数字卡片，有steps才用流程图，有compare才用对比，没有就不用）"
+        f"9. **重要**：只展示有数据提供的组件（有highlights才用数字卡片，有steps才用流程图，有compare才用对比，没有就不用）\n"
+        f"10. **可读性硬性要求**：每段文字都必须与其所在背景/卡片形成明显明暗对比；深底浅字、浅底深字"
     )
 
     return system_prompt, user_prompt
